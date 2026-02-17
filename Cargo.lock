@@ -936,7 +936,9 @@ dependencies = [
 
 [[package]]
 name = "glyphslib"
-version = "0.2.3"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "64f11d1c40a1b002b734623fb4f06a675bb4dc7048dd04e10d6c16a30c98e479"
 dependencies = [
  "itertools",
  "openstep-plist",
@@ -1269,6 +1271,7 @@ dependencies = [
 [[package]]
 name = "norad"
 version = "0.18.0"
+source = "git+https://github.com/yanone/norad?branch=hasmap-loading#09da0f9580bdfacdd1ef5806f27543bc454e1f4f"
 dependencies = [
  "base64",
  "close_already",
@@ -1334,6 +1337,8 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 [[package]]
 name = "openstep-plist"
 version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "05b90d0861fc887b36f13436f5e843697423eb837f99258c5b2539b484117d6d"
 dependencies = [
  "itertools",
  "serde",
