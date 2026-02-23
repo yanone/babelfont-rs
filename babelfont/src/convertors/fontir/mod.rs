@@ -2,7 +2,7 @@ use crate::{
     convertors::fontir::varc::insert_varc_table,
     error::FeatureError,
     filters::{
-        DropIncompatiblePaths, FontFilter as _, GlyphsData, GlyphsNumberValue,
+        DropIncompatiblePaths, FontFilter as _, GlyphsBracketLayers, GlyphsData, GlyphsNumberValue,
         GlyphsStylisticSetLabel, RetainGlyphs, RewriteSmartAxes,
     },
     BabelfontError, Font,
@@ -117,6 +117,7 @@ impl BabelfontIrSource {
         GlyphsNumberValue.apply(&mut font)?;
         GlyphsData.apply(&mut font)?;
         GlyphsStylisticSetLabel.apply(&mut font)?;
+        GlyphsBracketLayers.apply(&mut font)?;
 
         // These really should be errors, not assertions
         // assert!(
