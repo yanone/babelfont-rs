@@ -71,6 +71,7 @@ declare_filters! {
     GlyphsData(glyphsdata) => "glyphsdata",
     DropIncompatiblePaths(dropincompatiblepaths) => "dropincompatiblepaths",
     GlyphsNumberValue(glyphsnumbervalue) => "glyphsnumbervalue",
+    GlyphsStylisticSetLabel(glyphsstylisticsetlabel) => "glyphsstylisticsetlabel",
     RenameGlyphs(renameglyphs) => "renameglyphs",
 }
 

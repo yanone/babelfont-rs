@@ -100,7 +100,10 @@ impl Features {
 mod glyphs {
     use glyphslib::common::StylisticSetLabel;
 
-    use crate::{features::PossiblyAutomaticCode, FormatSpecific};
+    use crate::{
+        convertors::glyphs3::KEY_STYLISTIC_SET_LABEL, features::PossiblyAutomaticCode,
+        FormatSpecific,
+    };
 
     impl From<&glyphslib::common::FeatureClass> for PossiblyAutomaticCode {
         fn from(val: &glyphslib::common::FeatureClass) -> Self {
@@ -192,7 +195,7 @@ mod glyphs {
                     })
                     .collect();
                 code.format_specific.insert(
-                    "com.schriftgestalt.Glyphs.labels".into(),
+                    KEY_STYLISTIC_SET_LABEL.into(),
                     serde_json::Value::Array(labels),
                 );
             }
@@ -256,7 +259,7 @@ mod glyphs {
                 .map(|s| s.to_string());
             let labels = self
                 .format_specific
-                .get("com.schriftgestalt.Glyphs.labels")
+                .get(KEY_STYLISTIC_SET_LABEL)
                 .and_then(|v| v.as_array())
                 .map(|arr| {
                     arr.iter()
