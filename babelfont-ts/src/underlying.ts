@@ -61,10 +61,10 @@ export enum TransformOrder {
 
 /** A decomposed affine transformation with separate translation, rotation, scale, and skew components */
 export interface DecomposedAffine {
-  translation: [number, number];
+  translation?: [number, number];
   scale: [number, number];
-  rotation: number;
-  skew: [number, number];
+  rotation?: number;
+  skew?: [number, number];
   order?: TransformOrder;
 }
 
@@ -379,7 +379,7 @@ export type GlyphCategory =
   /** A ligature glyph */
   | "Ligature"
   /** Custom */
-  | string;
+  | { Custom: string };
 
 /** The type of a layer in relation to masters */
 export type LayerType =

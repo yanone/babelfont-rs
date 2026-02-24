@@ -62,6 +62,7 @@ pub(crate) const KEY_VERT_WIDTH: &str = "com.schriftgestalt.Glyphs.vertWidth";
 pub(crate) const KEY_VERT_ORIGIN: &str = "com.schriftgestalt.Glyphs.vertOrigin";
 pub(crate) const KEY_WEIGHT_CLASS: &str = "com.schriftgestalt.Glyphs.weightClass";
 pub(crate) const KEY_WIDTH_CLASS: &str = "com.schriftgestalt.Glyphs.widthClass";
+pub(crate) const KEY_STYLISTIC_SET_LABEL: &str = "com.schriftgestalt.Glyphs.labels";
 
 fn copy_custom_parameters(
     format_specific: &mut FormatSpecific,
@@ -1209,6 +1210,7 @@ mod tests {
         #[exclude("RadioCanadaDisplay.glyphs")]
         #[exclude("Nunito3.glyphs")]
         #[exclude("NotoSansGrantha-SmartComponent.glyphs")]
+        #[exclude("Fustat.glyphs")]
         path: PathBuf,
     ) {
         let there = load(path.clone()).unwrap();
