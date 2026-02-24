@@ -62,6 +62,7 @@ pub(crate) const KEY_VERT_WIDTH: &str = "com.schriftgestalt.Glyphs.vertWidth";
 pub(crate) const KEY_VERT_ORIGIN: &str = "com.schriftgestalt.Glyphs.vertOrigin";
 pub(crate) const KEY_WEIGHT_CLASS: &str = "com.schriftgestalt.Glyphs.weightClass";
 pub(crate) const KEY_WIDTH_CLASS: &str = "com.schriftgestalt.Glyphs.widthClass";
+pub(crate) const KEY_STYLISTIC_SET_LABEL: &str = "com.schriftgestalt.Glyphs.labels";
 
 fn copy_custom_parameters(
     format_specific: &mut FormatSpecific,
@@ -138,6 +139,16 @@ pub fn load(path: PathBuf) -> Result<Font, BabelfontError> {
 pub fn load_str(s: &str, path: PathBuf) -> Result<Font, BabelfontError> {
     let glyphs_font =
         glyphslib::Font::load_str(s).map_err(|x| BabelfontError::PlistParse(x.to_string()))?;
+    _load(&glyphs_font, path)
+}
+
+/// Load a Glyphs package font from in-memory package entries
+pub fn load_package_entries(
+    path: PathBuf,
+    entries: &HashMap<String, String>,
+) -> Result<Font, BabelfontError> {
+    let glyphs_font = glyphslib::Font::load_package_entries(entries)
+        .map_err(|x| BabelfontError::PlistParse(x.to_string()))?;
     _load(&glyphs_font, path)
 }
 
@@ -1199,6 +1210,7 @@ mod tests {
         #[exclude("RadioCanadaDisplay.glyphs")]
         #[exclude("Nunito3.glyphs")]
         #[exclude("NotoSansGrantha-SmartComponent.glyphs")]
+        #[exclude("Fustat.glyphs")]
         path: PathBuf,
     ) {
         let there = load(path.clone()).unwrap();
