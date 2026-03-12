@@ -8,7 +8,13 @@ use fontdrasil::{coords::Location, types::Tag};
 use indexmap::IndexMap;
 use paste::paste;
 use smol_str::{SmolStr, ToSmolStr};
-use std::{collections::HashSet, fs, str::FromStr, time::SystemTime};
+use std::{
+    collections::{HashMap, HashSet},
+    fs,
+    path::{Path as FsPath, PathBuf},
+    str::FromStr,
+    time::SystemTime,
+};
 
 /// Key for storing norad lib data in FormatSpecific
 pub const KEY_LIB: &str = "norad.lib";
@@ -57,9 +63,57 @@ pub(crate) fn stat(path: &std::path::Path) -> Option<DateTime<chrono::Local>> {
 
 /// Load a UFO font from a file path
 pub fn load<T: AsRef<std::path::Path>>(path: T) -> Result<Font, BabelfontError> {
-    let mut font = Font::new();
     let created_time: Option<DateTime<Utc>> = stat(path.as_ref()).map(DateTime::<Utc>::from);
     let ufo = norad::Font::load(&path)?;
+    font_from_norad(path.as_ref(), created_time, ufo)
+}
+
+/// Load a UFO font from in-memory entries keyed by relative path.
+///
+/// `path` is the virtual UFO root path (for example `MyFont.ufo` or `sources/MyFont.ufo`).
+pub fn load_entries(path: PathBuf, entries: &HashMap<String, String>) -> Result<Font, BabelfontError> {
+    let ufo = load_norad_from_entries(&path, entries)?;
+    font_from_norad(&path, None, ufo)
+}
+
+pub(crate) fn load_norad_from_entries(
+    path: &FsPath,
+    entries: &HashMap<String, String>,
+) -> Result<norad::Font, BabelfontError> {
+    let normalized_entries: HashMap<String, String> = entries
+        .iter()
+        .map(|(k, v)| (normalize_virtual_path(k).unwrap_or_else(|| k.clone()), v.clone()))
+        .collect();
+
+    let root = normalize_virtual_path(&path.to_string_lossy()).unwrap_or_default();
+    let root = root.trim_end_matches('/').to_string();
+    let read_text = |requested: &FsPath| -> Result<Option<String>, norad::error::FontLoadError> {
+        let requested = normalize_virtual_path(&requested.to_string_lossy());
+        let Some(requested) = requested else {
+            return Ok(None);
+        };
+        if let Some(v) = normalized_entries.get(&requested) {
+            return Ok(Some(v.clone()));
+        }
+        if !root.is_empty() {
+            let prefixed = format!("{}/{}", root, requested);
+            if let Some(v) = normalized_entries.get(&prefixed) {
+                return Ok(Some(v.clone()));
+            }
+        }
+        Ok(None)
+    };
+
+    norad::Font::load_requested_data_with_reader(path, norad::DataRequest::all(), read_text)
+        .map_err(Into::into)
+}
+
+fn font_from_norad(
+    path: &FsPath,
+    created_time: Option<DateTime<Utc>>,
+    ufo: norad::Font,
+) -> Result<Font, BabelfontError> {
+    let mut font = Font::new();
     font.format_specific = stash_lib(Some(&ufo.lib));
     load_glyphs(&mut font, &ufo);
     let info = &ufo.font_info;
@@ -88,7 +142,7 @@ pub fn load<T: AsRef<std::path::Path>>(path: T) -> Result<Font, BabelfontError> 
     }
     font.features = Features::from_fea(&ufo.features);
     font.features.include_paths.push(
-        path.as_ref()
+        path
             .parent()
             .unwrap_or_else(|| std::path::Path::new("."))
             .to_path_buf(),
@@ -98,6 +152,23 @@ pub fn load<T: AsRef<std::path::Path>>(path: T) -> Result<Font, BabelfontError> 
     font.masters.push(master);
 
     Ok(font)
+}
+
+fn normalize_virtual_path(path: &str) -> Option<String> {
+    let mut parts: Vec<String> = Vec::new();
+    for component in FsPath::new(path).components() {
+        match component {
+            std::path::Component::Normal(p) => parts.push(p.to_string_lossy().to_string()),
+            std::path::Component::CurDir | std::path::Component::RootDir => {}
+            std::path::Component::ParentDir => {
+                if parts.pop().is_none() {
+                    return None;
+                }
+            }
+            std::path::Component::Prefix(_) => return None,
+        }
+    }
+    Some(parts.join("/"))
 }
 
 /// Convert a Babelfont Font to a norad UFO font
