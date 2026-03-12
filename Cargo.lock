@@ -1271,6 +1271,7 @@ dependencies = [
 [[package]]
 name = "norad"
 version = "0.18.1"
+source = "git+https://github.com/yanone/norad?branch=source-resolver-loading#055b339fe256d729da75f69602f21e65280a5a22"
 dependencies = [
  "base64",
  "close_already",
