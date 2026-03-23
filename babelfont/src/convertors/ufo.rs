@@ -88,21 +88,23 @@ pub(crate) fn load_norad_from_entries(
     let root = normalize_virtual_path(&path.to_string_lossy()).unwrap_or_default();
     let root = root.trim_end_matches('/').to_string();
 
-    let resolver = |requested: &FsPath| {
-        let requested = normalize_virtual_path(&requested.to_string_lossy())?;
+    let source = |requested: &FsPath| -> Result<Option<String>, std::io::Error> {
+        let Some(requested) = normalize_virtual_path(&requested.to_string_lossy()) else {
+            return Ok(None);
+        };
         if let Some(v) = normalized_entries.get(&requested) {
-            return Some(v.clone());
+            return Ok(Some(v.clone()));
         }
         if !root.is_empty() {
             let prefixed = format!("{}/{}", root, requested);
             if let Some(v) = normalized_entries.get(&prefixed) {
-                return Some(v.clone());
+                return Ok(Some(v.clone()));
             }
         }
-        None
+        Ok(None)
     };
 
-    norad::Font::load_with_resolver(norad::DataRequest::all(), resolver).map_err(Into::into)
+    norad::Font::load_with_source(norad::DataRequest::all(), source).map_err(Into::into)
 }
 
 fn font_from_norad(
@@ -137,7 +139,8 @@ fn font_from_norad(
             }
         }
     }
-    font.features = Features::from_fea(&ufo.features);
+    let expanded_features = ufo.features_expanded()?;
+    font.features = Features::from_fea(&expanded_features);
     font.features.include_paths.push(
         path
             .parent()
