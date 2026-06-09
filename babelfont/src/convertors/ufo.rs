@@ -31,6 +31,10 @@ pub const KEY_STYLE_MAP_FAMILY_NAME: &str = "ufo.styleMapFamilyName";
 pub const KEY_STYLE_MAP_STYLE_NAME: &str = "ufo.styleMapStyleName";
 /// Key for storing style name in FormatSpecific
 pub const KEY_STYLE_NAME: &str = "ufo.styleName";
+/// Key for storing the UFO identifier in FormatSpecific
+pub const KEY_IDENTIFIER: &str = "ufo.identifier";
+/// Key for storing original guide type in FormatSpecific, used to roundtrip horizontal and vertical guides which UFO can either represent as such, or as angled guides with specific angles. Values are "horizontal" or "vertical".
+pub const KEY_ORIGINAL_GUIDE: &str = "ufo.originalGuide";
 
 pub(crate) fn stash_lib(lib: Option<&norad::Plist>) -> crate::common::FormatSpecific {
     let mut fs = crate::common::FormatSpecific::default();
@@ -174,7 +178,7 @@ fn normalize_virtual_path(path: &str) -> Option<String> {
 /// Convert a Babelfont Font to a norad UFO font
 ///
 /// This is currently unfinished and may not preserve all data.
-pub fn as_norad(font: &Font) -> Result<norad::Font, BabelfontError> {
+pub fn as_norad(font: &Font, _master_ix: usize) -> Result<norad::Font, BabelfontError> {
     let mut ufo = norad::Font::new();
     // Move some things into lib key before serializing it:
     // exports
@@ -228,6 +232,18 @@ let merged: IndexMap<(SmolStr, SmolStr), i16> =
 
     ufo.features = font.features.to_fea();
     Ok(ufo)
+}
+
+pub(crate) fn save_ufo<T: AsRef<std::path::Path>>(
+    font: &Font,
+    path: T,
+) -> Result<(), BabelfontError> {
+    // We can't save more than one master
+    if font.masters.len() > 1 {
+        return Err(BabelfontError::MultipleMastersNotSupported);
+    }
+    let ufo = as_norad(font, 0)?;
+    ufo.save(path).map_err(|e| e.into())
 }
 
 fn babelfont_layer_to_norad_glyph(
