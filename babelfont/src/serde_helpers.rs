@@ -11,8 +11,6 @@ use serde::{
 };
 use smol_str::SmolStr;
 
-use crate::FormatSpecific;
-
 pub(crate) fn kerning_map<S>(
     map: &IndexMap<(SmolStr, SmolStr), i16>,
     serializer: S,
@@ -128,33 +126,12 @@ pub(crate) fn serialize_nodes<S>(
 where
     S: serde::Serializer,
 {
-    let mut s = String::new();
+    use serde::ser::SerializeSeq;
+    let mut seq = serializer.serialize_seq(Some(nodes.len()))?;
     for node in nodes {
-        s.push_str(&format!(
-            "{} {} {}{} {}",
-            node.x,
-            node.y,
-            match node.nodetype {
-                crate::NodeType::Move => "m",
-                crate::NodeType::Line => "l",
-                crate::NodeType::OffCurve => "o",
-                crate::NodeType::QCurve => "q",
-                crate::NodeType::Curve => "c",
-            },
-            if node.smooth { "s" } else { "" },
-            if FormatSpecific::is_empty(&node.format_specific) {
-                "".to_string()
-            } else {
-                format!(
-                    "{} ",
-                    serde_json::to_string(&node.format_specific)
-                        .map_err(serde::ser::Error::custom)?
-                )
-            }
-        ));
+        seq.serialize_element(node)?;
     }
-    s.pop(); // Remove trailing space
-    serializer.serialize_str(&s)
+    seq.end()
 }
 
 pub(crate) fn deserialize_nodes<'de, D>(
@@ -163,69 +140,7 @@ pub(crate) fn deserialize_nodes<'de, D>(
 where
     D: serde::Deserializer<'de>,
 {
-    let s: String = serde::Deserialize::deserialize(deserializer)?;
-    let mut nodes = Vec::new();
-    let mut remaining = s.as_str();
-    while let Some((x_str, next)) = take_node_token(remaining) {
-        let (y_str, next) = take_node_token(next)
-            .ok_or_else(|| serde::de::Error::custom("Expected y coordinate"))?;
-        let (type_str, next) =
-            take_node_token(next).ok_or_else(|| serde::de::Error::custom("Expected node type"))?;
-        let x: f64 = x_str
-            .parse()
-            .map_err(|_| serde::de::Error::custom(format!("Invalid x coordinate: {}", x_str)))?;
-        let y: f64 = y_str
-            .parse()
-            .map_err(|_| serde::de::Error::custom(format!("Invalid y coordinate: {}", y_str)))?;
-        let (nodetype, smooth) = match type_str {
-            "m" => (crate::NodeType::Move, false),
-            "l" => (crate::NodeType::Line, false),
-            "o" => (crate::NodeType::OffCurve, false),
-            "q" => (crate::NodeType::QCurve, false),
-            "c" => (crate::NodeType::Curve, false),
-            "ms" => (crate::NodeType::Move, true),
-            "ls" => (crate::NodeType::Line, true),
-            "os" => (crate::NodeType::OffCurve, true),
-            "qs" => (crate::NodeType::QCurve, true),
-            "cs" => (crate::NodeType::Curve, true),
-            _ => {
-                return Err(serde::de::Error::custom(format!(
-                    "Invalid node type: {}",
-                    type_str
-                )))
-            }
-        };
-        let (format_specific, next) = if next.trim_start().starts_with('{') {
-            let json = next.trim_start();
-            let mut values = serde_json::Deserializer::from_str(json).into_iter::<FormatSpecific>();
-            let format_specific = values
-                .next()
-                .transpose()
-                .map_err(serde::de::Error::custom)?
-                .ok_or_else(|| serde::de::Error::custom("Expected format specific JSON"))?;
-            (format_specific, &json[values.byte_offset()..])
-        } else {
-            (FormatSpecific::default(), next)
-        };
-        nodes.push(crate::common::Node {
-            x,
-            y,
-            nodetype,
-            smooth,
-            format_specific,
-        });
-        remaining = next;
-    }
-    Ok(nodes)
-}
-
-fn take_node_token(input: &str) -> Option<(&str, &str)> {
-    let input = input.trim_start();
-    if input.is_empty() {
-        return None;
-    }
-    let end = input.find(char::is_whitespace).unwrap_or(input.len());
-    Some((&input[..end], &input[end..]))
+    <Vec<crate::common::Node>>::deserialize(deserializer)
 }
 
 pub(crate) fn is_zero<T>(f: &T) -> bool
