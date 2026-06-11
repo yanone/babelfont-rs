@@ -119,30 +119,6 @@ pub(crate) fn one_one() -> (f64, f64) {
     (1.0, 1.0)
 }
 
-pub(crate) fn serialize_nodes<S>(
-    nodes: &Vec<crate::common::Node>,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    use serde::ser::SerializeSeq;
-    let mut seq = serializer.serialize_seq(Some(nodes.len()))?;
-    for node in nodes {
-        seq.serialize_element(node)?;
-    }
-    seq.end()
-}
-
-pub(crate) fn deserialize_nodes<'de, D>(
-    deserializer: D,
-) -> Result<Vec<crate::common::Node>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    <Vec<crate::common::Node>>::deserialize(deserializer)
-}
-
 pub(crate) fn is_zero<T>(f: &T) -> bool
 where
     T: PartialEq + From<f32>,
