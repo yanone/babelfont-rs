@@ -106,10 +106,6 @@ impl Component {
 #[typeshare]
 /// A path in a glyph
 pub struct Path {
-    #[serde(
-        serialize_with = "crate::serde_helpers::serialize_nodes",
-        deserialize_with = "crate::serde_helpers::deserialize_nodes"
-    )]
     /// A list of nodes in the path
     pub nodes: Vec<Node>,
     /// Whether the path is closed
