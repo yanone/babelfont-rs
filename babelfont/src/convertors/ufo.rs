@@ -207,9 +207,9 @@ pub fn as_norad(font: &Font, _master_ix: usize) -> Result<norad::Font, Babelfont
     }
 
 let merged: IndexMap<(SmolStr, SmolStr), i16> =
-        font.merged_kerning_for_master(master).into_iter().collect();
+        font.merged_kerning_for_master(first_master).into_iter().collect();
     save_kerning(&mut ufo.kerning, &merged)?;
-    save_info(&mut ufo.font_info, font, master_ix);
+    save_info(&mut ufo.font_info, font);
     let (swapped_first, swapped_second) = font.kern_groups_with_rtl_swaps();
     save_kern_groups(&mut ufo.groups, &swapped_first, &swapped_second)?;
     // Insert non-kerning groups into ufo.groups
@@ -1012,7 +1012,7 @@ mod tests {
     fn test_roundtrip() {
         let there = crate::load("resources/NotoSans-LightItalic.ufo").unwrap();
         assert!(there.masters.len() == 1);
-        let backagain = as_norad(&there).unwrap();
+        let backagain = as_norad(&there, 0).unwrap();
         let once_more = norad::Font::load("resources/NotoSans-LightItalic.ufo").unwrap();
         assert_eq!(there.glyphs.len(), backagain.default_layer().len());
         assert_eq!(
