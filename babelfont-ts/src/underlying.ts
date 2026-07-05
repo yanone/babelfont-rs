@@ -10,6 +10,8 @@ export type I18NDictionary = Record<string, string>;
 
 /** An anchor point in a glyph */
 export interface Anchor {
+  /** Stable identifier for CRDT addressing (generated on load when absent) */
+  id?: string;
   /** X coordinate */
   x: number;
   /** Y coordinate */
@@ -78,6 +80,8 @@ export interface DecomposedAffine {
 
 /** A component in a glyph */
 export interface Component {
+  /** Stable identifier for CRDT addressing (generated on load when absent) */
+  id?: string;
   /** The referenced glyph name */
   reference: string;
   /** The transformation applied to the component */
@@ -344,6 +348,8 @@ export interface Position {
 
 /** A guideline in the font, whether at master or layer level */
 export interface Guide {
+  /** Stable identifier for CRDT addressing (generated on load when absent) */
+  id?: string;
   /** Position of the guideline */
   pos: Position;
   /** Optional name of the guideline */
@@ -592,6 +598,8 @@ export enum NodeType {
 
 /** A node in a glyph outline */
 export interface Node {
+  /** Stable identifier for CRDT addressing (generated on load when absent) */
+  id?: string;
   /** The x-coordinate of the node */
   x: number;
   /** The y-coordinate of the node */
@@ -606,6 +614,8 @@ export interface Node {
 
 /** A path in a glyph */
 export interface Path {
+  /** Stable identifier for CRDT addressing (generated on load when absent) */
+  id?: string;
   /** A list of nodes in the path */
   nodes: Node[];
   /** Whether the path is closed */
