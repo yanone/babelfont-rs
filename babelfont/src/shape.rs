@@ -18,10 +18,13 @@ pub struct ResolvedShapes {
     pub components: Vec<Component>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[typeshare]
 /// A component in a glyph
 pub struct Component {
+    /// Stable identifier for CRDT addressing (generated on load when absent)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     /// The referenced glyph name
     #[typeshare(serialized_as = "String")]
     pub reference: SmolStr,
@@ -106,6 +109,9 @@ impl Component {
 #[typeshare]
 /// A path in a glyph
 pub struct Path {
+    /// Stable identifier for CRDT addressing (generated on load when absent)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     /// A list of nodes in the path
     pub nodes: Vec<Node>,
     /// Whether the path is closed
@@ -391,6 +397,7 @@ impl From<kurbo::BezPath> for Path {
             }
         }
         let mut path = Path {
+            id: None,
             nodes,
             closed,
             format_specific: FormatSpecific::default(),
@@ -432,6 +439,14 @@ pub enum Shape {
 }
 
 impl Shape {
+    /// Stable identifier for CRDT addressing (from the underlying Path/Component)
+    pub fn id(&self) -> &Option<String> {
+        match self {
+            Shape::Component(c) => &c.id,
+            Shape::Path(p) => &p.id,
+        }
+    }
+
     #[allow(dead_code)]
     pub(crate) fn is_smart_component(&self) -> bool {
         match self {
@@ -494,6 +509,7 @@ impl Shape {
                 for node in &p.nodes {
                     let new_point = transform.as_affine() * kurbo::Point::new(node.x, node.y);
                     contour.nodes.push(Node {
+                        id: node.id.clone(),
                         x: new_point.x,
                         y: new_point.y,
                         nodetype: node.nodetype,
@@ -801,6 +817,7 @@ mod glyphs {
             }
 
             Component {
+                id: None,
                 reference: SmolStr::from(&val.component_glyph),
                 transform,
                 location,
@@ -878,6 +895,7 @@ mod glyphs {
                 );
             }
             Path {
+                id: None,
                 nodes,
                 closed: val.closed,
                 format_specific,
@@ -946,8 +964,10 @@ mod tests {
     #[test]
     fn test_path_serde_roundtrip() {
         let path = Path {
+            id: None,
             nodes: vec![
                 Node {
+                    id: None,
                     x: 744.0,
                     y: 1249.0,
                     nodetype: NodeType::Line,
@@ -955,6 +975,7 @@ mod tests {
                     format_specific: FormatSpecific::default(),
                 },
                 Node {
+                    id: None,
                     x: 744.0,
                     y: 1249.0,
                     nodetype: NodeType::OffCurve,
@@ -962,6 +983,7 @@ mod tests {
                     format_specific: FormatSpecific::default(),
                 },
                 Node {
+                    id: None,
                     x: 744.0,
                     y: 1249.0,
                     nodetype: NodeType::OffCurve,
@@ -969,6 +991,7 @@ mod tests {
                     format_specific: FormatSpecific::default(),
                 },
                 Node {
+                    id: None,
                     x: 744.0,
                     y: 1249.0,
                     nodetype: NodeType::QCurve,
@@ -976,6 +999,7 @@ mod tests {
                     format_specific: FormatSpecific::default(),
                 },
                 Node {
+                    id: None,
                     x: 538.0,
                     y: 1470.0,
                     nodetype: NodeType::Line,
@@ -983,6 +1007,7 @@ mod tests {
                     format_specific: FormatSpecific::default(),
                 },
                 Node {
+                    id: None,
                     x: 538.0,
                     y: 1470.0,
                     nodetype: NodeType::OffCurve,
@@ -990,6 +1015,7 @@ mod tests {
                     format_specific: FormatSpecific::default(),
                 },
                 Node {
+                    id: None,
                     x: 538.0,
                     y: 1470.0,
                     nodetype: NodeType::OffCurve,
@@ -997,6 +1023,7 @@ mod tests {
                     format_specific: FormatSpecific::default(),
                 },
                 Node {
+                    id: None,
                     x: 538.0,
                     y: 1470.0,
                     nodetype: NodeType::QCurve,
@@ -1004,6 +1031,7 @@ mod tests {
                     format_specific: FormatSpecific::default(),
                 },
                 Node {
+                    id: None,
                     x: -744.0,
                     y: 181.0,
                     nodetype: NodeType::Line,
@@ -1011,6 +1039,7 @@ mod tests {
                     format_specific: FormatSpecific::default(),
                 },
                 Node {
+                    id: None,
                     x: -744.0,
                     y: 181.0,
                     nodetype: NodeType::OffCurve,
@@ -1018,6 +1047,7 @@ mod tests {
                     format_specific: FormatSpecific::default(),
                 },
                 Node {
+                    id: None,
                     x: -744.0,
                     y: 181.0,
                     nodetype: NodeType::OffCurve,
@@ -1025,6 +1055,7 @@ mod tests {
                     format_specific: FormatSpecific::default(),
                 },
                 Node {
+                    id: None,
                     x: -744.0,
                     y: 181.0,
                     nodetype: NodeType::QCurve,
@@ -1032,6 +1063,7 @@ mod tests {
                     format_specific: FormatSpecific::default(),
                 },
                 Node {
+                    id: None,
                     x: -538.0,
                     y: -40.0,
                     nodetype: NodeType::Line,
@@ -1039,6 +1071,7 @@ mod tests {
                     format_specific: FormatSpecific::default(),
                 },
                 Node {
+                    id: None,
                     x: -538.0,
                     y: -40.0,
                     nodetype: NodeType::OffCurve,
@@ -1046,6 +1079,7 @@ mod tests {
                     format_specific: FormatSpecific::default(),
                 },
                 Node {
+                    id: None,
                     x: -538.0,
                     y: -40.0,
                     nodetype: NodeType::OffCurve,
@@ -1054,6 +1088,7 @@ mod tests {
                     format_specific: FormatSpecific::default(),
                 },
                 Node {
+                    id: None,
                     x: -538.0,
                     y: -40.0,
                     nodetype: NodeType::QCurve,

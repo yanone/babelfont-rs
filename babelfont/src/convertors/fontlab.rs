@@ -39,6 +39,7 @@ impl From<FontlabComponent> for Shape {
     fn from(val: FontlabComponent) -> Self {
         use crate::common::decomposition::DecomposedAffine;
         Shape::Component(Component {
+            id: None,
             reference: val.glyphName.into(),
             transform: DecomposedAffine::default(),
             format_specific: Default::default(),
@@ -123,6 +124,7 @@ fn parse_node_string(
                     (NodeType::Line, false)
                 };
                 Node {
+                    id: None,
                     x: mat[1].parse().unwrap(),
                     y: mat[2].parse().unwrap(),
                     nodetype,
@@ -143,6 +145,7 @@ fn parse_node_string(
                     (NodeType::QCurve, false)
                 };
                 Node {
+                    id: None,
                     x: mat[1].parse().unwrap(),
                     y: mat[2].parse().unwrap(),
                     nodetype,
@@ -160,6 +163,7 @@ impl From<FontlabContour> for Shape {
         let ends_with_c = val.nodes.last().is_some_and(|s| s.trim().ends_with(" c"));
 
         let mut path = Path {
+            id: None,
             nodes: val
                 .nodes
                 .into_iter()
@@ -349,6 +353,7 @@ impl TryInto<Option<Anchor>> for FontlabAnchor {
         if let Some(point) = self.point {
             let (x, y) = to_point(point)?;
             Ok(Some(Anchor {
+                id: None,
                 x,
                 y,
                 name: self.name,

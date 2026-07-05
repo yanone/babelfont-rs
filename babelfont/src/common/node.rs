@@ -48,6 +48,9 @@ impl NodeType {
 #[typeshare]
 /// A node in a glyph outline
 pub struct Node {
+    /// Stable identifier for CRDT addressing (generated on load when absent)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     /// The x-coordinate of the node
     pub x: f64,
     /// The y-coordinate of the node
@@ -73,6 +76,7 @@ impl Node {
     /// Create a new Move node with default properties
     pub fn new_offcurve(x: impl Into<f64>, y: impl Into<f64>) -> Self {
         Node {
+            id: None,
             x: x.into(),
             y: y.into(),
             nodetype: NodeType::OffCurve,
@@ -83,6 +87,7 @@ impl Node {
     /// Create a new Curve node with default properties
     pub fn new_curve(x: impl Into<f64>, y: impl Into<f64>) -> Self {
         Node {
+            id: None,
             x: x.into(),
             y: y.into(),
             nodetype: NodeType::Curve,
@@ -93,6 +98,7 @@ impl Node {
     /// Create a new Move node with default properties
     pub fn new_move(x: impl Into<f64>, y: impl Into<f64>) -> Self {
         Node {
+            id: None,
             x: x.into(),
             y: y.into(),
             nodetype: NodeType::Move,
@@ -103,6 +109,7 @@ impl Node {
     /// Create a new Line node with default properties
     pub fn new_line(x: impl Into<f64>, y: impl Into<f64>) -> Self {
         Node {
+            id: None,
             x: x.into(),
             y: y.into(),
             nodetype: NodeType::Line,
@@ -113,6 +120,7 @@ impl Node {
     /// Create a new QCurve node with default properties
     pub fn new_qcurve(x: impl Into<f64>, y: impl Into<f64>) -> Self {
         Node {
+            id: None,
             x: x.into(),
             y: y.into(),
             nodetype: NodeType::QCurve,
@@ -162,6 +170,7 @@ mod ufo {
     impl From<&norad::ContourPoint> for Node {
         fn from(p: &norad::ContourPoint) -> Self {
             Node {
+                id: None,
                 x: p.x,
                 y: p.y,
                 nodetype: (&p.typ).into(),
@@ -258,6 +267,7 @@ mod glyphs {
             format_specific.insert_json(KEY_NODE_HOI, &val.hoi);
 
             Node {
+                id: None,
                 x: val.x as f64,
                 y: val.y as f64,
                 nodetype: val.node_type.into(),
@@ -305,6 +315,7 @@ mod glyphs {
     impl From<&G2Node> for Node {
         fn from(val: &G2Node) -> Self {
             Node {
+                id: None,
                 x: val.x as f64,
                 y: val.y as f64,
                 nodetype: val.node_type.into(),

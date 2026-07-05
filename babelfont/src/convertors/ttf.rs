@@ -1702,6 +1702,7 @@ fn load_features(
                     };
                     let (x, y) = get_x_y_location_for_anchor(location, &anchor, &axes)?;
                     layer.anchors.push(Anchor {
+                        id: None,
                         name: anchor_name.clone().into(),
                         x,
                         y,
@@ -1740,6 +1741,7 @@ fn load_features(
                         };
                         let (x, y) = get_x_y_location_for_anchor(location, anchor, &axes)?;
                         layer.anchors.push(Anchor {
+                            id: None,
                             name: anchor_name.clone(),
                             x,
                             y,
@@ -2287,6 +2289,7 @@ fn load_layer(
                 let our_affine = kurbo::Affine::new([xx, yx, xy, yy, dx, dy]);
 
                 layer.shapes.push(crate::Shape::Component(crate::Component {
+                    id: None,
                     reference: names
                         .get(gid.to_u32() as usize)
                         .ok_or(BabelfontError::BinaryFontRead(format!(
