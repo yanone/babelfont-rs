@@ -341,6 +341,7 @@ fn load_features(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babel
                     let location = master.location.clone();
                     let (x, y) = get_x_y_location_for_anchor(location, &anchor, &axes)?;
                     layer.anchors.push(Anchor {
+                        id: None,
                         name: anchor_name.clone().into(),
                         x,
                         y,
@@ -381,6 +382,7 @@ fn load_features(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babel
                         let location = master.location.clone();
                         let (x, y) = get_x_y_location_for_anchor(location, anchor, &axes)?;
                         layer.anchors.push(Anchor {
+                            id: None,
                             name: anchor_name.clone(),
                             x,
                             y,
@@ -568,6 +570,7 @@ fn load_layer(
                 ]);
 
                 layer.shapes.push(crate::Shape::Component(crate::Component {
+                    id: None,
                     reference: names
                         .get(gid.into())
                         .ok_or(BabelfontError::BinaryFontRead(format!(

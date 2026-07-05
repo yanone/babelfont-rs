@@ -452,6 +452,7 @@ pub struct Guideline {
 impl From<&Guideline> for crate::Guide {
     fn from(val: &Guideline) -> Self {
         crate::Guide {
+            id: None,
             pos: Position {
                 x: val.x as f32,
                 y: val.y as f32,
