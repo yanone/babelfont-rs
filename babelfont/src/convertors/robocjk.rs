@@ -64,6 +64,7 @@ fn load_deep_components(layer: &mut Layer, deep_components_arr: &serde_json::Val
                 let transform = parse_deep_component_transform(transform_obj);
 
                 let mut component = Component {
+                    id: None,
                     reference: name.into(),
                     transform,
                     location: IndexMap::new(),

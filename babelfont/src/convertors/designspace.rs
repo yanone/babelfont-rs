@@ -100,7 +100,7 @@ pub fn load_entries(path: PathBuf, entries: &HashMap<String, String>) -> Result<
             BabelfontError::General(format!("Designspace file not found in entries: {}", ds_path))
         })?;
 
-    let ds: DesignSpaceDocument = norad::designspace::DesignSpaceDocument::load_str(ds_contents)?;
+    let ds: DesignSpaceDocument = norad::designspace::DesignSpaceDocument::load_from_reader(ds_contents.as_bytes())?;
     let ds_base = FsPath::new(&ds_path)
         .parent()
         .map(|p| p.to_string_lossy().to_string())
