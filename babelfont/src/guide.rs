@@ -5,6 +5,9 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(feature = "types", typeshare::typeshare)]
 /// A guideline in the font, whether at master or layer level
 pub struct Guide {
+    /// Stable identifier for CRDT addressing (generated on load when absent)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     /// Position of the guideline
     pub pos: Position,
     /// Optional name of the guideline
@@ -165,6 +168,7 @@ mod glyphs {
             extract_and_insert!("userData", |v: &G3Guide| v.user_data.clone());
 
             Guide {
+                id: None,
                 pos: Position {
                     x: val.pos.0,
                     y: val.pos.1,

@@ -487,6 +487,7 @@ impl SfdParser {
                         let end_y = gridline.nodes[1].y as f32;
                         let angle = (end_y - start_y).atan2(end_x - start_x).to_degrees();
                         self.font.masters[0].guides.push(Guide {
+                            id: None,
                             pos: crate::Position {
                                 x: start_x,
                                 y: start_y,
@@ -2649,6 +2650,7 @@ impl SfdParser {
                 // Finish current path if any
                 if !nodes.is_empty() {
                     paths.push(Path {
+                        id: None,
                         nodes: nodes.clone(),
                         closed: !Self::is_force_open_path(last_point_flags.as_deref()),
                         ..Default::default()
@@ -2668,6 +2670,7 @@ impl SfdParser {
                         // Move: start a new contour
                         if !nodes.is_empty() {
                             let mut path = Path {
+                                id: None,
                                 nodes: nodes.clone(),
                                 closed: !Self::is_force_open_path(last_point_flags.as_deref()),
                                 ..Default::default()
@@ -2684,6 +2687,7 @@ impl SfdParser {
                                 serde_json::Value::String(flags.clone()),
                             );
                             nodes.push(Node {
+                                id: None,
                                 x: *x,
                                 y: *y,
                                 nodetype: NodeType::Move,
@@ -2702,6 +2706,7 @@ impl SfdParser {
                                 serde_json::Value::String(flags.clone()),
                             );
                             nodes.push(Node {
+                                id: None,
                                 x: *x,
                                 y: *y,
                                 nodetype: NodeType::Line,
@@ -2716,6 +2721,7 @@ impl SfdParser {
                             if let (Some((cx, cy)), Some((x, y))) = (points.first(), points.last())
                             {
                                 nodes.push(Node {
+                                    id: None,
                                     x: *cx,
                                     y: *cy,
                                     nodetype: NodeType::OffCurve,
@@ -2728,6 +2734,7 @@ impl SfdParser {
                                     serde_json::Value::String(flags.clone()),
                                 );
                                 nodes.push(Node {
+                                    id: None,
                                     x: *x,
                                     y: *y,
                                     nodetype: NodeType::QCurve,
@@ -2742,6 +2749,7 @@ impl SfdParser {
                                 if i < 2 {
                                     // Off-curve control points
                                     nodes.push(Node {
+                                        id: None,
                                         x: *x,
                                         y: *y,
                                         nodetype: NodeType::OffCurve,
@@ -2756,6 +2764,7 @@ impl SfdParser {
                                         serde_json::Value::String(flags.clone()),
                                     );
                                     nodes.push(Node {
+                                        id: None,
                                         x: *x,
                                         y: *y,
                                         nodetype: NodeType::Curve,
@@ -2775,6 +2784,7 @@ impl SfdParser {
         // Finish the last path
         if !nodes.is_empty() {
             let mut path = Path {
+                id: None,
                 nodes: nodes.clone(),
                 closed: !Self::is_force_open_path(last_point_flags.as_deref()),
                 ..Default::default()
@@ -2960,6 +2970,7 @@ impl SfdParser {
         }
 
         let component = Component {
+            id: None,
             reference: reference_name.into(),
             transform,
             location: Default::default(),
@@ -3035,6 +3046,7 @@ impl SfdParser {
             name = "_".to_string() + &name;
         }
         Some(crate::Anchor {
+            id: None,
             name,
             x,
             y,

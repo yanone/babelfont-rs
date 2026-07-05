@@ -92,23 +92,20 @@ pub(crate) fn load_norad_from_entries(
     let root = normalize_virtual_path(&path.to_string_lossy()).unwrap_or_default();
     let root = root.trim_end_matches('/').to_string();
 
-    let source = |requested: &FsPath| -> Result<Option<String>, std::io::Error> {
-        let Some(requested) = normalize_virtual_path(&requested.to_string_lossy()) else {
-            return Ok(None);
-        };
-        if let Some(v) = normalized_entries.get(&requested) {
-            return Ok(Some(v.clone()));
-        }
-        if !root.is_empty() {
-            let prefixed = format!("{}/{}", root, requested);
-            if let Some(v) = normalized_entries.get(&prefixed) {
-                return Ok(Some(v.clone()));
+    let source = |requested: &FsPath| -> Option<Result<Vec<u8>, std::io::Error>> {
+        let requested = normalize_virtual_path(&requested.to_string_lossy())?;
+        let found = normalized_entries.get(&requested).or_else(|| {
+            if !root.is_empty() {
+                let prefixed = format!("{}/{}", root, requested);
+                normalized_entries.get(&prefixed)
+            } else {
+                None
             }
-        }
-        Ok(None)
+        });
+        found.map(|v| Ok(v.clone().into_bytes()))
     };
 
-    norad::Font::load_with_source(norad::DataRequest::all(), source).map_err(Into::into)
+    norad::Font::load_from_source(&norad::DataRequest::all(), &source).map_err(Into::into)
 }
 
 fn font_from_norad(
@@ -246,6 +243,38 @@ pub(crate) fn save_ufo<T: AsRef<std::path::Path>>(
     ufo.save(path).map_err(|e| e.into())
 }
 
+/// Save a UFO font to in-memory entries keyed by relative path.
+///
+/// Returns a `HashMap<String, String>` mapping UFO-relative paths (e.g.
+/// `"metainfo.plist"`, `"glyphs/contents.plist"`) to their file contents.
+pub fn save_entries(font: &Font) -> Result<HashMap<String, String>, BabelfontError> {
+    if font.masters.len() > 1 {
+        return Err(BabelfontError::MultipleMastersNotSupported);
+    }
+    let ufo = as_norad(font, 0)?;
+
+    let mut written: HashMap<String, Vec<u8>> = HashMap::new();
+    let mut sink = |path: &FsPath, data: &[u8]| -> Result<(), std::io::Error> {
+        let key = normalize_virtual_path(&path.to_string_lossy())
+            .unwrap_or_else(|| path.to_string_lossy().to_string());
+        written.insert(key, data.to_vec());
+        Ok(())
+    };
+    ufo.save_with_sink(&norad::WriteOptions::default(), &mut sink)
+        .map_err(BabelfontError::from)?;
+
+    Ok(written
+        .into_iter()
+        .map(|(k, v)| {
+            (
+                k,
+                String::from_utf8(v)
+                    .unwrap_or_else(|_| String::new()),
+            )
+        })
+        .collect())
+}
+
 fn babelfont_layer_to_norad_glyph(
     glyph: &Glyph,
     layer: &Layer,
@@ -324,6 +353,7 @@ pub(crate) fn load_component(c: &norad::Component) -> Component {
     // UFO uses the same transform representation as Fontra
     let decomposed: DecomposedAffine = affine.into();
     Component {
+        id: None,
         reference: c.base.to_smolstr(),
         transform: decomposed,
         format_specific: stash_lib(c.lib()),
@@ -368,6 +398,7 @@ pub(crate) fn load_path(c: &norad::Contour) -> Path {
     // See https://github.com/simoncozens/rust-font-tools/issues/3
     nodes.rotate_left(1);
     Path {
+        id: None,
         nodes,
         closed: c
             .points

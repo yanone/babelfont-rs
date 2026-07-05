@@ -313,6 +313,7 @@ fn recompose_once(
                 consumed_path_indices.sort_unstable();
                 matched = Some(ComponentMatch {
                     component: Component {
+                        id: None,
                         reference: glyph_name.clone(),
                         transform: transform.into(),
                         location: Default::default(),

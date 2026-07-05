@@ -7,6 +7,9 @@ use crate::common::FormatSpecific;
 #[typeshare]
 /// An anchor point in a glyph
 pub struct Anchor {
+    /// Stable identifier for CRDT addressing (generated on load when absent)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     /// X coordinate
     pub x: f64,
     /// Y coordinate
@@ -32,6 +35,7 @@ mod ufo {
     impl From<&norad::Anchor> for Anchor {
         fn from(a: &norad::Anchor) -> Self {
             Anchor {
+                id: None,
                 x: a.x,
                 y: a.y,
                 name: a
@@ -91,6 +95,7 @@ mod glyphs {
                 );
             }
             Anchor {
+                id: None,
                 name: val.name.clone(),
                 x: val.pos.0 as f64,
                 y: val.pos.1 as f64,
@@ -139,6 +144,7 @@ mod fontra {
     impl From<&fontra::Anchor> for Anchor {
         fn from(val: &fontra::Anchor) -> Self {
             Anchor {
+                id: None,
                 name: val.name.clone().unwrap_or_default(),
                 x: val.x,
                 y: val.y,

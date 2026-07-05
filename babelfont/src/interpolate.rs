@@ -102,6 +102,7 @@ pub(crate) fn interpolate_layer(
         let deltas = model.deltas(&anchor_positions)?;
         let interpolated_pos = model.interpolate_from_deltas(target_location, &deltas);
         new_layer.anchors.push(crate::anchor::Anchor {
+            id: None,
             name: anchor_name,
             x: interpolated_pos[0],
             y: interpolated_pos[1],
@@ -207,6 +208,7 @@ impl Shape {
                     model.deltas_with_rounding(&position_lists, RoundingBehaviour::None)?;
                 let interpolated_params = model.interpolate_from_deltas(target_location, &deltas);
                 let new_component = crate::shape::Component {
+                    id: None,
                     reference: c.reference.clone(),
                     transform: DecomposedAffine {
                         translation: (interpolated_params[0], interpolated_params[1]),
@@ -255,6 +257,7 @@ impl Path {
             let x = coords[i * 2];
             let y = coords[i * 2 + 1];
             new_path.nodes.push(crate::common::Node {
+                id: None,
                 x,
                 y,
                 nodetype: node.nodetype,
