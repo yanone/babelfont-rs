@@ -117,6 +117,7 @@ declare_filters! {
         CubicToQuadratic(cubic2quadratic) => "cubic2quadratic",
         QuadraticToCubic(quadratic2cubic) => "quadratic2cubic",
         CleanupPaths(cleanuppaths) => "cleanuppaths",
+        CorrectPathDirection(correctpathdirection) => "correctpathdirection",
         MakeCompatible(makecompatible) => "makecompatible",
         Recompose(recomposition) => "recompose",
     }
