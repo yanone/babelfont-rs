@@ -437,7 +437,7 @@ impl Font {
         self.interpolate_glyph_with_extrapolation(glyphname, location, false)
     }
 
-/// Interpolate a glyph at a given location in design space, with optional extrapolation
+    /// Interpolate a glyph at a given location in design space, with optional extrapolation
     pub fn interpolate_glyph_with_extrapolation(
         &self,
         glyphname: &str,

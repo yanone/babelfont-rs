@@ -80,10 +80,18 @@ pub fn load(path: PathBuf) -> Result<Font, BabelfontError> {
 /// Load a DesignSpace document and referenced UFOs from in-memory entries.
 ///
 /// `path` is the virtual designspace path (for example `My.designspace` or `sources/My.designspace`).
-pub fn load_entries(path: PathBuf, entries: &HashMap<String, String>) -> Result<Font, BabelfontError> {
+pub fn load_entries(
+    path: PathBuf,
+    entries: &HashMap<String, String>,
+) -> Result<Font, BabelfontError> {
     let normalized_entries: HashMap<String, String> = entries
         .iter()
-        .map(|(k, v)| (normalize_virtual_path(k).unwrap_or_else(|| k.clone()), v.clone()))
+        .map(|(k, v)| {
+            (
+                normalize_virtual_path(k).unwrap_or_else(|| k.clone()),
+                v.clone(),
+            )
+        })
         .collect();
 
     let ds_path = normalize_virtual_path(&path.to_string_lossy()).ok_or_else(|| {
@@ -97,10 +105,14 @@ pub fn load_entries(path: PathBuf, entries: &HashMap<String, String>) -> Result<
                 .and_then(|name| normalized_entries.get(&name.to_string_lossy().to_string()))
         })
         .ok_or_else(|| {
-            BabelfontError::General(format!("Designspace file not found in entries: {}", ds_path))
+            BabelfontError::General(format!(
+                "Designspace file not found in entries: {}",
+                ds_path
+            ))
         })?;
 
-    let ds: DesignSpaceDocument = norad::designspace::DesignSpaceDocument::load_from_reader(ds_contents.as_bytes())?;
+    let ds: DesignSpaceDocument =
+        norad::designspace::DesignSpaceDocument::load_from_reader(ds_contents.as_bytes())?;
     let ds_base = FsPath::new(&ds_path)
         .parent()
         .map(|p| p.to_string_lossy().to_string())
@@ -119,7 +131,10 @@ pub fn load_entries(path: PathBuf, entries: &HashMap<String, String>) -> Result<
 
     let default_master = default_master(&ds, &axes).ok_or(BabelfontError::NoDefaultMaster)?;
     let default_ufo_path = resolve_virtual_reference(&ds_base, &default_master.filename)?;
-    let mut font = crate::convertors::ufo::load_entries(PathBuf::from(&default_ufo_path), &normalized_entries)?;
+    let mut font = crate::convertors::ufo::load_entries(
+        PathBuf::from(&default_ufo_path),
+        &normalized_entries,
+    )?;
     font.axes = axes;
 
     load_instances(&mut font, &axis_name_tag_map, &ds.instances);
@@ -341,7 +356,8 @@ fn load_master_from_entries(
     );
 
     let source_ufo_path = resolve_virtual_reference(ds_base, &source.filename)?;
-    let source_font = crate::convertors::ufo::load_norad_from_entries(FsPath::new(&source_ufo_path), entries)?;
+    let source_font =
+        crate::convertors::ufo::load_norad_from_entries(FsPath::new(&source_ufo_path), entries)?;
 
     let info = &source_font.font_info;
     load_master_info(&mut master, info);

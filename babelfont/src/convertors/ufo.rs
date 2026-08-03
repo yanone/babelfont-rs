@@ -13,6 +13,7 @@ use std::{
     fs,
     path::{Path as FsPath, PathBuf},
     str::FromStr,
+    sync::Mutex,
     time::SystemTime,
 };
 
@@ -75,7 +76,10 @@ pub fn load<T: AsRef<std::path::Path>>(path: T) -> Result<Font, BabelfontError> 
 /// Load a UFO font from in-memory entries keyed by relative path.
 ///
 /// `path` is the virtual UFO root path (for example `MyFont.ufo` or `sources/MyFont.ufo`).
-pub fn load_entries(path: PathBuf, entries: &HashMap<String, String>) -> Result<Font, BabelfontError> {
+pub fn load_entries(
+    path: PathBuf,
+    entries: &HashMap<String, String>,
+) -> Result<Font, BabelfontError> {
     let ufo = load_norad_from_entries(&path, entries)?;
     font_from_norad(&path, None, ufo)
 }
@@ -86,7 +90,12 @@ pub(crate) fn load_norad_from_entries(
 ) -> Result<norad::Font, BabelfontError> {
     let normalized_entries: HashMap<String, String> = entries
         .iter()
-        .map(|(k, v)| (normalize_virtual_path(k).unwrap_or_else(|| k.clone()), v.clone()))
+        .map(|(k, v)| {
+            (
+                normalize_virtual_path(k).unwrap_or_else(|| k.clone()),
+                v.clone(),
+            )
+        })
         .collect();
 
     let root = normalize_virtual_path(&path.to_string_lossy()).unwrap_or_default();
@@ -143,8 +152,7 @@ fn font_from_norad(
     let expanded_features = ufo.features_expanded()?;
     font.features = Features::from_fea(&expanded_features);
     font.features.include_paths.push(
-        path
-            .parent()
+        path.parent()
             .unwrap_or_else(|| std::path::Path::new("."))
             .to_path_buf(),
     );
@@ -203,8 +211,10 @@ pub fn as_norad(font: &Font, _master_ix: usize) -> Result<norad::Font, Babelfont
         }
     }
 
-let merged: IndexMap<(SmolStr, SmolStr), i16> =
-        font.merged_kerning_for_master(first_master).into_iter().collect();
+    let merged: IndexMap<(SmolStr, SmolStr), i16> = font
+        .merged_kerning_for_master(first_master)
+        .into_iter()
+        .collect();
     save_kerning(&mut ufo.kerning, &merged)?;
     save_info(&mut ufo.font_info, font);
     let (swapped_first, swapped_second) = font.kern_groups_with_rtl_swaps();
@@ -253,25 +263,21 @@ pub fn save_entries(font: &Font) -> Result<HashMap<String, String>, BabelfontErr
     }
     let ufo = as_norad(font, 0)?;
 
-    let mut written: HashMap<String, Vec<u8>> = HashMap::new();
+    let written = Mutex::new(HashMap::<String, Vec<u8>>::new());
     let mut sink = |path: &FsPath, data: &[u8]| -> Result<(), std::io::Error> {
         let key = normalize_virtual_path(&path.to_string_lossy())
             .unwrap_or_else(|| path.to_string_lossy().to_string());
-        written.insert(key, data.to_vec());
+        written.lock().unwrap().insert(key, data.to_vec());
         Ok(())
     };
     ufo.save_with_sink(&norad::WriteOptions::default(), &mut sink)
         .map_err(BabelfontError::from)?;
 
     Ok(written
+        .into_inner()
+        .unwrap()
         .into_iter()
-        .map(|(k, v)| {
-            (
-                k,
-                String::from_utf8(v)
-                    .unwrap_or_else(|_| String::new()),
-            )
-        })
+        .map(|(k, v)| (k, String::from_utf8(v).unwrap_or_else(|_| String::new())))
         .collect())
 }
 
@@ -1033,11 +1039,158 @@ fn add_uvs_sequences(font: &mut Font, ufo: &norad::Font) {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     #![allow(clippy::unwrap_used)]
 
     use super::*;
     use pretty_assertions::assert_eq;
+
+    const GLYPH_ORDER_KEY: &str = "public.glyphOrder";
+
+    pub(crate) fn ufo_semantic_test(ufo1: &norad::Font, ufo2: &norad::Font, do_metadata: bool) {
+        assert_eq!(
+            ufo1.default_layer().len(),
+            ufo2.default_layer().len(),
+            "Number of glyphs differs"
+        );
+        assert_eq!(
+            ufo1.layers.len(),
+            ufo2.layers.len(),
+            "Number of layers differs. Layer names 1: {:?}, Layer names 2: {:?}",
+            ufo1.layers
+                .iter()
+                .map(|layer| layer.name())
+                .collect::<Vec<_>>(),
+            ufo2.layers
+                .iter()
+                .map(|layer| layer.name())
+                .collect::<Vec<_>>()
+        );
+        for (layer1, layer2) in ufo1.layers.iter().zip(ufo2.layers.iter()) {
+            assert_eq!(
+                layer1.len(),
+                layer2.len(),
+                "Number of glyphs in layer {} differs",
+                layer1.name()
+            );
+        }
+        for name in ufo1.iter_names().map(|name| name.to_string()) {
+            let glyph1 = ufo1.get_glyph(&name).unwrap();
+            let glyph2 = ufo2.get_glyph(&name).unwrap();
+            assert_eq!(glyph1, glyph2, "Glyph {} differs", name);
+        }
+
+        let skipped1: HashSet<String> = ufo1
+            .lib
+            .get(KEY_SKIP_EXPORT)
+            .and_then(|value| value.as_array())
+            .cloned()
+            .unwrap_or_default()
+            .iter()
+            .flat_map(|value| value.as_string())
+            .map(|value| value.to_string())
+            .collect();
+        let skipped2: HashSet<String> = ufo2
+            .lib
+            .get(KEY_SKIP_EXPORT)
+            .and_then(|value| value.as_array())
+            .cloned()
+            .unwrap_or_default()
+            .iter()
+            .flat_map(|value| value.as_string())
+            .map(|value| value.to_string())
+            .collect();
+        assert_eq!(skipped1, skipped2, "skipExportGlyphs differs");
+        assert_eq!(ufo1.kerning, ufo2.kerning);
+        if !do_metadata {
+            return;
+        }
+
+        let order1: Vec<String> = ufo1
+            .lib
+            .get(GLYPH_ORDER_KEY)
+            .and_then(|value| value.as_array())
+            .unwrap_or(&vec![])
+            .iter()
+            .flat_map(|value| value.as_string())
+            .map(|value| value.to_string())
+            .filter(|name| !skipped1.contains(name))
+            .collect();
+        let order2: Vec<String> = ufo2
+            .lib
+            .get(GLYPH_ORDER_KEY)
+            .and_then(|value| value.as_array())
+            .unwrap_or(&vec![])
+            .iter()
+            .flat_map(|value| value.as_string())
+            .map(|value| value.to_string())
+            .filter(|name| !skipped2.contains(name))
+            .collect();
+        assert_eq!(order1, order2, "Glyph order differs");
+
+        let categories1 = ufo1
+            .lib
+            .get(KEY_CATEGORIES)
+            .and_then(|value| value.as_dictionary())
+            .map(|dictionary| {
+                dictionary
+                    .iter()
+                    .map(|(key, value)| {
+                        (
+                            key.to_string(),
+                            value.as_string().unwrap_or_default().to_string(),
+                        )
+                    })
+                    .collect::<HashMap<_, _>>()
+            })
+            .unwrap_or_default();
+        let categories2 = ufo2
+            .lib
+            .get(KEY_CATEGORIES)
+            .and_then(|value| value.as_dictionary())
+            .map(|dictionary| {
+                dictionary
+                    .iter()
+                    .map(|(key, value)| {
+                        (
+                            key.to_string(),
+                            value.as_string().unwrap_or_default().to_string(),
+                        )
+                    })
+                    .collect::<HashMap<_, _>>()
+            })
+            .unwrap_or_default();
+        let base = "base".to_string();
+        for (glyph, category) in &categories1 {
+            let category2 = categories2.get(glyph).unwrap_or(&base);
+            assert_eq!(category, category2, "Category for glyph {} differs", glyph);
+        }
+
+        let all_keys = ufo1
+            .lib
+            .keys()
+            .chain(ufo2.lib.keys())
+            .filter(|key| {
+                *key != KEY_SKIP_EXPORT && *key != GLYPH_ORDER_KEY && *key != KEY_CATEGORIES
+            })
+            .collect::<HashSet<_>>();
+        for key in all_keys {
+            let value1 = ufo1
+                .lib
+                .get(key)
+                .unwrap_or_else(|| panic!("Lib key {} is missing in first UFO", key));
+            let value2 = ufo2
+                .lib
+                .get(key)
+                .unwrap_or_else(|| panic!("Lib key {} is missing in second UFO", key));
+            assert_eq!(value1, value2, "Lib value for key {} differs", key);
+        }
+        assert_eq!(ufo1.groups, ufo2.groups);
+        assert_eq!(ufo1.features.trim(), ufo2.features.trim());
+        assert_eq!(ufo1.data, ufo2.data);
+        assert_eq!(ufo1.images, ufo2.images);
+        assert_eq!(ufo1.font_info, ufo2.font_info);
+    }
 
     #[test]
     fn test_roundtrip() {
