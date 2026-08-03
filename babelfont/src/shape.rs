@@ -781,11 +781,9 @@ mod glyphs {
                 order: TransformOrder::Glyphs,
             };
             let mut format_specific = FormatSpecific::default();
-            format_specific.insert_if_ne_json(
-                KEY_ALIGNMENT,
-                &val.alignment,
-                &-1, // default value
-            );
+            if val.alignment_explicit {
+                format_specific.insert(KEY_ALIGNMENT.into(), serde_json::json!(val.alignment));
+            }
             format_specific.insert_nonempty_json(KEY_ATTR, &val.attr);
             format_specific.insert_some_json(KEY_COMPONENT_ANCHOR, &val.anchor);
             format_specific.insert_if_ne_json(
@@ -834,23 +832,18 @@ mod glyphs {
                 .and_then(|value| value.as_i64())
                 .map(|value| value as i8);
 
-            // Glyphs reads its fields as translate · skew · rotate · scale: a
-            // transform in the other order is decomposed again
-            use crate::common::decomposition::TransformOrder;
-            let transform = val.transform.in_order(TransformOrder::Glyphs);
+            // val.transform is already a DecomposedAffine, use it directly
             glyphslib::glyphs3::Component {
                 component_glyph: val.reference.to_string(),
                 position: (
                     transform.translation.0 as f32,
                     transform.translation.1 as f32,
                 ),
-                scale: (transform.scale.0 as f32, transform.scale.1 as f32),
-                angle: transform.rotation.to_degrees() as f32,
-                slant: (
-                    transform.skew.0.to_degrees() as f32,
-                    transform.skew.1.to_degrees() as f32,
-                ),
+                scale: (val.transform.scale.0 as f32, val.transform.scale.1 as f32),
+                angle: (val.transform.rotation as f32).to_degrees(),
+                slant: (val.transform.skew.0 as f32, val.transform.skew.1 as f32),
                 alignment: alignment.unwrap_or(-1),
+                alignment_explicit: alignment.is_some(),
                 anchor: val.format_specific.get_optionstring(KEY_COMPONENT_ANCHOR),
                 attr: val.format_specific.get_json(KEY_ATTR),
                 smart_component_location: val
@@ -878,6 +871,45 @@ mod glyphs {
                     .and_then(|x| serde_json::from_value(x.clone()).ok())
                     .unwrap_or_default(),
             }
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn preserves_component_alignment_presence() {
+            let implicit = glyphslib::glyphs3::Component {
+                component_glyph: "dotaccentcomb".to_string(),
+                alignment: -1,
+                alignment_explicit: false,
+                ..Default::default()
+            };
+            let implicit_component: Component = (&implicit).into();
+            assert!(implicit_component
+                .format_specific
+                .get(KEY_ALIGNMENT)
+                .is_none());
+
+            let explicit_manual = glyphslib::glyphs3::Component {
+                component_glyph: "dotaccentcomb".to_string(),
+                alignment: -1,
+                alignment_explicit: true,
+                ..Default::default()
+            };
+            let explicit_component: Component = (&explicit_manual).into();
+            assert_eq!(
+                explicit_component
+                    .format_specific
+                    .get(KEY_ALIGNMENT)
+                    .and_then(|value| value.as_i64()),
+                Some(-1)
+            );
+
+            let round_tripped: glyphslib::glyphs3::Component = (&explicit_component).into();
+            assert_eq!(round_tripped.alignment, -1);
+            assert!(round_tripped.alignment_explicit);
         }
     }
 
@@ -1121,8 +1153,10 @@ mod tests {
             }),
         );
         let path = Path {
+            id: None,
             nodes: vec![
                 Node {
+                    id: None,
                     x: 0.0,
                     y: 0.0,
                     nodetype: NodeType::Move,
