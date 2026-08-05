@@ -22,7 +22,7 @@ pub(crate) fn merge_glyph(
     #[allow(clippy::unwrap_used)] // We check existence above
     let glyph = font1.glyphs.get_mut(&font2_glyph.name).unwrap();
     // Move layers out
-    let mut layers = glyph.layers.drain(..).collect::<Vec<_>>();
+    let mut layers = std::mem::take(&mut glyph.layers);
     // Ensure all layers have an ID
     for (i, layer) in layers.iter_mut().enumerate() {
         if layer.id.is_none() {
