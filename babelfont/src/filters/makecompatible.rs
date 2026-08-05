@@ -2,6 +2,7 @@ use std::fmt::Debug;
 
 use crate::{filters::FontFilter, BabelfontError, LayerType, NodeType, Path};
 use kurbo::{BezPath, ParamCurve, ParamCurveArclen, ParamCurveCurvature, PathSeg, Shape, Vec2};
+use smol_str::SmolStr;
 
 fn rotate_closed_path_to_bottom_left(path: &mut Path) {
     if !path.closed || path.nodes.is_empty() {
@@ -597,23 +598,29 @@ fn align(
 
 /// A filter that makes interpolatable paths structurally compatible by inserting nodes.
 #[derive(Default)]
-pub struct MakeCompatible;
+pub struct MakeCompatible(Vec<SmolStr>);
 
 impl MakeCompatible {
-    /// Create a new MakeCompatible filter
-    pub fn new() -> Self {
-        MakeCompatible
+    /// Create a new MakeCompatible filter.
+    /// If `glyph_names` is empty, all glyphs are processed.
+    pub fn new(glyph_names: Vec<String>) -> Self {
+        MakeCompatible(glyph_names.into_iter().map(SmolStr::from).collect())
     }
 }
 
+
 impl FontFilter for MakeCompatible {
     fn apply(&self, font: &mut crate::Font) -> Result<(), crate::BabelfontError> {
+        let filter_list = &self.0;
         let default_master = font
             .default_master()
             .ok_or(BabelfontError::NoDefaultMaster)?;
         let default_master_id = default_master.id.clone();
 
         for glyph in font.glyphs.iter_mut() {
+            if !filter_list.is_empty() && !filter_list.contains(&glyph.name) {
+                continue;
+            }
             let interpolatable = glyph
                 .layers
                 .iter()
@@ -724,11 +731,11 @@ impl FontFilter for MakeCompatible {
         Ok(())
     }
 
-    fn from_str(_s: &str) -> Result<Self, crate::BabelfontError>
+    fn from_str(s: &str) -> Result<Self, crate::BabelfontError>
     where
         Self: Sized,
     {
-        Ok(MakeCompatible::new())
+        Ok(MakeCompatible(super::parse_glyph_list(s)))
     }
 
     #[cfg(feature = "cli")]
@@ -736,10 +743,11 @@ impl FontFilter for MakeCompatible {
     where
         Self: Sized,
     {
-        clap::Arg::new("makecompatible")
-            .long("make-compatible")
-            .help("Make interpolatable paths structurally compatible by inserting nodes")
-            .action(clap::ArgAction::SetTrue)
+        super::glyph_filter_arg(
+            "makecompatible",
+            "make-compatible",
+            "Make interpolatable paths structurally compatible by inserting nodes",
+        )
     }
 }
 
@@ -780,7 +788,7 @@ mod tests {
     fn test_integration() {
         let path = "resources/Tirra.babelfont";
         let mut font = crate::load(path).unwrap();
-        MakeCompatible::new().apply(&mut font).unwrap();
+        MakeCompatible::new(vec![]).apply(&mut font).unwrap();
 
         let glyph = font.glyphs.get("f").unwrap();
         // Check for full signature match

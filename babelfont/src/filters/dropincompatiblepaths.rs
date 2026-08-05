@@ -1,22 +1,28 @@
 use crate::{filters::FontFilter, Layer};
+use smol_str::SmolStr;
 
 /// A filter that removes any incompatible paths across a font's layers
 #[derive(Default)]
-pub struct DropIncompatiblePaths;
+pub struct DropIncompatiblePaths(Vec<SmolStr>);
 
 impl DropIncompatiblePaths {
-    /// Create a new DropIncompatiblePaths filter
-    pub fn new() -> Self {
-        DropIncompatiblePaths
+    /// Create a new DropIncompatiblePaths filter.
+    /// If `glyph_names` is empty, all glyphs are processed.
+    pub fn new(glyph_names: Vec<String>) -> Self {
+        DropIncompatiblePaths(glyph_names.into_iter().map(SmolStr::from).collect())
     }
 }
 
 impl FontFilter for DropIncompatiblePaths {
     fn apply(&self, font: &mut crate::Font) -> Result<(), crate::BabelfontError> {
+        let filter_list = &self.0;
         log::info!("Dropping incompatible paths from font");
         let mut todo_list = Vec::new();
 
         for glyph in font.glyphs.iter_mut() {
+            if !filter_list.is_empty() && !filter_list.contains(&glyph.name) {
+                continue;
+            }
             let effective_layers: Vec<&Layer> = glyph
                 .layers
                 .iter()
@@ -102,11 +108,11 @@ impl FontFilter for DropIncompatiblePaths {
         Ok(())
     }
 
-    fn from_str(_s: &str) -> Result<Self, crate::BabelfontError>
+    fn from_str(s: &str) -> Result<Self, crate::BabelfontError>
     where
         Self: Sized,
     {
-        Ok(DropIncompatiblePaths::new())
+        Ok(DropIncompatiblePaths(super::parse_glyph_list(s)))
     }
 
     #[cfg(feature = "cli")]
@@ -114,10 +120,11 @@ impl FontFilter for DropIncompatiblePaths {
     where
         Self: Sized,
     {
-        clap::Arg::new("dropincompatiblepaths")
-            .long("drop-incompatible-paths")
-            .help("Remove incompatible paths from the font's layers")
-            .action(clap::ArgAction::SetTrue)
+        super::glyph_filter_arg(
+            "dropincompatiblepaths",
+            "drop-incompatible-paths",
+            "Remove incompatible paths from the font's layers",
+        )
     }
 }
 
@@ -129,7 +136,7 @@ mod tests {
     #[test]
     fn test_fustat() {
         let mut font = crate::load("resources/Fustat.glyphs").unwrap();
-        let filter = DropIncompatiblePaths::new();
+        let filter = DropIncompatiblePaths::new(vec![]);
         filter.apply(&mut font).unwrap();
         // Check that "e" has paths
         let e_glyph = font.glyphs.iter().find(|g| g.name == "e").unwrap();

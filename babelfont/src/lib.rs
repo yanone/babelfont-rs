@@ -77,7 +77,7 @@
 //! fn main() -> Result<(), BabelfontError> {
 //!     // Load a DesignSpace file
 //!     let mut font = load("MyFont.designspace")?;
-//!     
+//!
 //!     // Create a filter to retain only certain glyphs
 //!     let filter = RetainGlyphs::new(vec![
 //!         "A".to_string(),
@@ -85,13 +85,13 @@
 //!         "C".to_string(),
 //!         "space".to_string(),
 //!     ]);
-//!     
+//!
 //!     // Apply the filter
 //!     filter.apply(&mut font)?;
-//!     
+//!
 //!     // Save as a Glyphs file
 //!     font.save("MyFont-Subset.glyphs")?;
-//!     
+//!
 //!     Ok(())
 //! }
 //! ```
@@ -162,7 +162,11 @@ mod shape; // exported macro_rules! helpers for FormatSpecific
 pub use crate::{
     anchor::Anchor,
     axis::Axis,
-    common::{constants, CustomOTValues, Direction, FormatSpecific, Node, NodeType, Position},
+    common::{
+        constants,
+        decomposition::{DecomposedAffine, TransformOrder},
+        CustomOTValues, Direction, FormatSpecific, Node, NodeType, Position,
+    },
     error::BabelfontError,
     features::Features,
     font::Font,

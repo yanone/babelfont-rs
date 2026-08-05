@@ -1,4 +1,5 @@
 use crate::{filters::FontFilter, GlyphCategory};
+use smol_str::SmolStr;
 
 /// A filter that classifies uncategorized glyphs whose anchors are exclusively
 /// mark-side (underscore-prefixed) as Nonspacing marks.
@@ -7,7 +8,15 @@ use crate::{filters::FontFilter, GlyphCategory};
 /// glyphs arrive with category Unknown and filters keyed on `Mark` (such as
 /// `--set-subcategory`) never fire, and compilers with feature writers do
 /// not write rules for the anchor attachment.
-pub struct InferMarkCategory;
+pub struct InferMarkCategory(Vec<SmolStr>);
+
+impl InferMarkCategory {
+    /// Create a new InferMarkCategory filter.
+    /// If `glyph_names` is empty, all glyphs are processed.
+    pub fn new(glyph_names: Vec<String>) -> Self {
+        InferMarkCategory(glyph_names.into_iter().map(SmolStr::from).collect())
+    }
+}
 
 fn has_mark_anchors(layer: &crate::Layer) -> bool {
     layer.anchors.iter().any(|a| a.name.starts_with('_'))
@@ -15,7 +24,11 @@ fn has_mark_anchors(layer: &crate::Layer) -> bool {
 
 impl FontFilter for InferMarkCategory {
     fn apply(&self, font: &mut crate::Font) -> Result<(), crate::BabelfontError> {
+        let filter_list = &self.0;
         for glyph in font.glyphs.iter_mut() {
+            if !filter_list.is_empty() && !filter_list.contains(&glyph.name) {
+                continue;
+            }
             if glyph.category == GlyphCategory::Unknown && glyph.layers.iter().any(has_mark_anchors)
             {
                 glyph.category = GlyphCategory::Mark;
@@ -24,11 +37,11 @@ impl FontFilter for InferMarkCategory {
         Ok(())
     }
 
-    fn from_str(_s: &str) -> Result<Self, crate::BabelfontError>
+    fn from_str(s: &str) -> Result<Self, crate::BabelfontError>
     where
         Self: Sized,
     {
-        Ok(InferMarkCategory)
+        Ok(InferMarkCategory(super::parse_glyph_list(s)))
     }
 
     #[cfg(feature = "cli")]
@@ -36,10 +49,11 @@ impl FontFilter for InferMarkCategory {
     where
         Self: Sized,
     {
-        clap::Arg::new("infermarkcategory")
-            .long("infer-mark-category")
-            .help("Classify uncategorized glyphs with mark-side (underscore) anchors as marks")
-            .action(clap::ArgAction::SetTrue)
+        super::glyph_filter_arg(
+            "infermarkcategory",
+            "infer-mark-category",
+            "Classify uncategorized glyphs with mark-side (underscore) anchors as marks",
+        )
     }
 }
 
@@ -80,7 +94,9 @@ mod tests {
         font.glyphs
             .0
             .push(glyph_with_anchors("candra", vec!["_top", "top"]));
-        InferMarkCategory.apply(&mut font).expect("filter failed");
+        InferMarkCategory::new(vec![])
+            .apply(&mut font)
+            .expect("filter failed");
         assert_eq!(
             font.glyphs.get("anusvara").expect("anusvara").category,
             GlyphCategory::Mark

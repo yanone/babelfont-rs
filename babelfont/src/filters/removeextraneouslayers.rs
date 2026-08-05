@@ -8,18 +8,24 @@ use fontdrasil::{
     coords::{DesignSpace, Location},
     types::Axes,
 };
+use smol_str::SmolStr;
 
 const EPSILON: f64 = 1e-6;
 
 /// Remove low-contribution interpolatable layers and prune now-unused non-corner masters.
 pub struct RemoveExtraneousLayers {
     threshold: f64,
+    glyph_names: Vec<SmolStr>,
 }
 
 impl RemoveExtraneousLayers {
     /// Create a new RemoveExtraneousLayers filter.
-    pub fn new(threshold: f64) -> Self {
-        Self { threshold }
+    /// If `glyph_names` is empty, all glyphs are processed.
+    pub fn new(threshold: f64, glyph_names: Vec<String>) -> Self {
+        Self {
+            threshold,
+            glyph_names: glyph_names.into_iter().map(SmolStr::from).collect(),
+        }
     }
 }
 
@@ -38,6 +44,9 @@ impl FontFilter for RemoveExtraneousLayers {
         location_font.masters = font.masters.clone();
 
         for glyph in font.glyphs.iter_mut() {
+            if !self.glyph_names.is_empty() && !self.glyph_names.contains(&glyph.name) {
+                continue;
+            }
             if !glyph.compatibility_errors().is_empty() {
                 log::info!(
                     "removeextraneouslayers: skipping glyph '{}' due to compatibility errors: {:?}",
@@ -65,22 +74,47 @@ impl FontFilter for RemoveExtraneousLayers {
     {
         let trimmed = s.trim();
         if trimmed.is_empty() {
-            return Err(BabelfontError::FilterError(
-                "removeextraneouslayers requires a numeric threshold".to_string(),
-            ));
+            return Ok(Self {
+                threshold: 0.0,
+                glyph_names: Vec::new(),
+            });
         }
-        let threshold = trimmed.parse::<f64>().map_err(|_| {
-            BabelfontError::FilterError(format!(
-                "Invalid removeextraneouslayers threshold: {}",
-                trimmed
-            ))
-        })?;
-        if !threshold.is_finite() {
-            return Err(BabelfontError::FilterError(
-                "removeextraneouslayers threshold must be finite".to_string(),
-            ));
+        // Try to find a colon separator between threshold and glyph list.
+        // Format: THRESHOLD or THRESHOLD:GLYPH1,GLYPH2
+        if let Some((threshold_str, glyphs_str)) = trimmed.split_once(':') {
+            let threshold = threshold_str.trim().parse::<f64>().map_err(|_| {
+                BabelfontError::FilterError(format!(
+                    "Invalid removeextraneouslayers threshold: {}",
+                    threshold_str
+                ))
+            })?;
+            if !threshold.is_finite() {
+                return Err(BabelfontError::FilterError(
+                    "removeextraneouslayers threshold must be finite".to_string(),
+                ));
+            }
+            let glyph_names = super::parse_glyph_list(glyphs_str);
+            Ok(Self {
+                threshold,
+                glyph_names,
+            })
+        } else {
+            let threshold = trimmed.parse::<f64>().map_err(|_| {
+                BabelfontError::FilterError(format!(
+                    "Invalid removeextraneouslayers threshold: {}",
+                    trimmed
+                ))
+            })?;
+            if !threshold.is_finite() {
+                return Err(BabelfontError::FilterError(
+                    "removeextraneouslayers threshold must be finite".to_string(),
+                ));
+            }
+            Ok(Self {
+                threshold,
+                glyph_names: Vec::new(),
+            })
         }
-        Ok(Self::new(threshold))
     }
 
     #[cfg(feature = "cli")]
@@ -91,9 +125,10 @@ impl FontFilter for RemoveExtraneousLayers {
         clap::Arg::new("removeextraneouslayers")
             .long("remove-extraneous-layers")
             .help(
-                "Remove low-contribution interpolatable layers and prune empty non-corner masters",
+                "Remove low-contribution interpolatable layers and prune empty non-corner masters. \
+                 Optionally specify glyph names after a colon: THRESHOLD:GLYPH1,GLYPH2",
             )
-            .value_name("THRESHOLD")
+            .value_name("THRESHOLD[:GLYPHS]")
             .action(clap::ArgAction::Append)
     }
 }

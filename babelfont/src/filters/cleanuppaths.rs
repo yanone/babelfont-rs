@@ -1,19 +1,22 @@
 use std::collections::HashSet;
 
 use kurbo::{fit_to_cubic, CubicBez, ParamCurveCurvature};
+use smol_str::SmolStr;
 
 use crate::{filters::FontFilter, BabelfontError, Node, NodeType, Path};
 
 /// A filter that cleans up paths by removing redundant points and setting smooth flags
 #[derive(Default)]
-pub struct CleanupPaths;
+pub struct CleanupPaths(Vec<SmolStr>);
 
 impl CleanupPaths {
-    /// Create a new CleanupPaths filter
-    pub fn new() -> Self {
-        CleanupPaths
+    /// Create a new CleanupPaths filter.
+    /// If `glyph_names` is empty, all glyphs are processed.
+    pub fn new(glyph_names: Vec<String>) -> Self {
+        CleanupPaths(glyph_names.into_iter().map(SmolStr::from).collect())
     }
 }
+
 
 fn is_orthogonal(prev: &Node, node: &Node, next: &Node) -> bool {
     (prev.x - node.x).abs() < 1e-6 && (node.x - next.x).abs() < 1e-6
@@ -195,7 +198,11 @@ fn cleanup_path(path: &mut Path) -> Result<Path, BabelfontError> {
 
 impl FontFilter for CleanupPaths {
     fn apply(&self, font: &mut crate::Font) -> Result<(), crate::BabelfontError> {
+        let filter_list = &self.0;
         for glyph in &mut font.glyphs.iter_mut() {
+            if !filter_list.is_empty() && !filter_list.contains(&glyph.name) {
+                continue;
+            }
             for layer in &mut glyph.layers {
                 for path in &mut layer.shapes.iter_mut().filter_map(|s| s.as_path_mut()) {
                     path.set_smooth();
@@ -206,11 +213,11 @@ impl FontFilter for CleanupPaths {
         Ok(())
     }
 
-    fn from_str(_s: &str) -> Result<Self, crate::BabelfontError>
+    fn from_str(s: &str) -> Result<Self, crate::BabelfontError>
     where
         Self: Sized,
     {
-        Ok(CleanupPaths::new())
+        Ok(CleanupPaths(super::parse_glyph_list(s)))
     }
 
     #[cfg(feature = "cli")]
@@ -218,9 +225,10 @@ impl FontFilter for CleanupPaths {
     where
         Self: Sized,
     {
-        clap::Arg::new("cleanuppaths")
-            .long("cleanup-paths")
-            .help("Clean up paths by removing redundant points and setting smooth flags")
-            .action(clap::ArgAction::SetTrue)
+        super::glyph_filter_arg(
+            "cleanuppaths",
+            "cleanup-paths",
+            "Clean up paths by removing redundant points and setting smooth flags",
+        )
     }
 }

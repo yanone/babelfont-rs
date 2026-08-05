@@ -1,4 +1,5 @@
 use kurbo::{cubics_to_quadratic_splines, BezPath, CubicBez, PathEl};
+use smol_str::SmolStr;
 
 use crate::{filters::FontFilter, Node, Path};
 
@@ -8,7 +9,7 @@ use super::curve_filter_common::{
 
 /// A filter that converts cubic Bézier curves to quadratic Bézier curves in all glyphs of a font, attempting to keep corresponding paths across layers consistent for better interpolation results. This filter requires the `kurbo` feature to be enabled.
 #[derive(Debug, Clone, Default)]
-pub struct CubicToQuadratic;
+pub struct CubicToQuadratic(Vec<SmolStr>);
 
 const TOLERANCE: f64 = 0.5;
 
@@ -165,9 +166,10 @@ fn convert_bezpath_independently(path: &BezPath) -> Result<Path, crate::Babelfon
 }
 
 impl CubicToQuadratic {
-    /// Create a new CubicToQuadratic filter
-    pub fn new() -> Self {
-        CubicToQuadratic
+    /// Create a new CubicToQuadratic filter.
+    /// If `glyph_names` is empty, all glyphs are processed.
+    pub fn new(glyph_names: Vec<String>) -> Self {
+        CubicToQuadratic(glyph_names.into_iter().map(SmolStr::from).collect())
     }
 }
 
@@ -176,16 +178,17 @@ impl FontFilter for CubicToQuadratic {
         apply_interpolatable_path_filter(
             font,
             "CubicToQuadratic",
+            &self.0,
             convert_bezpath_independently,
             convert_bezpaths_in_parallel,
         )
     }
 
-    fn from_str(_s: &str) -> Result<Self, crate::BabelfontError>
+    fn from_str(s: &str) -> Result<Self, crate::BabelfontError>
     where
         Self: Sized,
     {
-        Ok(CubicToQuadratic::new())
+        Ok(CubicToQuadratic(super::parse_glyph_list(s)))
     }
 
     #[cfg(feature = "cli")]
@@ -193,10 +196,11 @@ impl FontFilter for CubicToQuadratic {
     where
         Self: Sized,
     {
-        clap::Arg::new("cubic2quadratic")
-            .long("cubic-to-quadratic")
-            .help("Convert cubic Bézier curves to quadratic Bézier curves")
-            .action(clap::ArgAction::SetTrue)
+        super::glyph_filter_arg(
+            "cubic2quadratic",
+            "cubic-to-quadratic",
+            "Convert cubic Bézier curves to quadratic Bézier curves",
+        )
     }
 }
 

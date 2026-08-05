@@ -1,7 +1,33 @@
 use crate::Tag;
 use fontdrasil::coords::{DesignCoord, DesignLocation};
+use smol_str::SmolStr;
 
 mod curve_filter_common;
+
+/// Parse a comma-separated list of glyph names from a string argument.
+/// Returns an empty `Vec` if the string is empty, indicating that all glyphs
+/// should be processed.
+pub(crate) fn parse_glyph_list(s: &str) -> Vec<SmolStr> {
+    let s = s.trim();
+    if s.is_empty() {
+        return Vec::new();
+    }
+    s.split(',').map(|g| SmolStr::new(g.trim())).collect()
+}
+
+#[cfg(feature = "cli")]
+pub(crate) fn glyph_filter_arg(
+    name: &'static str,
+    long: &'static str,
+    help: &'static str,
+) -> clap::Arg {
+    clap::Arg::new(name)
+        .long(long)
+        .help(help)
+        .num_args(0..=1)
+        .value_name("GLYPHS")
+        .action(clap::ArgAction::Append)
+}
 
 /// Macro to declare filters with less boilerplate, organized into named groups.
 ///

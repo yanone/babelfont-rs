@@ -14,12 +14,13 @@ use crate::{convertors::glyphs3::KEY_ATTR, filters::FontFilter, LayerType};
 
 #[derive(Default)]
 /// A filter that converts Glyphs "bracket layers" to Feature Variation glyphs
-pub struct GlyphsBracketLayers;
+pub struct GlyphsBracketLayers(Vec<SmolStr>);
 
 impl GlyphsBracketLayers {
-    /// Create a new GlyphsBracketLayers filter
-    pub fn new() -> Self {
-        GlyphsBracketLayers
+    /// Create a new GlyphsBracketLayers filter.
+    /// If `glyph_names` is empty, all glyphs are processed.
+    pub fn new(glyph_names: Vec<String>) -> Self {
+        GlyphsBracketLayers(glyph_names.into_iter().map(SmolStr::from).collect())
     }
 }
 
@@ -161,7 +162,11 @@ impl FontFilter for GlyphsBracketLayers {
             .map(|m| m.id.clone())
             .collect::<Vec<_>>();
         let mut new_glyphs_to_add = Vec::new();
+        let filter_list = &self.0;
         for glyph in font.glyphs.iter_mut() {
+            if !filter_list.is_empty() && !filter_list.contains(&glyph.name) {
+                continue;
+            }
             let mut bracket_layers_by_ruleset: HashMap<DesignspaceRegion, Vec<Layer>> =
                 HashMap::new();
             let mut layer_ids_to_drop = HashSet::new();
@@ -245,11 +250,7 @@ impl FontFilter for GlyphsBracketLayers {
                             .map(|(tag, range)| {
                                 let min = range.min.to_f64().round() as i16;
                                 let max = range.max.to_f64().round() as i16;
-                                (
-                                    tag.to_string(),
-                                    f32::from(min),
-                                    f32::from(max),
-                                )
+                                (tag.to_string(), f32::from(min), f32::from(max))
                             })
                             .collect::<Vec<_>>()
                     })
@@ -269,13 +270,8 @@ impl FontFilter for GlyphsBracketLayers {
                     ))
                 })
                 .collect::<Vec<_>>();
-            let feature_var = VariationBlock::new(
-                variation_feature.into(),
-                name,
-                substitutions,
-                false,
-                0..0,
-            );
+            let feature_var =
+                VariationBlock::new(variation_feature.into(), name, substitutions, false, 0..0);
             fea.push_str(&condition.as_fea(""));
             fea.push_str(&feature_var.as_fea(""));
             fea.push('\n');
@@ -291,11 +287,11 @@ impl FontFilter for GlyphsBracketLayers {
         Ok(())
     }
 
-    fn from_str(_s: &str) -> Result<Self, crate::BabelfontError>
+    fn from_str(s: &str) -> Result<Self, crate::BabelfontError>
     where
         Self: Sized,
     {
-        Ok(GlyphsBracketLayers::new())
+        Ok(GlyphsBracketLayers(super::parse_glyph_list(s)))
     }
 
     #[cfg(feature = "cli")]
@@ -303,10 +299,11 @@ impl FontFilter for GlyphsBracketLayers {
     where
         Self: Sized,
     {
-        clap::Arg::new("glyphsbracketlayers")
-            .long("convert-glyphs-bracket-layers")
-            .help("Convert Glyphs bracket layers to Feature Variation glyphs")
-            .action(clap::ArgAction::SetTrue)
+        super::glyph_filter_arg(
+            "glyphsbracketlayers",
+            "convert-glyphs-bracket-layers",
+            "Convert Glyphs bracket layers to Feature Variation glyphs",
+        )
     }
 }
 

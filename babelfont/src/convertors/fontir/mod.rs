@@ -98,7 +98,7 @@ impl BabelfontIrSource {
         let mut font = font.clone();
         assert!(!font.masters.is_empty());
         if options.drop_incompatible_paths {
-            DropIncompatiblePaths.apply(&mut font)?;
+            DropIncompatiblePaths::new(vec![]).apply(&mut font)?;
         }
 
         if options.produce_varc_table {
@@ -118,7 +118,7 @@ impl BabelfontIrSource {
         GlyphsNumberValue.apply(&mut font)?;
         GlyphsData.apply(&mut font)?;
         GlyphsStylisticSetLabel.apply(&mut font)?;
-        GlyphsBracketLayers.apply(&mut font)?;
+        GlyphsBracketLayers::new(vec![]).apply(&mut font)?;
 
         // These really should be errors, not assertions
         // assert!(

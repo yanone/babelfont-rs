@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use kurbo::{BezPath, PathEl};
+use smol_str::SmolStr;
 
 use crate::{NodeType, Path};
 
@@ -47,10 +48,14 @@ pub(crate) fn mark_closed_and_normalize(new_paths: &mut [Path]) {
 pub(crate) fn apply_interpolatable_path_filter(
     font: &mut crate::Font,
     filter_name: &str,
+    filter_list: &[SmolStr],
     convert_bezpath_independently: fn(&BezPath) -> Result<Path, crate::BabelfontError>,
     convert_bezpaths_in_parallel: fn(Vec<&BezPath>) -> Result<Vec<Path>, crate::BabelfontError>,
 ) -> Result<(), crate::BabelfontError> {
     for glyph in font.glyphs.iter_mut() {
+        if !filter_list.is_empty() && !filter_list.contains(&glyph.name) {
+            continue;
+        }
         // Collect the layers which should interpolate
         let interpolatable = glyph
             .layers

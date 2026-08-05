@@ -1,4 +1,5 @@
 use kurbo::{BezPath, PathEl, QuadBez};
+use smol_str::SmolStr;
 
 use crate::{filters::FontFilter, Node, Path};
 
@@ -8,7 +9,7 @@ use super::curve_filter_common::{
 
 /// A filter that converts quadratic Bézier curves to cubic Bézier curves in all glyphs of a font, attempting to keep corresponding paths across layers consistent for better interpolation results. This filter requires the `kurbo` feature to be enabled.
 #[derive(Debug, Clone, Default)]
-pub struct QuadraticToCubic;
+pub struct QuadraticToCubic(Vec<SmolStr>);
 
 fn convert_bezpaths_in_parallel(paths: Vec<&BezPath>) -> Result<Vec<Path>, crate::BabelfontError> {
     if paths.is_empty() {
@@ -138,9 +139,10 @@ fn convert_bezpath_independently(path: &BezPath) -> Result<Path, crate::Babelfon
 }
 
 impl QuadraticToCubic {
-    /// Create a new QuadraticToCubic filter
-    pub fn new() -> Self {
-        QuadraticToCubic
+    /// Create a new QuadraticToCubic filter.
+    /// If `glyph_names` is empty, all glyphs are processed.
+    pub fn new(glyph_names: Vec<String>) -> Self {
+        QuadraticToCubic(glyph_names.into_iter().map(SmolStr::from).collect())
     }
 }
 
@@ -149,16 +151,17 @@ impl FontFilter for QuadraticToCubic {
         apply_interpolatable_path_filter(
             font,
             "QuadraticToCubic",
+            &self.0,
             convert_bezpath_independently,
             convert_bezpaths_in_parallel,
         )
     }
 
-    fn from_str(_s: &str) -> Result<Self, crate::BabelfontError>
+    fn from_str(s: &str) -> Result<Self, crate::BabelfontError>
     where
         Self: Sized,
     {
-        Ok(QuadraticToCubic::new())
+        Ok(QuadraticToCubic(super::parse_glyph_list(s)))
     }
 
     #[cfg(feature = "cli")]
@@ -166,10 +169,11 @@ impl FontFilter for QuadraticToCubic {
     where
         Self: Sized,
     {
-        clap::Arg::new("quadratic2cubic")
-            .long("quadratic-to-cubic")
-            .help("Convert quadratic Bézier curves to cubic Bézier curves")
-            .action(clap::ArgAction::SetTrue)
+        super::glyph_filter_arg(
+            "quadratic2cubic",
+            "quadratic-to-cubic",
+            "Convert quadratic Bézier curves to cubic Bézier curves",
+        )
     }
 }
 
