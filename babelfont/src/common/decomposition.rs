@@ -20,6 +20,7 @@ pub struct DecomposedAffine {
     #[serde(default, skip_serializing_if = "crate::serde_helpers::is_default")]
     #[typeshare(typescript(type = "[number, number]"))]
     #[typeshare(python(type = "(float, float)"))]
+    /// The translation component of the transformation (tx, ty)
     pub translation: (f64, f64),
     #[serde(
         default = "crate::serde_helpers::one_one",
@@ -27,14 +28,18 @@ pub struct DecomposedAffine {
     )]
     #[typeshare(typescript(type = "[number, number]"))]
     #[typeshare(python(type = "(float, float)"))]
+    /// The scale component of the transformation (sx, sy)
     pub scale: (f64, f64),
     #[serde(default, skip_serializing_if = "crate::serde_helpers::is_default")]
-    pub rotation: f64, // in radians
+    /// The rotation component of the transformation in radians
+    pub rotation: f64,
     #[serde(default, skip_serializing_if = "crate::serde_helpers::is_default")]
     #[typeshare(typescript(type = "[number, number]"))]
     #[typeshare(python(type = "(float, float)"))]
-    pub skew: (f64, f64), // (skew_x, skew_y) in radians
+    /// The skew component of the transformation (skew_x, skew_y) in radians
+    pub skew: (f64, f64),
     #[serde(default, skip_serializing_if = "crate::serde_helpers::is_default")]
+    /// The order in which the transformation components should be applied
     pub order: TransformOrder,
 }
 
