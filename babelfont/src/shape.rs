@@ -10,6 +10,14 @@ use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use typeshare::typeshare;
 
+/// An owned snapshot of a resolved layer's paths and components,
+/// used for component decomposition.
+#[derive(Debug, Clone)]
+pub struct ResolvedShapes {
+    pub paths: Vec<Path>,
+    pub components: Vec<Component>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[typeshare]
 /// A component in a glyph
@@ -45,6 +53,51 @@ pub struct Component {
 }
 
 impl Component {
+    /// Decompose this component into paths, recursively resolving nested components.
+    ///
+    /// `resolve` is called with a glyph name and a layer ID and should return the
+    /// paths and components of the resolved glyph layer.
+    pub fn decompose(
+        &self,
+        layer_id: Option<&str>,
+        mut resolve: impl FnMut(&str, Option<&str>) -> Option<ResolvedShapes>,
+    ) -> Vec<Path> {
+        let mut contours = Vec::new();
+        let mut stack: Vec<(Component, kurbo::Affine)> = Vec::new();
+        stack.push((self.clone(), self.transform.as_affine()));
+
+        while let Some((component, transform)) = stack.pop() {
+            let resolved = match resolve(&component.reference, layer_id) {
+                Some(r) => r,
+                None => continue,
+            };
+
+            for contour in &resolved.paths {
+                let mut decomposed_contour = Path::default();
+                for node in &contour.nodes {
+                    let new_point = transform * kurbo::Point::new(node.x, node.y);
+                    decomposed_contour.nodes.push(Node {
+                        x: new_point.x,
+                        y: new_point.y,
+                        nodetype: node.nodetype,
+                        smooth: node.smooth,
+                        format_specific: node.format_specific.clone(),
+                    });
+                }
+                decomposed_contour.closed = contour.closed;
+                contours.push(decomposed_contour);
+            }
+
+            // Depth-first: push nested components reversed so the first is processed next
+            for new_component in resolved.components.into_iter().rev() {
+                let new_transform: kurbo::Affine = new_component.transform.as_affine();
+                stack.push((new_component, transform * new_transform));
+            }
+        }
+
+        contours
+    }
+
     // component_layer?
     // pos / angle / scale
 }
@@ -196,6 +249,17 @@ impl Path {
             self.nodes[node_ix].smooth = smooth;
         }
     }
+
+    /// Return the control point bounding box of the path as a kurbo::Rect
+    pub fn control_box(&self) -> Option<kurbo::Rect> {
+        self.nodes.iter().fold(None, |acc, node| {
+            let point = kurbo::Point::new(node.x, node.y);
+            match acc {
+                Some(rect) => Some(rect.union_pt(point)),
+                None => Some(kurbo::Rect::from_points(point, point)),
+            }
+        })
+    }
 }
 
 fn is_contiguous(prev: &Node, node: &Node, next: &Node) -> bool {
@@ -280,6 +344,14 @@ impl Shape {
 
     /// If this shape is a component, return it. Otherwise, return None.
     pub fn as_component(&self) -> Option<&Component> {
+        match self {
+            Shape::Component(c) => Some(c),
+            Shape::Path(_) => None,
+        }
+    }
+
+    /// If this shape is a component, return a mutable reference to it. Otherwise, return None.
+    pub fn as_component_mut(&mut self) -> Option<&mut Component> {
         match self {
             Shape::Component(c) => Some(c),
             Shape::Path(_) => None,

@@ -4,8 +4,8 @@ use crate::{
     anchor::Anchor,
     common::{Color, FormatSpecific},
     guide::Guide,
-    shape::Shape,
-    BabelfontError, Component, Font, Node, Path,
+    shape::{ResolvedShapes, Shape},
+    BabelfontError, Component, Font, Path,
 };
 use fontdrasil::coords::{DesignCoord, DesignLocation, Location};
 use indexmap::IndexMap;
@@ -189,50 +189,23 @@ impl Layer {
     /// Return a vector of decomposed paths from all components in the layer
     pub fn decomposed_components(&self, font: &Font) -> Vec<Path> {
         let mut contours = Vec::new();
-
-        let mut stack: Vec<(&Component, kurbo::Affine)> = Vec::new();
         for component in self.components() {
-            stack.push((component, component.transform.as_affine()));
-            while let Some((component, transform)) = stack.pop() {
-                let referenced_glyph = match font.glyphs.get(&component.reference) {
-                    Some(g) => g,
-                    None => continue,
-                };
-                let new_outline = match self
-                    .id
-                    .as_ref()
-                    .and_then(|id| referenced_glyph.get_layer(id))
-                {
-                    Some(g) => g,
-                    None => continue,
-                };
-
-                for contour in new_outline.paths() {
-                    let mut decomposed_contour = Path::default();
-                    for node in &contour.nodes {
-                        let new_point = transform * kurbo::Point::new(node.x, node.y);
-                        decomposed_contour.nodes.push(Node {
-                            x: new_point.x,
-                            y: new_point.y,
-                            nodetype: node.nodetype,
-                            smooth: node.smooth,
-                            format_specific: node.format_specific.clone(),
-                        })
-                    }
-                    decomposed_contour.closed = contour.closed;
-                    contours.push(decomposed_contour);
-                }
-
-                // Depth-first decomposition means we need to extend the stack reversed, so
-                // the first component is taken out next.
-                for new_component in new_outline.components().rev() {
-                    let new_transform: kurbo::Affine = new_component.transform.as_affine();
-                    stack.push((new_component, transform * new_transform));
-                }
-            }
+            contours.extend(self.decompose_component(component, font));
         }
-
         contours
+    }
+
+    /// Decompose a single component into paths, recursively resolving nested components
+    pub fn decompose_component(&self, component: &Component, font: &Font) -> Vec<Path> {
+        let layer_id = self.id.as_deref();
+        component.decompose(layer_id, |glyph_name, id| {
+            let glyph = font.glyphs.get(glyph_name)?;
+            let layer = id.and_then(|id| glyph.get_layer(id))?;
+            Some(ResolvedShapes {
+                paths: layer.paths().cloned().collect(),
+                components: layer.components().cloned().collect(),
+            })
+        })
     }
 
     /// Calculate the bounding box of the layer
