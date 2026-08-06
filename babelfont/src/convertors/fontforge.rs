@@ -9,7 +9,6 @@ use chrono::DateTime;
 use fea_rs_ast::AsFea;
 use fontdrasil::coords::DesignLocation;
 use itertools::Itertools as _;
-use uuid::Uuid;
 
 use crate::{
     common::{decomposition::DecomposedAffine, tag_from_string, Color, Node, NodeType},
@@ -302,7 +301,10 @@ impl SfdParser {
         if self.font.masters.is_empty() {
             let master: crate::Master = crate::Master::new(
                 "Regular",
-                Uuid::new_v4().to_string(),
+                // Deterministic: nothing requires a random UUID here, only
+                // uniqueness within the document. A random id made every
+                // conversion of an unchanged .sfd produce a different file.
+                "babelfont/sfd/master/Regular",
                 DesignLocation::default(),
             );
             self.font.masters.push(master);
@@ -1621,7 +1623,8 @@ impl SfdParser {
         layer.master = if is_foreground {
             LayerType::DefaultForMaster(master_id.to_string())
         } else {
-            layer.id = Some(uuid::Uuid::new_v4().to_string()); // assign a unique ID for non-foreground layers
+            // Unique within the document, and the same on every run.
+            layer.id = Some(format!("babelfont/sfd/layer/{}/{layer_idx}", glyph.name));
             LayerType::AssociatedWithMaster(master_id.to_string())
         };
 
@@ -4838,6 +4841,16 @@ mod tests {
     use similar::TextDiff;
 
     use super::*;
+
+    #[test]
+    fn test_converting_twice_gives_the_same_ids() {
+        let sfd = "SplineFontDB: 3.0\nFontName: T\nAscent: 800\nDescent: 200\n\
+                   BeginChars: 1 1\nStartChar: .notdef\nEncoding: 0 -1 0\n\
+                   Width: 500\nEndChar\nEndChars\nEndSplineFont\n";
+        let a = load_str(sfd).expect("load");
+        let b = load_str(sfd).expect("load");
+        assert_eq!(a.masters[0].id, b.masters[0].id, "master id must be stable");
+    }
 
     #[rstest]
     fn test_roundtrip(#[files("resources/fontforge/*.sfd")] path: PathBuf) {
