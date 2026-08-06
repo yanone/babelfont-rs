@@ -714,9 +714,16 @@ impl SfdParser {
                     }
                 }
                 "OS2Vendor" => {
+                    // FontForge pads a short vendor to four bytes with NULs and
+                    // writes them inside the quotes, so the value can arrive as
+                    // "'STC\0'". A NUL is not legal in an OpenType tag and the
+                    // compiler rejects the whole font over it; the convention is
+                    // to pad with spaces, which tag_from_string already does.
                     if let Some(v) = &value
                         .as_ref()
                         .map(|s| s.trim_matches('\''))
+                        .map(|s| s.trim_matches(|c: char| c == '\0' || c.is_whitespace()))
+                        .filter(|s| !s.is_empty())
                         .and_then(|s| tag_from_string(s).ok())
                     {
                         self.font.custom_ot_values.os2_vendor_id = Some(*v);
@@ -5257,6 +5264,43 @@ mod tests {
         assert!(fea.contains("glyph_b"), "Should reference matching glyph");
         assert!(fea.contains("glyph_c"), "Should reference lookahead glyph");
         assert!(fea.contains("sub"), "Should output 'sub' for ChainSub2");
+    }
+}
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[cfg(test)]
+mod vendor_tag_tests {
+    use crate::convertors::fontforge;
+
+    /// FontForge pads a short vendor to four bytes with NULs and writes them
+    /// inside the quotes, so an SFD can carry `OS2Vendor: 'STC\0'`. A NUL is not
+    /// legal in an OpenType tag, and the compiler rejects the entire font with
+    /// "Invalid tag": 22 of 100 Google Fonts families whose upstream source is
+    /// an SFD failed to build on this alone.
+    #[test]
+    fn nul_padded_vendor_ids_are_accepted() {
+        let cases = [
+            ("'STC\u{0}'", "STC "),
+            ("'LTT\u{0}'", "LTT "),
+            ("'TT\u{0}\u{0}'", "TT  "),
+            ("'PYRS'", "PYRS"),
+        ];
+        for (raw, want) in cases {
+            let sfd = format!(
+                "SplineFontDB: 3.0\nFontName: Test\nOS2Vendor: {raw}\nBeginChars: 1 1\nEndChars\nEndSplineFont\n"
+            );
+            let dir = std::env::temp_dir().join("babelfont_vendor_test");
+            std::fs::create_dir_all(&dir).unwrap();
+            let path = dir.join("t.sfd");
+            std::fs::write(&path, &sfd).unwrap();
+            let font = fontforge::load(path.clone()).expect("SFD should load");
+            let tag = font
+                .custom_ot_values
+                .os2_vendor_id
+                .unwrap_or_else(|| panic!("no vendor id for {raw}"));
+            assert_eq!(tag.to_string(), want, "vendor {raw}");
+            let _ = std::fs::remove_file(&path);
+        }
     }
 }
 
