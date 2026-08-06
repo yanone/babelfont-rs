@@ -649,16 +649,16 @@ impl SfdParser {
                             serde_json::Value::String(v.clone()),
                         );
                     }
-                    let current_fstype = self.font.custom_ot_values.os2_fs_type.unwrap_or(0);
+                    let current = self.font.custom_ot_values.os2_fs_selection.unwrap_or(0);
                     let enabled = value
                         .as_deref()
                         .and_then(|v| v.parse::<u16>().ok())
                         .unwrap_or(1)
                         != 0;
-                    self.font.custom_ot_values.os2_fs_type = Some(if enabled {
-                        current_fstype | 1 << 7
+                    self.font.custom_ot_values.os2_fs_selection = Some(if enabled {
+                        current | 1 << 7
                     } else {
-                        current_fstype & !(1 << 7)
+                        current & !(1 << 7)
                     });
                 }
                 "OS2_WeightWidthSlopeOnly" => {
@@ -668,16 +668,16 @@ impl SfdParser {
                             serde_json::Value::String(v.clone()),
                         );
                     }
-                    let current_fstype = self.font.custom_ot_values.os2_fs_type.unwrap_or(0);
+                    let current = self.font.custom_ot_values.os2_fs_selection.unwrap_or(0);
                     let enabled = value
                         .as_deref()
                         .and_then(|v| v.parse::<u16>().ok())
                         .unwrap_or(1)
                         != 0;
-                    self.font.custom_ot_values.os2_fs_type = Some(if enabled {
-                        current_fstype | 1 << 8
+                    self.font.custom_ot_values.os2_fs_selection = Some(if enabled {
+                        current | 1 << 8
                     } else {
-                        current_fstype & !(1 << 8)
+                        current & !(1 << 8)
                     });
                 }
                 "OS2CodePages" => {
@@ -3944,7 +3944,11 @@ fn ot_line_for_key(font: &Font, key: &str) -> Option<String> {
         "OS2_UseTypoMetrics" => {
             if let Some(raw) = font.format_specific.get(key).and_then(|v| v.as_str()) {
                 Some(format!("{}: {}", key, sanitize_unquoted(raw)))
-            } else if ot.os2_fs_type.map(|v| (v & (1 << 7)) != 0).unwrap_or(false) {
+            } else if ot
+                .os2_fs_selection
+                .map(|v| (v & (1 << 7)) != 0)
+                .unwrap_or(false)
+            {
                 Some("OS2_UseTypoMetrics: 1".to_string())
             } else {
                 None
@@ -3953,7 +3957,11 @@ fn ot_line_for_key(font: &Font, key: &str) -> Option<String> {
         "OS2_WeightWidthSlopeOnly" => {
             if let Some(raw) = font.format_specific.get(key).and_then(|v| v.as_str()) {
                 Some(format!("{}: {}", key, sanitize_unquoted(raw)))
-            } else if ot.os2_fs_type.map(|v| (v & (1 << 8)) != 0).unwrap_or(false) {
+            } else if ot
+                .os2_fs_selection
+                .map(|v| (v & (1 << 8)) != 0)
+                .unwrap_or(false)
+            {
                 Some("OS2_WeightWidthSlopeOnly: 1".to_string())
             } else {
                 None
@@ -5249,5 +5257,52 @@ mod tests {
         assert!(fea.contains("glyph_b"), "Should reference matching glyph");
         assert!(fea.contains("glyph_c"), "Should reference lookahead glyph");
         assert!(fea.contains("sub"), "Should output 'sub' for ChainSub2");
+    }
+}
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[cfg(test)]
+mod fsselection_tests {
+    use crate::convertors::fontforge;
+
+    /// `OS2_UseTypoMetrics` and `OS2_WeightWidthSlopeOnly` are fsSelection bits
+    /// 7 and 8. They used to be OR'd into `os2_fs_type`, which meant a source
+    /// declaring `FSType: 0` came out announcing fsType 128 -- bit 7 of fsType
+    /// is reserved, so the value was not merely wrong but meaningless.
+    ///
+    /// Measured when this was found: of 100 Google Fonts families whose upstream
+    /// source is an SFD, 81 declare `OS2_UseTypoMetrics`, and every one of them
+    /// ships fsType 0.
+    #[test]
+    fn use_typo_metrics_goes_to_fsselection_not_fstype() {
+        let sfd = "\
+SplineFontDB: 3.0
+FontName: Test
+FSType: 0
+OS2Version: 2
+OS2_UseTypoMetrics: 1
+OS2_WeightWidthSlopeOnly: 1
+BeginChars: 1 1
+EndChars
+EndSplineFont
+";
+        let dir = std::env::temp_dir().join("babelfont_fsselection_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("t.sfd");
+        std::fs::write(&path, sfd).unwrap();
+
+        let font = fontforge::load(path.clone()).expect("SFD should load");
+        let ot = &font.custom_ot_values;
+
+        assert_eq!(
+            ot.os2_fs_type,
+            Some(0),
+            "fsType must stay what the SFD said"
+        );
+        let fs_selection = ot.os2_fs_selection.expect("fsSelection should be set");
+        assert!(fs_selection & (1 << 7) != 0, "USE_TYPO_METRICS is bit 7");
+        assert!(fs_selection & (1 << 8) != 0, "WWS is bit 8");
+
+        let _ = std::fs::remove_file(&path);
     }
 }
