@@ -497,35 +497,6 @@ fn save_properties(names: &Names, custom_ot_values: &CustomOTValues) -> Vec<glyp
         };
     }
 
-    // Macro for properties that can be singular or localized
-    macro_rules! push_property {
-        ($field:expr, $singular_key:expr, $localized_key:expr) => {
-            if !$field.is_empty() {
-                if $field.is_single() {
-                    if let Some(value) = $field.get_default() {
-                        properties.push(glyphs3::Property::SingularProperty {
-                            key: $singular_key,
-                            value: value.clone(),
-                        });
-                    }
-                } else {
-                    let values: Vec<glyphslib::glyphs3::LocalizedValue> = $field
-                        .0
-                        .iter()
-                        .map(|(language, value)| glyphslib::glyphs3::LocalizedValue {
-                            language: language.clone(),
-                            value: value.clone(),
-                        })
-                        .collect();
-                    properties.push(glyphs3::Property::LocalizedProperty {
-                        key: $localized_key,
-                        values,
-                    });
-                }
-            }
-        };
-    }
-
     // Macro for localized-only properties (no singular variant)
     macro_rules! push_localized {
         ($field:expr, $key:expr) => {
@@ -550,11 +521,8 @@ fn save_properties(names: &Names, custom_ot_values: &CustomOTValues) -> Vec<glyp
 
     push_localized!(names.copyright, glyphs3::LocalizedPropertyKey::Copyrights);
 
-    push_property!(
-        names.designer,
-        glyphs3::SingularPropertyKey::Designer,
-        glyphs3::LocalizedPropertyKey::Designers
-    );
+    // Glyphs 3 always emits the localized form.
+    push_localized!(names.designer, glyphs3::LocalizedPropertyKey::Designers);
 
     push_singular!(
         names.designer_url,
@@ -573,9 +541,9 @@ fn save_properties(names: &Names, custom_ot_values: &CustomOTValues) -> Vec<glyp
     push_localized!(names.license, glyphs3::LocalizedPropertyKey::Licenses);
     push_singular!(names.license_url, glyphs3::SingularPropertyKey::LicenseUrl);
 
-    push_property!(
+    // Glyphs 3 always emits the localized form.
+    push_localized!(
         names.manufacturer,
-        glyphs3::SingularPropertyKey::Manufacturer,
         glyphs3::LocalizedPropertyKey::Manufacturers
     );
 
