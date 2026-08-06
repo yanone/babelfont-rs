@@ -123,6 +123,42 @@ fn layer_is_quadratic(layer: &Layer) -> bool {
         .unwrap_or(false)
 }
 
+/// Is this FEA line a rule that may appear directly inside `aalt`?
+///
+/// The spec allows only feature references and single or alternate substitutions
+/// there. A single sub is `sub <glyph> by <glyph>;` and an alternate sub is
+/// `sub <glyph> from [<glyphs>];`. Anything else -- ligatures, multiples,
+/// contextual rules -- has to stay in its own lookup and out of `aalt`.
+fn is_single_or_alternate_sub(line: &str) -> bool {
+    let line = line.trim();
+    let Some(rest) = line
+        .strip_prefix("sub ")
+        .or_else(|| line.strip_prefix("substitute "))
+    else {
+        return false;
+    };
+    if rest.contains(" from ") {
+        // Alternate substitution.
+        return true;
+    }
+    let Some((from, to)) = rest.split_once(" by ") else {
+        return false;
+    };
+    // Single substitution: exactly one glyph on each side, and no class or
+    // sequence syntax that would make it something else.
+    let one_glyph = |part: &str| {
+        let part = part.trim().trim_end_matches(';').trim();
+        !part.is_empty()
+            && !part.contains('[')
+            && !part.contains(']')
+            && !part.contains('\'')
+            // A glyph class expands to several rules; keep aalt to plain glyphs.
+            && !part.starts_with('@')
+            && part.split_whitespace().count() == 1
+    };
+    one_glyph(from) && one_glyph(to)
+}
+
 impl SfdParser {
     fn new(path: PathBuf) -> Self {
         Self {
@@ -3080,6 +3116,11 @@ impl SfdParser {
             }
         });
 
+        // The `aalt` feature may only contain feature references and single or
+        // alternate substitution rules -- a lookup reference is a spec error and
+        // the compiler refuses the font. Keep each lookup's inlinable rules so
+        // `aalt` can carry them directly instead of pointing at a lookup.
+        let mut inlinable_rules: HashMap<SmolStr, Vec<String>> = HashMap::new();
         // Ordered, because the features are emitted by iterating this. A
         // HashMap here shuffles the feature blocks on every run: two
         // conversions of one unchanged .sfd emitted `subs`, `calt`, `liga` in
@@ -3157,6 +3198,17 @@ impl SfdParser {
                 );
             }
 
+            inlinable_rules.insert(
+                SmolStr::from(lookup.block.name.as_str()),
+                lookup
+                    .block
+                    .statements
+                    .iter()
+                    .map(|st| st.as_fea("").trim().to_string())
+                    .filter(|line| is_single_or_alternate_sub(line))
+                    .collect(),
+            );
+
             // Rearrange lookup.features as feature: Vec<FeatureLangSys>
             for fls in &lookup.features {
                 feature_map
@@ -3168,25 +3220,41 @@ impl SfdParser {
         }
         // Now insert a feature reference for each feature
         for (feature, langs_lookup) in feature_map {
-            let mut featureblock =
-                fea_rs_ast::FeatureBlock::new(feature.clone(), vec![], false, 0..0);
-            for (lang, lookupname) in langs_lookup.into_iter() {
+            let mut statements: Vec<String> = if feature == "aalt" {
+                // Inline the rules rather than referencing the lookups, and drop
+                // the script/language statements: neither is legal inside aalt.
+                let mut seen: Vec<String> = vec![];
+                for (_lang, lookupname) in langs_lookup.into_iter() {
+                    if let Some(rules) = inlinable_rules.get(&lookupname) {
+                        for rule in rules {
+                            if !seen.contains(rule) {
+                                seen.push(rule.clone());
+                            }
+                        }
+                    }
+                }
+                seen
+            } else {
+                let mut featureblock =
+                    fea_rs_ast::FeatureBlock::new(feature.clone(), vec![], false, 0..0);
+                for (lang, lookupname) in langs_lookup.into_iter() {
+                    featureblock
+                        .statements
+                        .extend(make_langsys(lang.script.clone(), lang.language.clone()));
+                    featureblock
+                        .statements
+                        .push(fea_rs_ast::Statement::LookupReference(
+                            fea_rs_ast::LookupReferenceStatement::new(lookupname.into(), 0..0),
+                        ));
+                }
+                // And now pop the featureblock into the feature
+                // minus its wrapper
                 featureblock
                     .statements
-                    .extend(make_langsys(lang.script.clone(), lang.language.clone()));
-                featureblock
-                    .statements
-                    .push(fea_rs_ast::Statement::LookupReference(
-                        fea_rs_ast::LookupReferenceStatement::new(lookupname.into(), 0..0),
-                    ));
-            }
-            // And now pop the featureblock into the feature
-            // minus its wrapper
-            let mut statements: Vec<String> = featureblock
-                .statements
-                .iter()
-                .map(|x| x.as_fea(""))
-                .collect();
+                    .iter()
+                    .map(|x| x.as_fea(""))
+                    .collect()
+            };
             // Add automatic code markers for anything which would have feature writers
             if feature == "abvm"
                 || feature == "blwm"
@@ -5361,5 +5429,33 @@ EndSplineFont
         assert!(fs_selection & (1 << 8) != 0, "WWS is bit 8");
 
         let _ = std::fs::remove_file(&path);
+    }
+}
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[cfg(test)]
+mod aalt_tests {
+    use super::is_single_or_alternate_sub;
+
+    #[test]
+    fn only_single_and_alternate_subs_may_go_in_aalt() {
+        // These are what aalt is allowed to contain.
+        assert!(is_single_or_alternate_sub("sub i by i.alt;"));
+        assert!(is_single_or_alternate_sub("    sub a by a.sc;"));
+        assert!(is_single_or_alternate_sub("sub a from [a.alt1 a.alt2];"));
+        assert!(is_single_or_alternate_sub("substitute i by i.alt;"));
+
+        // These are not: a ligature, a multiple, a class-to-class rule, and a
+        // contextual rule. Letting any of them through would produce feature
+        // code the compiler rejects outright.
+        assert!(!is_single_or_alternate_sub("sub f i by f_i;"));
+        assert!(!is_single_or_alternate_sub("sub f_i by f i;"));
+        assert!(!is_single_or_alternate_sub("sub [a b] by [a.alt b.alt];"));
+        assert!(!is_single_or_alternate_sub("sub a' lookup foo b;"));
+        assert!(!is_single_or_alternate_sub("sub @CLASS by @OTHER;"));
+        assert!(!is_single_or_alternate_sub("lookup _aalt_lookup_0;"));
+        assert!(!is_single_or_alternate_sub("script DFLT;"));
+        assert!(!is_single_or_alternate_sub("language dflt;"));
+        assert!(!is_single_or_alternate_sub(""));
     }
 }
