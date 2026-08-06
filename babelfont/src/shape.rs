@@ -5,7 +5,7 @@ use crate::{
 use fontdrasil::coords::DesignCoord;
 use indexmap::IndexMap;
 use itertools::Itertools as _;
-use kurbo::PathEl;
+use kurbo::{PathEl, Shape as _};
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use typeshare::typeshare;
@@ -259,6 +259,40 @@ impl Path {
                 None => Some(kurbo::Rect::from_points(point, point)),
             }
         })
+    }
+
+    /// Reverse the direction a closed path is drawn in, in place.
+    pub fn reverse(&mut self) {
+        if !self.closed || self.nodes.is_empty() {
+            return;
+        }
+
+        self.nodes.reverse();
+
+        let on_curve: Vec<usize> = self
+            .nodes
+            .iter()
+            .enumerate()
+            .filter(|(_, n)| n.nodetype != NodeType::OffCurve)
+            .map(|(ix, _)| ix)
+            .collect();
+
+        if !on_curve.is_empty() {
+            let old_types: Vec<NodeType> =
+                on_curve.iter().map(|&ix| self.nodes[ix].nodetype).collect();
+            for (slot, &ix) in on_curve.iter().enumerate() {
+                self.nodes[ix].nodetype = old_types[(slot + old_types.len() - 1) % old_types.len()];
+            }
+        }
+
+        self.rotate_to_preferred_representation();
+    }
+
+    /// The signed area enclosed by a closed path.
+    ///
+    /// Positive is counter-clockwise, in the y-up coordinate system fonts use.
+    pub fn signed_area(&self) -> Result<f64, BabelfontError> {
+        Ok(self.to_kurbo()?.area())
     }
 }
 

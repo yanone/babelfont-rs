@@ -1,6 +1,4 @@
-use kurbo::Shape;
-
-use crate::{filters::FontFilter, BabelfontError, NodeType, Path};
+use crate::filters::FontFilter;
 
 /// A filter that normalises contour direction to the PostScript convention.
 ///
@@ -41,56 +39,6 @@ impl CorrectPathDirection {
     }
 }
 
-/// The signed area enclosed by a closed path.
-///
-/// Positive is counter-clockwise, in the y-up coordinate system fonts use.
-fn signed_area(path: &Path) -> Result<f64, BabelfontError> {
-    Ok(path.to_kurbo()?.area())
-}
-
-/// Reverse the direction a closed path is drawn in, in place.
-///
-/// Nodes are stored as a cyclic list in which each on-curve node is preceded by
-/// the off-curve nodes that control the segment arriving at it. Reversing that
-/// list is enough to reverse the geometry: the on-curve points come out in the
-/// opposite order, and each segment's control points come out swapped, which is
-/// exactly the reverse of that segment.
-///
-/// The node *types* need a further step. A segment's type is recorded on the
-/// node it arrives at, so after reversal every segment arrives at what used to
-/// be its starting node. The segment that used to run A -> B now runs B -> A, so
-/// A takes the type that was on B -- that is, each on-curve node takes the type
-/// of its successor in the *original* cyclic order, which is its predecessor in
-/// the reversed list.
-///
-/// Getting this backwards is invisible on a contour with only two on-curve
-/// nodes, where successor and predecessor are the same node, and produces
-/// mismatched off-curve runs as soon as there are three.
-fn reverse_path(path: &mut Path) {
-    if !path.closed || path.nodes.is_empty() {
-        return;
-    }
-
-    path.nodes.reverse();
-
-    let on_curve: Vec<usize> = path
-        .nodes
-        .iter()
-        .enumerate()
-        .filter(|(_, n)| n.nodetype != NodeType::OffCurve)
-        .map(|(ix, _)| ix)
-        .collect();
-
-    if !on_curve.is_empty() {
-        let old_types: Vec<NodeType> = on_curve.iter().map(|&ix| path.nodes[ix].nodetype).collect();
-        for (slot, &ix) in on_curve.iter().enumerate() {
-            path.nodes[ix].nodetype = old_types[(slot + old_types.len() - 1) % old_types.len()];
-        }
-    }
-
-    path.rotate_to_preferred_representation();
-}
-
 impl FontFilter for CorrectPathDirection {
     fn apply(&self, font: &mut crate::Font) -> Result<(), crate::BabelfontError> {
         for glyph in font.glyphs.iter_mut() {
@@ -101,7 +49,7 @@ impl FontFilter for CorrectPathDirection {
                     if !path.closed {
                         continue;
                     }
-                    let area = signed_area(path)?;
+                    let area = path.signed_area()?;
                     if area.abs() > outer_area.abs() {
                         outer_area = area;
                     }
@@ -114,7 +62,7 @@ impl FontFilter for CorrectPathDirection {
                 }
 
                 for path in layer.shapes.iter_mut().filter_map(|s| s.as_path_mut()) {
-                    reverse_path(path);
+                    path.reverse();
                 }
             }
         }
@@ -303,10 +251,7 @@ mod tests {
     #[test]
     fn open_paths_are_left_alone() {
         let mut path = Path {
-            nodes: vec![
-                Node::new_move(0.0, 0.0),
-                Node::new_line(100.0, 0.0),
-            ],
+            nodes: vec![Node::new_move(0.0, 0.0), Node::new_line(100.0, 0.0)],
             closed: false,
             ..Default::default()
         };
