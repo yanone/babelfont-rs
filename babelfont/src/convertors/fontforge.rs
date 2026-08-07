@@ -63,11 +63,6 @@ struct SfdParser {
     sanitized_lookup_names: HashMap<String, usize>, // track sanitized names for de-duplication
     // Chain/context substitution and positioning data: subtable name -> entry
     chain_pos_sub: IndexMap<String, layout::ChainPosSubEntry>,
-    // Ordered (class-name, subtable-name) declarations recorded from the
-    // AnchorClass2/AnchorClass header lines (first occurrence of each class
-    // wins). Classification into above/below is deferred until after the glyphs
-    // (and their anchors) have been parsed, so that the anchor Y coordinate can
-    // serve as a final fallback signal.
     anchor_class_decls: Vec<(String, String)>,
     content: Option<String>, // Optional pre-loaded content for load_str()
 }
@@ -923,6 +918,10 @@ impl SfdParser {
             self.parse_chars(&chars, &master_id)?;
         }
 
+        // An SFD may declare no GlyphClass at all; infer the mark category
+        // from the anchors so the glyph carries a usable GDEF class.
+        self.infer_mark_categories_from_anchors();
+
         // Prefer the style the PostScript name states, when it states one.
         //
         // Deriving the master name from the weight class alone loses the
@@ -1325,6 +1324,33 @@ impl SfdParser {
                             4 => GlyphCategory::Mark,
                             _ => GlyphCategory::Unknown,
                         };
+                        // fontc classifies a glyph as a GDEF mark only when both
+                        // category == Mark and subCategory is Nonspacing (or
+                        // SpacingCombining). SFD only records the coarse
+                        // GlyphClass, so emit an explicit Nonspacing subCategory
+                        // for marks; without it no mark2base lookups (and thus no
+                        // abvm/blwm) are generated.
+                        //
+                        // Ligatures need subCategory = Ligature so fontc assigns
+                        // them GDEF class 2; otherwise the bare "Ligature"
+                        // category is unknown to fontc and its bundled GlyphData
+                        // may reclassify some conjuncts as marks, dropping them
+                        // from mark2base base coverage.
+                        match v {
+                            3 => {
+                                glyph.format_specific.insert(
+                                    "subcategory".to_string(),
+                                    serde_json::Value::String("Ligature".to_string()),
+                                );
+                            }
+                            4 => {
+                                glyph.format_specific.insert(
+                                    "subcategory".to_string(),
+                                    serde_json::Value::String("Nonspacing".to_string()),
+                                );
+                            }
+                            _ => {}
+                        }
                     }
                 }
                 "Back" | "Fore" | "Layer" => {
@@ -2849,6 +2875,48 @@ impl SfdParser {
         Ok(Some(component))
     }
 
+    /// Classify GlyphClass-less glyphs that carry only mark-side anchors as
+    /// Nonspacing marks.
+    ///
+    /// SFD records a glyph's role in two ways: the coarse `GlyphClass` line and,
+    /// per anchor, the attachment `kind` (`mark` = the glyph attaches AS a mark,
+    /// `basechar`/`baselig`/... = base side). Some sources (e.g. Glegoo Bold)
+    /// omit `GlyphClass` on conjunct marks, leaving their category Unknown. Such
+    /// a glyph then exports without a category, and fontc — seeing an
+    /// underscore-joined name — treats it as a ligature and drops it from the
+    /// abvm/blwm mark coverage. The anchor `kind` is the authoritative signal:
+    /// a glyph whose anchors are exclusively mark-side is a mark, so mirror the
+    /// `GlyphClass: 4` path (category = Mark, subCategory = Nonspacing).
+    fn infer_mark_categories_from_anchors(&mut self) {
+        for glyph in self.font.glyphs.0.iter_mut() {
+            if glyph.category != GlyphCategory::Unknown {
+                continue;
+            }
+            let mut has_mark_anchor = false;
+            let mut has_base_anchor = false;
+            for layer in glyph.layers.iter() {
+                for anchor in layer.anchors.iter() {
+                    match anchor
+                        .format_specific
+                        .get("sfd.kind")
+                        .and_then(|v| v.as_str())
+                    {
+                        Some("mark") => has_mark_anchor = true,
+                        Some(_) => has_base_anchor = true,
+                        None => {}
+                    }
+                }
+            }
+            if has_mark_anchor && !has_base_anchor {
+                glyph.category = GlyphCategory::Mark;
+                glyph.format_specific.insert(
+                    "subcategory".to_string(),
+                    serde_json::Value::String("Nonspacing".to_string()),
+                );
+            }
+        }
+    }
+
     fn parse_anchor(&self, v: &str) -> Option<crate::Anchor> {
         // Quoted name, x, y, kind, index
         let parts: Vec<&str> = v.split_whitespace().collect();
@@ -3252,6 +3320,25 @@ impl SfdParser {
                 continue;
             };
 
+            // Anchor-based GPOS mark/cursive lookups (mark-to-base,
+            // mark-to-mark, mark-to-ligature, cursive) carry no FEA rules in
+            // FontForge: their attachment data lives entirely in the glyph
+            // AnchorClass/AnchorPoint entries (now converted to Glyphs anchors).
+            // Emitting them here would produce EMPTY `feature abvm/blwm/mark/...`
+            // blocks in the exported source, and fontc skips auto-generating any
+            // feature that is already declared in the FEA (without an insertion
+            // marker) — which would suppress the anchor-driven mark features
+            // entirely. Skip them so fontc rebuilds abvm/blwm/mark/mkmk/curs
+            // from the anchors.
+            if matches!(
+                lookup.lookup_type,
+                layout::LookupType::MarkToBasePosition
+                    | layout::LookupType::MarkToMarkPosition
+                    | layout::LookupType::MarkToLigaturePosition
+                    | layout::LookupType::CursivePosition
+            ) {
+                continue;
+            }
             // Populate the block with code from the subtables
             lookup.block.statements.extend(
                 lookup
@@ -5438,10 +5525,13 @@ mod tests {
     }
 
     #[test]
-    fn test_anchors_before_fore_markers() {
+    fn test_indic_mark_anchors_and_subcategory() {
         // AnchorPoint lines appear before the "Fore" marker in SFD and use
-        // FontForge anchor-class names. The convertor must keep the anchors
-        // by attaching them to the foreground layer.
+        // FontForge anchor-class names. The convertor must (a) keep the anchors
+        // by attaching them to the foreground layer, (b) translate the class
+        // names into the Glyphs top/bottom (base) and _top/_bottom (mark)
+        // convention using the AnchorClass2 above/below classification, and
+        // (c) mark GlyphClass-4 glyphs as Nonspacing marks.
         let data = concat!(
             "SplineFontDB: 3.0\n",
             // Two mark-to-base (kind 0x104 = 260) GPOS lookups, one per feature.
@@ -5478,14 +5568,59 @@ mod tests {
         let font = load_str(data).expect("Failed to parse Indic-mark SFD");
         let default_master_id = font.masters[0].id.clone();
 
-        // Base glyph: still a Base; anchors attached to the (implicit) foreground
-        // layer even though they appear before the "Fore" marker.
+        // Base glyph: still a Base, with its anchors kept under the names the
+        // SFD gives them, and attached to the (implicit) foreground layer even
+        // though they appear before the "Fore" marker.
         let ka = font.glyphs.get("ka").expect("missing base glyph 'ka'");
         assert_eq!(ka.category, GlyphCategory::Base);
         let ka_layer = glyph_foreground_layer(ka, &default_master_id).expect("ka foreground layer");
         let mut ka_names: Vec<&str> = ka_layer.anchors.iter().map(|a| a.name.as_str()).collect();
         ka_names.sort();
         assert_eq!(ka_names, vec!["Above", "Below"], "base anchor names");
+
+        // Mark glyph: category Mark + subCategory Nonspacing.
+        let mark = font
+            .glyphs
+            .get("anusvara")
+            .expect("missing mark glyph 'anusvara'");
+        assert_eq!(mark.category, GlyphCategory::Mark);
+        assert_eq!(
+            mark.format_specific
+                .get("subcategory")
+                .and_then(|v| v.as_str()),
+            Some("Nonspacing"),
+            "mark glyph must carry Nonspacing subCategory"
+        );
+        let mark_layer =
+            glyph_foreground_layer(mark, &default_master_id).expect("mark foreground layer");
+        let mark_names: Vec<&str> = mark_layer.anchors.iter().map(|a| a.name.as_str()).collect();
+        assert_eq!(mark_names, vec!["_Above"], "mark anchor name");
+
+        // Ligature glyph (GlyphClass 3): category Ligature + subCategory
+        // Ligature, so the exported category becomes a valid Glyphs "Letter".
+        let lig = font
+            .glyphs
+            .get("k_ka")
+            .expect("missing ligature glyph 'k_ka'");
+        assert_eq!(lig.category, GlyphCategory::Ligature);
+        assert_eq!(
+            lig.format_specific
+                .get("subcategory")
+                .and_then(|v| v.as_str()),
+            Some("Ligature"),
+            "ligature glyph must carry Ligature subCategory"
+        );
+
+        // Anchor-based mark GPOS lookups carry no FEA rules, so they must not
+        // be emitted as empty feature blocks.
+        assert!(
+            !font
+                .features
+                .features
+                .iter()
+                .any(|(tag, _)| tag == "abvm" || tag == "blwm"),
+            "empty anchor-based mark features must not be exported"
+        );
     }
 
     #[test]
