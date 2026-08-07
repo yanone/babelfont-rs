@@ -350,7 +350,12 @@ fn load_instance(font: &Font, instance: &glyphs3::Instance) -> crate::Instance {
     }
 }
 
-fn save_instance(instance: &crate::Instance, axes: &[Axis]) -> glyphs3::Instance {
+fn save_instance(
+    instance: &crate::Instance,
+    axes: &[Axis],
+    weight_class: Option<i32>,
+    width_class: Option<i32>,
+) -> glyphs3::Instance {
     let mut axes_values = vec![];
     if !instance.variable {
         for axis in axes {
@@ -372,14 +377,20 @@ fn save_instance(instance: &crate::Instance, axes: &[Axis]) -> glyphs3::Instance
             .map(|x| x.to_string())
             .unwrap_or_default(),
         axes_values,
+        // An instance's own weightClass/widthClass wins; otherwise the
+        // font-level OS/2 classes the source stated (custom_ot_values) are
+        // serialized here, because the instance field is where the Glyphs
+        // format carries them.
         weight_class: format_specific
             .get(KEY_WEIGHT_CLASS)
             .and_then(|x| x.as_i64())
-            .map(|x| x as i32),
+            .map(|x| x as i32)
+            .or(weight_class),
         width_class: format_specific
             .get(KEY_WIDTH_CLASS)
             .and_then(|x| x.as_i64())
-            .map(|x| x as i32),
+            .map(|x| x as i32)
+            .or(width_class),
         exports: format_specific
             .get(KEY_INSTANCE_EXPORTS)
             .and_then(|x| x.as_bool())
@@ -1099,7 +1110,14 @@ pub(crate) fn as_glyphs3(font: &Font) -> Result<glyphs3::Glyphs3, BabelfontError
         instances: font
             .instances
             .iter()
-            .map(|x| save_instance(x, &font.axes))
+            .map(|x| {
+                save_instance(
+                    x,
+                    &font.axes,
+                    font.custom_ot_values.os2_us_weight_class.map(|w| w as i32),
+                    font.custom_ot_values.os2_us_width_class.map(|w| w as i32),
+                )
+            })
             .collect(),
         kerning,
         kerning_rtl: font
@@ -1213,6 +1231,34 @@ fn save_master(
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn font_level_os2_classes_reach_the_exported_instance() {
+        // The Glyphs format carries usWeightClass/usWidthClass on instances.
+        // A font-level value read from another format (custom_ot_values) is
+        // serialized there, unless the instance states its own.
+        let mut font = crate::Font::new();
+        font.custom_ot_values.os2_us_weight_class = Some(700);
+        font.custom_ot_values.os2_us_width_class = Some(3);
+        let mut inst = crate::Instance::default();
+        inst.name.set_default("Bold".to_string());
+        font.instances.push(inst);
+        let g = super::as_glyphs3(&font).unwrap();
+        assert_eq!(g.instances[0].weight_class, Some(700));
+        assert_eq!(g.instances[0].width_class, Some(3));
+
+        // An instance's own value wins over the font level.
+        let mut font2 = crate::Font::new();
+        font2.custom_ot_values.os2_us_weight_class = Some(700);
+        let mut inst2 = crate::Instance::default();
+        inst2.name.set_default("Own".to_string());
+        inst2
+            .format_specific
+            .insert(super::KEY_WEIGHT_CLASS.to_string(), serde_json::json!(500));
+        font2.instances.push(inst2);
+        let g2 = super::as_glyphs3(&font2).unwrap();
+        assert_eq!(g2.instances[0].weight_class, Some(500));
+    }
+
     use crate::{GlyphCategory, Shape};
     use fontdrasil::coords::Location;
     use pretty_assertions::assert_eq;
