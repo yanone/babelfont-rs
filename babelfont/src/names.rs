@@ -163,6 +163,81 @@ impl Names {
             _ => None,
         }
     }
+
+    /// Iterate over all name records in the font
+    pub fn iter(&self) -> impl Iterator<Item = (NameId, &I18NDictionary)> {
+        [
+            (NameId::COPYRIGHT_NOTICE, &self.copyright),
+            (NameId::FAMILY_NAME, &self.family_name),
+            (NameId::SUBFAMILY_NAME, &self.preferred_subfamily_name),
+            (NameId::UNIQUE_ID, &self.unique_id),
+            (NameId::FULL_NAME, &self.full_name),
+            (NameId::VERSION_STRING, &self.version),
+            (NameId::POSTSCRIPT_NAME, &self.postscript_name),
+            (NameId::TRADEMARK, &self.trademark),
+            (NameId::MANUFACTURER, &self.manufacturer),
+            (NameId::DESIGNER, &self.designer),
+            (NameId::DESCRIPTION, &self.description),
+            (NameId::VENDOR_URL, &self.manufacturer_url),
+            (NameId::DESIGNER_URL, &self.designer_url),
+            (NameId::LICENSE_DESCRIPTION, &self.license),
+            (NameId::LICENSE_URL, &self.license_url),
+            (NameId::TYPOGRAPHIC_FAMILY_NAME, &self.typographic_family),
+            (
+                NameId::TYPOGRAPHIC_SUBFAMILY_NAME,
+                &self.typographic_subfamily,
+            ),
+            (NameId::COMPATIBLE_FULL_NAME, &self.compatible_full_name),
+            (NameId::SAMPLE_TEXT, &self.sample_text),
+            (NameId::POSTSCRIPT_CID_NAME, &self.postscript_cid_name),
+            (NameId::WWS_FAMILY_NAME, &self.wws_family_name),
+            (NameId::WWS_SUBFAMILY_NAME, &self.wws_subfamily_name),
+            (
+                NameId::VARIATIONS_POSTSCRIPT_NAME_PREFIX,
+                &self.variations_postscript_name_prefix,
+            ),
+        ]
+        .into_iter()
+    }
+
+    /// Iterate over all name records in the font, mutably
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (NameId, &mut I18NDictionary)> {
+        [
+            (NameId::COPYRIGHT_NOTICE, &mut self.copyright),
+            (NameId::FAMILY_NAME, &mut self.family_name),
+            (NameId::SUBFAMILY_NAME, &mut self.preferred_subfamily_name),
+            (NameId::UNIQUE_ID, &mut self.unique_id),
+            (NameId::FULL_NAME, &mut self.full_name),
+            (NameId::VERSION_STRING, &mut self.version),
+            (NameId::POSTSCRIPT_NAME, &mut self.postscript_name),
+            (NameId::TRADEMARK, &mut self.trademark),
+            (NameId::MANUFACTURER, &mut self.manufacturer),
+            (NameId::DESIGNER, &mut self.designer),
+            (NameId::DESCRIPTION, &mut self.description),
+            (NameId::VENDOR_URL, &mut self.manufacturer_url),
+            (NameId::DESIGNER_URL, &mut self.designer_url),
+            (NameId::LICENSE_DESCRIPTION, &mut self.license),
+            (NameId::LICENSE_URL, &mut self.license_url),
+            (
+                NameId::TYPOGRAPHIC_FAMILY_NAME,
+                &mut self.typographic_family,
+            ),
+            (
+                NameId::TYPOGRAPHIC_SUBFAMILY_NAME,
+                &mut self.typographic_subfamily,
+            ),
+            (NameId::COMPATIBLE_FULL_NAME, &mut self.compatible_full_name),
+            (NameId::SAMPLE_TEXT, &mut self.sample_text),
+            (NameId::POSTSCRIPT_CID_NAME, &mut self.postscript_cid_name),
+            (NameId::WWS_FAMILY_NAME, &mut self.wws_family_name),
+            (NameId::WWS_SUBFAMILY_NAME, &mut self.wws_subfamily_name),
+            (
+                NameId::VARIATIONS_POSTSCRIPT_NAME_PREFIX,
+                &mut self.variations_postscript_name_prefix,
+            ),
+        ]
+        .into_iter()
+    }
 }
 
 /// Mapping of OpenType name table language identifier to BCP-47 language tag.
