@@ -139,6 +139,7 @@ declare_filters! {
         MoveKerningFromFeatures(movekerningfromfeatures) => "movekerningfromfeatures",
     }
     group "General font filters" {
+        DropCopyrightDescription(dropcopyrightdescription) => "dropcopyrightdescription",
         SingleLineNames(singlelinenames) => "singlelinenames",
         RewriteSmartAxes(rewritesmartaxes) => "rewritesmartaxes",
         ScaleUpem(scaleupem) => "scaleupem",
