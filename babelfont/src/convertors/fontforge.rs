@@ -570,14 +570,19 @@ impl SfdParser {
                 }
                 "Version" => {
                     if let Some(v) = &value {
-                        self.font.names.version = v.into();
-                        // Try to parse the major/minor version from the string.
-                        // Find a float at the start of the string.
+                        // FontForge's export composes name ID 5 as "Version "
+                        // plus this field: across 120 SFD/shipped-binary pairs
+                        // no SFD field contains the word and 114 binaries carry
+                        // exactly that composition. Interpret it the same way,
+                        // whatever the contents. `version_line` strips the
+                        // prefix again on write, so an SFD round trip is stable.
+                        self.font.names.version = format!("Version {v}").into();
+                        // head.fontRevision must agree with name ID 5. The minor
+                        // is the fractional digits padded to three, not a float
+                        // fraction scaled by 100 -- that turned 1.002 into 1.000.
                         if let Some(first_word) = v.split_whitespace().next() {
-                            if let Ok(ver) = first_word.parse::<f32>() {
-                                let major = ver.trunc() as u16;
-                                let minor = ((ver - ver.trunc()) * 100.0).round() as u16;
-                                self.font.version = (major, minor);
+                            if let Some(parts) = crate::common::version_major_minor(first_word) {
+                                self.font.version = parts;
                             }
                         }
                     }
@@ -4044,6 +4049,13 @@ fn version_line(font: &Font) -> String {
         .get_default()
         .cloned()
         .unwrap_or_else(|| format!("{}.{}", font.version.0, font.version.1));
+    // SFD stores a bare number here. The "Version " prefix belongs to name ID 5,
+    // where the OpenType spec asks for it, and writing it back into the SFD
+    // would produce "Version: Version 1.002" and break a round-trip.
+    let version_str = version_str
+        .strip_prefix("Version ")
+        .unwrap_or(&version_str)
+        .to_string();
     format!("Version: {}", sanitize_unquoted(&version_str))
 }
 
