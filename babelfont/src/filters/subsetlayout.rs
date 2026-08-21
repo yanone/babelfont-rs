@@ -634,7 +634,14 @@ impl<'a> SubsetVisitor<'a> {
         nested_block
             .statements
             .retain(|statement| statement != &*DELETION_COMMENT);
-        if nested_block.statements.iter().any(non_trivial_statement) {
+        // A featureNames (or sizemenuname) block is nothing BUT name records;
+        // they are its payload, not scaffolding, and subsetting glyphs is no
+        // reason to lose the font's UI strings.
+        if nested_block
+            .statements
+            .iter()
+            .any(|st| non_trivial_statement(st) || matches!(st, Statement::FeatureNameStatement(_)))
+        {
             return None;
         }
         Some(Statement::Comment(Comment::new(
@@ -677,6 +684,11 @@ impl<'a> SubsetVisitor<'a> {
 }
 
 fn non_trivial_statement(statement: &Statement) -> bool {
+    // A lookup reference is a block's payload, not scaffolding: a feature block
+    // whose rules all live in referenced lookups does something. References to
+    // lookups that were dropped have already been turned into comments by
+    // subset_lookup_reference, so any reference still here points at a live
+    // lookup and must keep its block alive.
     !matches!(
         statement,
         Statement::Comment(_)
@@ -686,7 +698,6 @@ fn non_trivial_statement(statement: &Statement) -> bool {
             | Statement::Language(_)
             | Statement::LanguageSystem(_)
             | Statement::LookupFlag(_)
-            | Statement::LookupReference(_)
             | Statement::SizeParameters(_)
             | Statement::SizeMenuName(_)
             | Statement::Subtable(_)
@@ -823,6 +834,53 @@ mod tests {
             .expect("Feature subsetting failed");
         let fea = font.features.to_fea();
         assert_eq!(fea, "feature foo {\nsub a by c;\n} foo;\n# Removed feature bar due to no statements remaining\n\n");
+    }
+
+    #[test]
+    fn test_feature_of_lookup_references_survives() {
+        // The SFD convertor emits features as script/language/lookup-reference
+        // triples with the rules living in lookup prefixes. None of that may be
+        // dropped as trivial while the referenced lookup is alive -- that empties
+        // the font's FeatureList. A reference to a dropped lookup is still cleaned
+        // away, and a feature left with nothing else still goes.
+        let mut font = dummy_font_with_glyphs(vec!["a", "b", "c"]);
+        font.features = Features::from_fea(
+            "lookup one { sub a by c; } one;\nlookup two { sub b by c; } two;\n\
+             feature foo { script DFLT; language dflt; lookup one; } foo;\n\
+             feature bar { script DFLT; language dflt; lookup two; } bar;\n",
+        );
+        // Subset away b: lookup two empties, so bar loses its only payload.
+        SubsetLayout::new(vec!["a", "c"])
+            .apply(&mut font)
+            .expect("Feature subsetting failed");
+        let fea = font.features.to_fea();
+        assert!(
+            fea.contains("lookup one;"),
+            "foo must survive on the strength of its lookup reference:\n{fea}"
+        );
+        assert!(
+            fea.contains("# Removed feature bar"),
+            "bar's lookup was dropped, so bar must still go:\n{fea}"
+        );
+    }
+
+    #[test]
+    fn test_featurenames_block_survives_subsetting() {
+        // featureNames blocks hold nothing but name records, which the triviality
+        // list treats as scaffolding -- but they are the block's payload, and
+        // subsetting glyphs is no reason to drop the font's UI strings.
+        let mut font = dummy_font_with_glyphs(vec!["a", "b", "c"]);
+        font.features = Features::from_fea(
+            "feature ss01 { featureNames { name 3 1 1033 \"Fancy\"; }; sub a by c; } ss01;\n",
+        );
+        SubsetLayout::new(vec!["a", "c"])
+            .apply(&mut font)
+            .expect("Feature subsetting failed");
+        let fea = font.features.to_fea();
+        assert!(
+            fea.contains("featureNames") && fea.contains("name \"Fancy\";"),
+            "the name record must survive (3/1/1033 renders as the elided default):\n{fea}"
+        );
     }
 
     #[test]
