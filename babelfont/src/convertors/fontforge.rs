@@ -35,11 +35,6 @@ static CHAIN_POSSUB_RE: LazyLock<Regex> = LazyLock::new(|| {
     // Matches: (coverage|class|glyph) "<subtable name>" <n1> <n2> <n3> <nRules>
     Regex::new(r#"(coverage|class|glyph)\s+"([^"]*)"\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)"#).unwrap()
 });
-static FEATURE_NAME_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    // Expected format: '<feature tag>' <language code> "<feature name>"
-    #[allow(clippy::unwrap_used)] // Safe because the regex is valid
-    Regex::new(r#"'(?P<tag>.{4})'\s+(?P<lang>\d+)\s+"(?P<name>.+)""#).unwrap()
-});
 
 const GENERATED_KERN_SUBTABLE: &str = "generated_kern";
 const HEADER_VERSION_KEY: &str = "sfd.splinefontdb_version";
@@ -602,21 +597,29 @@ impl SfdParser {
                 }
                 "OtfFeatName" => {
                     if let Some(v) = &value {
-                        // Expected format: '<feature tag>' <language code> "<feature name>"
-                        let regex = &FEATURE_NAME_REGEX;
-                        if let Some(caps) = regex.captures(v) {
-                            let tag = caps.name("tag").map(|m| m.as_str()).unwrap_or_default();
-                            let lang_id = caps
-                                .name("lang")
-                                .and_then(|m| m.as_str().parse::<u32>().ok())
-                                .unwrap_or(0);
-                            let name = caps.name("name").map(|m| m.as_str()).unwrap_or_default();
+                        // '<feature tag>' followed by one `<language id> "<name>"` pair
+                        // per language. The names are UTF-7, quotes included, so the
+                        // quote characters on the line are always delimiters.
+                        let tokens = Self::tokenize_preserving_quotes(v);
+                        let mut it = tokens.iter();
+                        let tag = it
+                            .next()
+                            .map(|t| t.trim_matches('\''))
+                            .unwrap_or_default()
+                            .to_string();
+                        let mut parsed_any = false;
+                        while let (Some(lang), Some(name)) = (it.next(), it.next()) {
+                            let Ok(lang_id) = lang.parse::<u32>() else {
+                                break;
+                            };
+                            parsed_any = true;
                             self.feature_names
-                                .entry(tag.into())
+                                .entry(tag.as_str().into())
                                 .or_default()
-                                .push((lang_id, name.to_string()));
-                        } else {
-                            println!("Warning: invalid OTFeatureName format: {}", v);
+                                .push((lang_id, decode_utf7(name.trim_matches('"'))));
+                        }
+                        if !parsed_any {
+                            log::warn!("invalid OtfFeatName line: {v}");
                         }
                     }
                 }
@@ -3258,6 +3261,24 @@ impl SfdParser {
             .collect::<String>()
     }
 
+    /// Escape a string for a quoted Windows-platform FEA name: anything outside
+    /// printable ASCII, plus the quote and backslash, becomes a `\XXXX` escape of
+    /// its UTF-16 code units.
+    fn fea_string_escape(s: &str) -> String {
+        let mut out = String::with_capacity(s.len());
+        for c in s.chars() {
+            if (' '..='~').contains(&c) && c != '"' && c != '\\' {
+                out.push(c);
+            } else {
+                let mut units = [0u16; 2];
+                for unit in c.encode_utf16(&mut units) {
+                    out.push_str(&format!("\\{unit:04X}"));
+                }
+            }
+        }
+        out
+    }
+
     fn insert_gtables(&mut self) {
         // Collect all lookup names referenced by chain/context entries.
         // These must be emitted before the chain/context lookups that reference them.
@@ -3518,7 +3539,13 @@ impl SfdParser {
                 feature.code = "featureNames {\n".to_string()
                     + (names
                         .iter()
-                        .map(|(lang_id, name)| format!("    name 3 1 {} \"{}\";\n", lang_id, name))
+                        .map(|(lang_id, name)| {
+                            format!(
+                                "    name 3 1 {} \"{}\";\n",
+                                lang_id,
+                                Self::fea_string_escape(name)
+                            )
+                        })
                         .collect::<String>()
                         .as_str())
                     + "};\n"

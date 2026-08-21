@@ -15,11 +15,18 @@ pub fn decode_utf7(s: &str) -> String {
                     continue;
                 }
             }
+            // A run ends at '-' (consumed) or at the first character outside the
+            // base64 alphabet (kept: it is literal text). Reading past that point
+            // folds the terminator and the next run into this one, and any residual
+            // bits then shift every unit that follows.
             let mut b64 = String::new();
             while let Some(&b64_ch) = chars.peek() {
                 if b64_ch == '-' {
                     chars.next(); // consume '-'
                     break;
+                }
+                if !b64_ch.is_ascii() || INVERSE_LOOKUP[b64_ch as usize] == 255 {
+                    break; // literal text: leave it for the outer loop
                 }
                 b64.push(b64_ch);
                 chars.next(); // consume base64 char
@@ -29,7 +36,15 @@ pub fn decode_utf7(s: &str) -> String {
                 // UTF-8 happens to "work" for ASCII -- "This" encodes to
                 // 00 54 00 68 00 69 00 73, which IS valid UTF-8 -- but every
                 // character arrives preceded by a NUL.
-                for unit in char::decode_utf16(decode_modified_base64(&b64)) {
+                //
+                // FontForge's writer encodes its C string's NUL terminator into
+                // the run as a full zero unit; its own reader discards it, and
+                // an embedded U+0000 is never content, so it is dropped here.
+                let units: Vec<u16> = decode_modified_base64(&b64)
+                    .into_iter()
+                    .filter(|&u| u != 0)
+                    .collect();
+                for unit in char::decode_utf16(units) {
                     result.push(unit.unwrap_or(char::REPLACEMENT_CHARACTER));
                 }
             }
@@ -188,7 +203,7 @@ mod tests {
     #[test]
     fn real_corpus_strings() {
         // librefonts/corben's LangName.
-        assert_eq!(decode_utf7("Corben.+AAoACgAA-This"), "Corben.\n\n\u{0}This");
+        assert_eq!(decode_utf7("Corben.+AAoACgAA-This"), "Corben.\n\nThis");
         // librefonts/aguafinascript's OFL description, CR-separated.
         assert_eq!(decode_utf7("License,+AA0A-Version"), "License,\rVersion");
     }
@@ -203,5 +218,34 @@ mod tests {
     fn lone_surrogate_becomes_the_replacement_character() {
         // A high surrogate with no low surrogate must not panic.
         assert_eq!(decode_utf7("+2DQ-"), "\u{FFFD}");
+    }
+    #[test]
+    fn a_run_ends_at_the_first_non_base64_character() {
+        // FontForge writes one run per word, separated by literal spaces, and a
+        // run's residual bits must not leak into the next: this is Russian
+        // "Sochetaniya s nizhney", three runs, two literal spaces.
+        assert_eq!(
+            decode_utf7("+BCEEPgRHBDUEQgQwBD0EOARP +BEEA +BD0EOAQ2BD0ENQQ5"),
+            "\u{421}\u{43e}\u{447}\u{435}\u{442}\u{430}\u{43d}\u{438}\u{44f} \u{441} \u{43d}\u{438}\u{436}\u{43d}\u{435}\u{439}"
+        );
+    }
+
+    #[test]
+    fn the_writers_nul_terminator_is_not_content() {
+        // FontForge encodes its C string's trailing NUL into the run: Monomakh's
+        // "+BE8ENwRLBDoEMAAA" is five Cyrillic letters and one zero unit. The
+        // shipped binary and FontForge's own FEA export both carry the five
+        // letters and no NUL.
+        let decoded = decode_utf7("+BE8ENwRLBDoEMAAA");
+        assert_eq!(
+            decoded, "\u{44f}\u{437}\u{44b}\u{43a}\u{430}",
+            "the zero unit is a terminator artifact, not content"
+        );
+        assert!(!decoded.contains('\0'));
+    }
+
+    #[test]
+    fn a_dash_terminated_run_consumes_the_dash() {
+        assert_eq!(decode_utf7("+BEE-x"), "\u{441}x");
     }
 }
