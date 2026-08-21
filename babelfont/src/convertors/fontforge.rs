@@ -55,7 +55,10 @@ struct SfdParser {
     gsub_lookups: GTable,
     gpos_lookups: GTable,
     feature_names: IndexMap<SmolStr, Vec<(u32, String)>>, // feature tag -> feature name
-    sanitized_lookup_names: HashMap<String, usize>, // track sanitized names for de-duplication
+    /// Every lookup name already handed out, generated `_N` forms included.
+    taken_lookup_names: HashSet<String>,
+    /// Original lookup name -> the unique name it was given, for resolving references.
+    assigned_lookup_names: HashMap<String, String>,
     // Chain/context substitution and positioning data: subtable name -> entry
     chain_pos_sub: IndexMap<String, layout::ChainPosSubEntry>,
     anchor_class_decls: Vec<(String, String)>,
@@ -181,7 +184,8 @@ impl SfdParser {
             gsub_lookups: GTable(IndexMap::new()),
             gpos_lookups: GTable(IndexMap::new()),
             feature_names: IndexMap::new(),
-            sanitized_lookup_names: HashMap::new(),
+            taken_lookup_names: HashSet::new(),
+            assigned_lookup_names: HashMap::new(),
             chain_pos_sub: IndexMap::new(),
             anchor_class_decls: Vec::new(),
             content: None,
@@ -198,7 +202,8 @@ impl SfdParser {
             gsub_lookups: GTable(IndexMap::new()),
             gpos_lookups: GTable(IndexMap::new()),
             feature_names: IndexMap::new(),
-            sanitized_lookup_names: HashMap::new(),
+            taken_lookup_names: HashSet::new(),
+            assigned_lookup_names: HashMap::new(),
             chain_pos_sub: IndexMap::new(),
             anchor_class_decls: Vec::new(),
             content: Some(content),
@@ -1937,7 +1942,18 @@ impl SfdParser {
 
         let lookup_type = Self::lookup_type_from_kind(kind);
         let sanitized_name =
-            Self::sanitize_and_dedupe_lookup_name(name, &mut self.sanitized_lookup_names);
+            Self::sanitize_and_dedupe_lookup_name(name, &mut self.taken_lookup_names);
+        if let Some(previous) = self
+            .assigned_lookup_names
+            .insert(name.to_string(), sanitized_name.clone())
+        {
+            // Two SFD lookups with the same name: references can only mean one of
+            // them, and they now mean this one.
+            log::warn!(
+                "two lookups are both named {name:?}; references resolve to the \
+                 later one ({sanitized_name}), not {previous}"
+            );
+        }
         let info = layout::LookupInfo {
             lookup_type,
             flag,
@@ -2268,9 +2284,12 @@ impl SfdParser {
             .and_then(|t| Self::glyph_from_token(t, glyph_order))
     }
 
-    fn sanitize_and_dedupe_lookup_name(name: &str, seen: &mut HashMap<String, usize>) -> String {
-        // Replace non-word characters with underscores
-        let sanitized = name
+    /// Sanitize a lookup name for FEA and make it unique: the first taker keeps
+    /// the bare form, later ones get `_2`, `_3`, ... Every returned name goes into
+    /// `taken`, generated ones included, so a later lookup whose own name happens
+    /// to sanitize to an already-generated form cannot collide with it.
+    fn sanitize_and_dedupe_lookup_name(name: &str, taken: &mut HashSet<String>) -> String {
+        let mut sanitized: String = name
             .chars()
             .map(|c| {
                 if c.is_alphanumeric() || c == '_' {
@@ -2279,16 +2298,81 @@ impl SfdParser {
                     '_'
                 }
             })
-            .collect::<String>();
-
-        // Ensure uniqueness by appending _N if needed
-        let entry = seen.entry(sanitized.clone()).or_default();
-        if *entry == 0 {
-            *entry = 1;
-            sanitized
-        } else {
-            *entry += 1;
-            format!("{}_{}", sanitized, entry)
+            .collect();
+        // A label may not begin with a digit, and a label that IS a keyword fails
+        // to parse wherever it stands ("Expected LABEL found SubKw"); either one
+        // aborts the whole conversion downstream. The list mirrors FEA_KEYWORDS in
+        // fea-rs-ast 0.1.6 (glyphcontainers.rs), which that crate keeps private.
+        const FEA_KEYWORDS: [&str; 52] = [
+            "anchor",
+            "anchordef",
+            "anon",
+            "anonymous",
+            "by",
+            "contour",
+            "cursive",
+            "device",
+            "enum",
+            "enumerate",
+            "excludedflt",
+            "exclude_dflt",
+            "feature",
+            "from",
+            "ignore",
+            "ignorebaseglyphs",
+            "ignoreligatures",
+            "ignoremarks",
+            "include",
+            "includedflt",
+            "include_dflt",
+            "language",
+            "languagesystem",
+            "lookup",
+            "lookupflag",
+            "mark",
+            "markattachmenttype",
+            "markclass",
+            "nameid",
+            "null",
+            "parameters",
+            "pos",
+            "position",
+            "required",
+            "righttoleft",
+            "reversesub",
+            "rsub",
+            "script",
+            "sub",
+            "substitute",
+            "subtable",
+            "table",
+            "usemarkfilteringset",
+            "useextension",
+            "valuerecorddef",
+            "base",
+            "gdef",
+            "head",
+            "hhea",
+            "name",
+            "vhea",
+            "vmtx",
+        ];
+        if sanitized.starts_with(|c: char| c.is_ascii_digit()) {
+            sanitized.insert(0, '_');
+        }
+        if FEA_KEYWORDS.contains(&sanitized.as_str()) {
+            sanitized.push('_');
+        }
+        if taken.insert(sanitized.clone()) {
+            return sanitized;
+        }
+        let mut n = 2usize;
+        loop {
+            let candidate = format!("{sanitized}_{n}");
+            if taken.insert(candidate.clone()) {
+                return candidate;
+            }
+            n += 1;
         }
     }
 
@@ -3173,7 +3257,7 @@ impl SfdParser {
     ///   sub [match]' lookup LookupName [backtrack] [lookahead];
     fn make_chain_context_line(
         entry: &layout::ChainPosSubEntry,
-        sanitized_lookup_names: &HashMap<String, usize>,
+        sanitized_lookup_names: &HashSet<String>,
     ) -> String {
         let mut line = entry.kind.clone();
 
@@ -3247,7 +3331,7 @@ impl SfdParser {
     }
 
     /// Look up a sanitized name from a map, or generate one.
-    fn sanitize_name_from_map(lookup_name: &str, _seen: &HashMap<String, usize>) -> String {
+    fn sanitize_name_from_map(lookup_name: &str, _seen: &HashSet<String>) -> String {
         // Replicate the sanitization logic without modifying the seen map
         lookup_name
             .chars()
@@ -3289,7 +3373,7 @@ impl SfdParser {
                 entry.lookups.values().flat_map(|names| {
                     names
                         .iter()
-                        .map(|n| Self::sanitize_name_from_map(n, &self.sanitized_lookup_names))
+                        .map(|n| Self::sanitize_name_from_map(n, &self.taken_lookup_names))
                 })
             })
             .collect();
@@ -3378,7 +3462,7 @@ impl SfdParser {
                     .keys()
                     .filter_map(|sub_name| {
                         self.chain_pos_sub.get(sub_name.as_str()).map(|entry| {
-                            Self::make_chain_context_line(entry, &self.sanitized_lookup_names)
+                            Self::make_chain_context_line(entry, &self.taken_lookup_names)
                         })
                     })
                     .collect();
@@ -5647,6 +5731,81 @@ mod tests {
                 .iter()
                 .any(|(tag, _)| tag == "abvm" || tag == "blwm"),
             "empty anchor-based mark features must not be exported"
+        );
+    }
+
+    #[test]
+    fn test_generated_suffix_names_cannot_be_taken_twice() {
+        // "My Lookup" and "My-Lookup" sanitize alike, so the second is assigned
+        // My_Lookup_2. A third lookup literally NAMED "My Lookup 2" also sanitizes
+        // to My_Lookup_2; if generated names were not registered as taken, it would
+        // silently replace the second lookup wholesale.
+        let data = concat!(
+            "SplineFontDB: 3.0\n",
+            "Lookup: 1 0 0 \"My Lookup\" {\"first-sub\"} ['calt' ('DFLT' <'dflt'>)]\n",
+            "Lookup: 1 0 0 \"My-Lookup\" {\"second-sub\"} ['calt' ('DFLT' <'dflt'>)]\n",
+            "Lookup: 1 0 0 \"My Lookup 2\" {\"third-sub\"} ['calt' ('DFLT' <'dflt'>)]\n",
+            "BeginChars: 2 2\n",
+            "StartChar: glyph_a\n",
+            "Encoding: 97 97 0\n",
+            "Width: 250\n",
+            "Substitution2: \"first-sub\" glyph_b\n",
+            "Substitution2: \"second-sub\" glyph_b\n",
+            "Substitution2: \"third-sub\" glyph_b\n",
+            "EndChar\n",
+            "StartChar: glyph_b\n",
+            "Encoding: 98 98 1\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "EndChars\n",
+            "EndSplineFont\n"
+        );
+
+        let font = load_str(data).expect("Failed to parse SFD");
+        let fea = font.features.to_fea();
+
+        for name in ["My_Lookup {", "My_Lookup_2 {", "My_Lookup_2_2 {"] {
+            assert!(
+                fea.contains(name),
+                "All three lookups must survive with distinct names, missing {name:?}:\n{fea}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_keyword_and_digit_lookup_names_get_safe_labels() {
+        // A lookup literally named "sub" or "2 Alternates" produced a label that
+        // fails to parse ("Expected LABEL found SubKw" / "Expected ID found NUM"),
+        // aborting the whole conversion rather than one lookup.
+        let data = concat!(
+            "SplineFontDB: 3.0\n",
+            "Lookup: 1 0 0 \"sub\" {\"first-sub\"} ['calt' ('DFLT' <'dflt'>)]\n",
+            "Lookup: 1 0 0 \"2 Alternates\" {\"second-sub\"} ['calt' ('DFLT' <'dflt'>)]\n",
+            "BeginChars: 2 2\n",
+            "StartChar: glyph_a\n",
+            "Encoding: 97 97 0\n",
+            "Width: 250\n",
+            "Substitution2: \"first-sub\" glyph_b\n",
+            "Substitution2: \"second-sub\" glyph_b\n",
+            "EndChar\n",
+            "StartChar: glyph_b\n",
+            "Encoding: 98 98 1\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "EndChars\n",
+            "EndSplineFont\n"
+        );
+
+        let font = load_str(data).expect("Failed to parse SFD");
+        let fea = font.features.to_fea();
+
+        assert!(
+            fea.contains("lookup sub_ {"),
+            "A keyword name takes a trailing underscore:\n{fea}"
+        );
+        assert!(
+            fea.contains("lookup _2_Alternates {"),
+            "A digit-leading name takes a leading underscore:\n{fea}"
         );
     }
 
