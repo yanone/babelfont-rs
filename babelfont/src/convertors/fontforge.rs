@@ -3389,7 +3389,23 @@ impl SfdParser {
             is_chain.insert(name.clone(), has_chain);
         }
 
-        let mut ordered_names: Vec<String> = is_chain.keys().cloned().collect();
+        // Take the names from the lookup tables, which are ordered, and NOT
+        // from `is_chain`, which is a HashMap. Rust seeds its hasher per
+        // process, so `is_chain.keys()` yields a different order on every run;
+        // the sort below is stable, so that order survives inside each bucket
+        // and the emitted feature code comes out shuffled. Two conversions of
+        // one unchanged .sfd produced different .glyphs files, different
+        // binaries, and a QA check on lookup order (smallcaps_before_ligatures)
+        // that passed or failed depending on the run.
+        let mut seen_names = HashSet::new();
+        let mut ordered_names: Vec<String> = self
+            .gsub_lookups
+            .0
+            .keys()
+            .chain(self.gpos_lookups.0.keys())
+            .filter(|name| seen_names.insert((*name).clone()))
+            .cloned()
+            .collect();
         ordered_names.sort_by_key(|name| {
             let ch = is_chain.get(name).copied().unwrap_or(false);
             let is_dep = all_deps.contains(name.as_str());
@@ -5731,6 +5747,51 @@ mod tests {
                 .iter()
                 .any(|(tag, _)| tag == "abvm" || tag == "blwm"),
             "empty anchor-based mark features must not be exported"
+        );
+    }
+
+    #[test]
+    fn test_feature_code_order_is_deterministic() {
+        // Rust seeds its hasher per process, so anything built by iterating a
+        // HashMap comes out in a different order on every run. The lookup and
+        // feature order used to be, which made one unchanged .sfd convert to
+        // different .glyphs files and compile to different binaries: 10 of 101
+        // families in a Google Fonts corpus, and a QA check on lookup order
+        // that passed or failed depending on the run.
+        //
+        // Iterating within one process cannot vary, so this compares the
+        // ordering against the source's own, which is what it must follow.
+        let sfd_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("resources/fontforge/Glegoo-Regular.sfd");
+        let data = String::from_utf8_lossy(&fs::read(&sfd_path).expect("Missing SFD")).into_owned();
+        let font = load_str(&data).expect("Failed to parse Glegoo SFD");
+
+        // Each emitted prefix carries the index of the lookup it came from, so
+        // the emitted sequence of indices shows the order that was used.
+        let indices: Vec<u32> = font
+            .features
+            .prefixes
+            .keys()
+            .filter_map(|name| name.rsplit_once("lookup_"))
+            .filter_map(|(_, index)| index.parse().ok())
+            .collect();
+        assert!(
+            indices.len() > 20,
+            "test needs a file with many lookups, found {}",
+            indices.len()
+        );
+
+        // The order is source order within each of three buckets --
+        // dependencies, then plain lookups, then chain/context lookups -- so
+        // the indices ascend except where a bucket changes. Two boundaries
+        // means at most two descents.
+        //
+        // This is what a shuffle breaks: over 30 lookups in random order,
+        // roughly half of each adjacent pair descends.
+        let descents = indices.windows(2).filter(|w| w[1] < w[0]).count();
+        assert!(
+            descents <= 2,
+            "lookup order is not source order within its buckets: {descents} descents in {indices:?}"
         );
     }
 
