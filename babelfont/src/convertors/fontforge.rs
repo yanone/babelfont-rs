@@ -32,10 +32,11 @@ mod utf7;
 use regex::Regex;
 #[allow(clippy::unwrap_used)] // Safe because the regex is valid
 static CHAIN_POSSUB_RE: LazyLock<Regex> = LazyLock::new(|| {
-    // Matches: (coverage|class|glyph) "<subtable name>" <n1> <n2> <n3> <nRules>
-    Regex::new(r#"(coverage|class|glyph)\s+"([^"]*)"\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)"#).unwrap()
+    // Matches: <kind> "<subtable name>" <n1> <n2> <n3> <nRules>. The kind
+    // vocabulary is SfdKind::parse's to judge, not this pattern's: an unknown kind
+    // must reach the code that can say "unhandled kind", not fail as a bad header.
+    Regex::new(r#"(\w+)\s+"([^"]*)"\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)"#).unwrap()
 });
-
 const GENERATED_KERN_SUBTABLE: &str = "generated_kern";
 const HEADER_VERSION_KEY: &str = "sfd.splinefontdb_version";
 const COMMENT_ENTRIES_KEY: &str = "sfd.comment_entries";
@@ -59,8 +60,11 @@ struct SfdParser {
     taken_lookup_names: HashSet<String>,
     /// Original lookup name -> the unique name it was given, for resolving references.
     assigned_lookup_names: HashMap<String, String>,
-    // Chain/context substitution and positioning data: subtable name -> entry
-    chain_pos_sub: IndexMap<String, layout::ChainPosSubEntry>,
+    /// Chain/context substitution and positioning data: subtable name -> rules.
+    ///
+    /// One subtable may hold several rules: a `class`-kind FPST lists one rule per
+    /// class sequence, unlike `coverage`/`glyph` which have exactly one.
+    chain_pos_sub: IndexMap<String, Vec<layout::ChainPosSubEntry>>,
     anchor_class_decls: Vec<(String, String)>,
     content: Option<String>, // Optional pre-loaded content for load_str()
 }
@@ -1904,15 +1908,16 @@ impl SfdParser {
         let flag: u16 = it.next().and_then(|s| s.parse().ok()).unwrap_or(0);
         // let _save_afm: u16 = it.next().and_then(|s| s.parse().ok()).unwrap_or(0);
 
-        // Lookup name between quotes
+        // Lookup name between quotes. Decoded, because SeqLookup references to it are
+        // decoded too, and a name carrying a UTF-7 escape has to match on both sides.
         let name = if let Some(start) = data.find('"') {
             if let Some(end) = data[start + 1..].find('"') {
-                &data[start + 1..start + 1 + end]
+                decode_utf7(&data[start + 1..start + 1 + end])
             } else {
-                ""
+                String::new()
             }
         } else {
-            ""
+            String::new()
         };
 
         let subtables_vec = Self::parse_subtable_names(data);
@@ -1942,10 +1947,10 @@ impl SfdParser {
 
         let lookup_type = Self::lookup_type_from_kind(kind);
         let sanitized_name =
-            Self::sanitize_and_dedupe_lookup_name(name, &mut self.taken_lookup_names);
+            Self::sanitize_and_dedupe_lookup_name(&name, &mut self.taken_lookup_names);
         if let Some(previous) = self
             .assigned_lookup_names
-            .insert(name.to_string(), sanitized_name.clone())
+            .insert(name.clone(), sanitized_name.clone())
         {
             // Two SFD lookups with the same name: references can only mean one of
             // them, and they now mean this one.
@@ -1981,7 +1986,9 @@ impl SfdParser {
         tokens
             .into_iter()
             .filter(|t| t.starts_with('"') && t.ends_with('"') && t.len() >= 2)
-            .map(|t| SmolStr::from(t.trim_matches('"')))
+            // Decoded: chain_pos_sub is keyed by the decoded subtable name, so a name
+            // carrying a UTF-7 escape would otherwise never match its rules.
+            .map(|t| SmolStr::from(decode_utf7(t.trim_matches('"'))))
             .collect()
     }
 
@@ -3040,7 +3047,8 @@ impl SfdParser {
             // Split quoted "name" component and following glyphs
             let parts: Vec<&str> = v.split('"').collect();
             if parts.len() >= 3 {
-                let name = SmolStr::from(parts[1]);
+                // Decoded, to match the subtable names the Lookup: line declares.
+                let name = SmolStr::from(decode_utf7(parts[1]));
                 let glyphs_part = parts[2].trim();
                 let glyphs: Vec<SmolStr> = glyphs_part
                     .split_whitespace()
@@ -3068,25 +3076,87 @@ impl SfdParser {
 
         let kind = caps.get(1).map(|m| m.as_str()).unwrap_or("");
         let subtable = caps.get(2).map(|m| m.as_str()).unwrap_or("");
-        // let _n1: usize = caps.get(3).unwrap().as_str().parse().unwrap_or(0);
-        // let _n2: usize = caps.get(4).unwrap().as_str().parse().unwrap_or(0);
-        // let _n3: usize = caps.get(5).unwrap().as_str().parse().unwrap_or(0);
-        // let _n_rules: usize = caps.get(6).unwrap().as_str().parse().unwrap_or(0);
+        let count_at = |group: usize| -> usize {
+            caps.get(group)
+                .and_then(|m| m.as_str().parse().ok())
+                .unwrap_or(0)
+        };
+        let declared = layout::FpstHeaderCounts {
+            classes: count_at(3),
+            backtrack_classes: count_at(4),
+            lookahead_classes: count_at(5),
+            rules: count_at(6),
+        };
 
         let subtable = decode_utf7(subtable);
 
-        // Only handle "coverage" and "glyph" kinds for ChainSub2 / ChainPos2 / etc.
-        if kind != "coverage" && kind != "glyph" {
+        let rule_kind = match lkey {
+            "ChainSub2" | "ContextSub2" => layout::RuleKind::Sub,
+            "ChainPos2" | "ContextPos2" => layout::RuleKind::Pos,
+            // Reverse chaining substitutes inline from a replacement list and is
+            // spelled `rsub ... by ...`. Neither is modelled here, and a forward
+            // `sub` carrying no action is an `ignore`, which suppresses the
+            // substitution the section asked for.
+            "ReverseChain2" => {
+                log::warn!(
+                    "reverse chaining lookup {subtable:?} is not supported; its rules are dropped"
+                );
+                return;
+            }
+            _ => return,
+        };
+
+        let Some(sfd_kind) = layout::SfdKind::parse(kind) else {
+            log::warn!("Unhandled FPST kind {kind:?} in subtable {subtable:?}; its rules are lost");
+            return;
+        };
+
+        if sfd_kind == layout::SfdKind::Class {
+            let entries = Self::parse_class_fpst(&possub[1..], rule_kind, declared, &subtable);
+            if !entries.is_empty() {
+                self.chain_pos_sub
+                    .entry(subtable.to_string())
+                    .or_default()
+                    .extend(entries);
+            }
             return;
         }
 
-        let mut matches: Vec<Vec<String>> = Vec::new();
-        let mut backtracks: Vec<Vec<String>> = Vec::new();
-        let mut lookaheads: Vec<Vec<String>> = Vec::new();
-        let mut lookups: IndexMap<usize, Vec<String>> = IndexMap::new();
+        // A rule opens differently per kind: a coverage rule with a bare
+        // `<ninput> <nbacktrack> <nlookahead>` line, a glyph rule with its `String:`
+        // line. Everything until the next opener belongs to the current rule, so a
+        // section holds as many rules as its header declares -- reading the whole
+        // body as one rule concatenates them into nonsense.
+        let mut entries: Vec<layout::ChainPosSubEntry> = Vec::new();
+        let mut cur: Option<layout::ChainPosSubEntry> = None;
+        let open = |entries: &mut Vec<layout::ChainPosSubEntry>,
+                    cur: &mut Option<layout::ChainPosSubEntry>| {
+            if let Some(e) = cur.take() {
+                entries.push(e);
+            }
+            *cur = Some(layout::ChainPosSubEntry {
+                kind: rule_kind,
+                sfd_kind,
+                matches: Vec::new(),
+                backtracks: Vec::new(),
+                lookaheads: Vec::new(),
+                lookups: IndexMap::new(),
+            });
+        };
+        // `<key>: <count> <glyph> ...` -- the count is a byte length, not a glyph
+        // count, so it is dropped rather than trusted.
+        let glyphs_of = |val: &str| -> Vec<String> {
+            val.split_whitespace().skip(1).map(String::from).collect()
+        };
 
         for line in possub[1..].iter() {
             let Some(colon_pos) = line.find(": ") else {
+                let ints: Vec<&str> = line.split_whitespace().collect();
+                if ints.len() == 3 && ints.iter().all(|n| n.parse::<usize>().is_ok()) {
+                    open(&mut entries, &mut cur);
+                }
+                // A bare single integer is the SeqLookup count; the SeqLookup lines
+                // carry their own indices, so there is nothing to record.
                 continue;
             };
             let key_part = &line[..colon_pos];
@@ -3094,54 +3164,47 @@ impl SfdParser {
 
             match key_part {
                 "Coverage" => {
-                    // Format: "Coverage: <count> <glyph1> <glyph2> ..."
-                    let glyphs: Vec<String> = val_part
-                        .split_whitespace()
-                        .skip(1) // skip the count
-                        .map(|s| s.to_string())
-                        .collect();
-                    matches.push(glyphs);
-                }
-                "BCoverage" => {
-                    let glyphs: Vec<String> = val_part
-                        .split_whitespace()
-                        .skip(1)
-                        .map(|s| s.to_string())
-                        .collect();
-                    backtracks.push(glyphs);
-                }
-                "FCoverage" => {
-                    let glyphs: Vec<String> = val_part
-                        .split_whitespace()
-                        .skip(1)
-                        .map(|s| s.to_string())
-                        .collect();
-                    lookaheads.push(glyphs);
+                    if let Some(e) = cur.as_mut() {
+                        e.matches
+                            .push(layout::GlyphGroup::Glyphs(glyphs_of(val_part)));
+                    }
                 }
                 "String" => {
-                    // Format: "String: <count> <glyph1> <glyph2> ..."
-                    let glyphs: Vec<String> = val_part
-                        .split_whitespace()
-                        .skip(1)
-                        .map(|s| s.to_string())
-                        .collect();
-                    matches.push(glyphs);
+                    open(&mut entries, &mut cur);
+                    if let Some(e) = cur.as_mut() {
+                        e.matches
+                            .push(layout::GlyphGroup::Glyphs(glyphs_of(val_part)));
+                    }
                 }
-                "BString" => {
-                    let glyphs: Vec<String> = val_part
-                        .split_whitespace()
-                        .skip(1)
-                        .map(|s| s.to_string())
-                        .collect();
-                    backtracks.push(glyphs);
+                "BCoverage" | "FCoverage" => {
+                    // An absent context is no constraint: not a position at all.
+                    let glyphs = glyphs_of(val_part);
+                    if glyphs.is_empty() {
+                        continue;
+                    }
+                    if let Some(e) = cur.as_mut() {
+                        if key_part == "BCoverage" {
+                            e.backtracks.push(layout::GlyphGroup::Glyphs(glyphs));
+                        } else {
+                            e.lookaheads.push(layout::GlyphGroup::Glyphs(glyphs));
+                        }
+                    }
                 }
-                "FString" => {
-                    let glyphs: Vec<String> = val_part
-                        .split_whitespace()
-                        .skip(1)
-                        .map(|s| s.to_string())
-                        .collect();
-                    lookaheads.push(glyphs);
+                "BString" | "FString" => {
+                    // A glyph-kind section spells its context one glyph per position,
+                    // exactly as it spells the input. An absent context is no
+                    // constraint: not a position at all.
+                    if let Some(e) = cur.as_mut() {
+                        let groups = val_part
+                            .split_whitespace()
+                            .skip(1)
+                            .map(|g| layout::GlyphGroup::Glyphs(vec![g.to_string()]));
+                        if key_part == "BString" {
+                            e.backtracks.extend(groups);
+                        } else {
+                            e.lookaheads.extend(groups);
+                        }
+                    }
                 }
                 "SeqLookup" => {
                     // Format: "SeqLookup: <index> "<lookup name>""
@@ -3149,35 +3212,191 @@ impl SfdParser {
                     if let Some(space) = trimmed.find(' ') {
                         let index_str = &trimmed[..space];
                         let lookup_name = trimmed[space + 1..].trim().trim_matches('"');
-                        if let Ok(index) = index_str.parse::<usize>() {
-                            let decoded = decode_utf7(lookup_name);
-                            lookups.entry(index).or_default().push(decoded);
+                        if let (Ok(index), Some(e)) = (index_str.parse::<usize>(), cur.as_mut()) {
+                            e.lookups
+                                .entry(index)
+                                .or_default()
+                                .push(decode_utf7(lookup_name));
                         }
                     }
                 }
                 _ => {}
             }
         }
+        if let Some(e) = cur.take() {
+            entries.push(e);
+        }
 
-        // Determine the kind string ("sub" or "pos") based on the SFD key
-        let kind_str = match lkey {
-            "ChainSub2" | "ContextSub2" => "sub".to_string(),
-            "ChainPos2" | "ContextPos2" => "pos".to_string(),
-            "ReverseChain2" => "sub".to_string(),
-            _ => return,
+        let body = layout::FpstBodyCounts {
+            classes: 0,
+            backtrack_classes: 0,
+            lookahead_classes: 0,
+            rules: entries.len(),
+        };
+        for mismatch in declared.mismatches(&body) {
+            log::warn!("FPST {subtable:?} {mismatch}");
+        }
+
+        if !entries.is_empty() {
+            self.chain_pos_sub
+                .entry(subtable.to_string())
+                .or_default()
+                .extend(entries);
+        }
+    }
+
+    /// Parse the body of a `class`-kind FPST section (ContextSub2/ChainSub2/...).
+    ///
+    /// Unlike the `coverage` and `glyph` kinds, a class section defines glyph classes
+    /// once and then lists several rules that reference them by index:
+    ///
+    /// ```text
+    /// ContextSub2: class "ccmp subtable"  4 0 0 4
+    ///   Class: 11 i j uni0268                 <- class 1 (the leading number is a
+    ///   Class: 153 acutecomb uni0302 ...         string length, not a glyph count)
+    ///   Class: 68 dotbelowcomb ...
+    ///  2 0 0                                  <- rule: 2 input, 0 backtrack, 0 lookahead
+    ///   ClsList: 1 2
+    ///   BClsList:
+    ///   FClsList:
+    ///  1                                      <- one SeqLookup follows
+    ///   SeqLookup: 0 "Single Substitution lookup 1"
+    ///   ...
+    ///   ClassNames: "0" "1" "2" "3"
+    /// ```
+    ///
+    /// Class 0 is implicit and never written out, so index `n` is the `n`-th `Class:`
+    /// line and index 0 means "any glyph in none of them", kept as
+    /// [`layout::GlyphGroup::AllOthers`] until the glyph list is known.
+    ///
+    /// Backtrack classes are stored in feature-file order, farthest from the input
+    /// first. FontForge's compiler applies the OpenType reversal; the SFD does not.
+    fn parse_class_fpst(
+        lines: &[&str],
+        rule_kind: layout::RuleKind,
+        declared: layout::FpstHeaderCounts,
+        subtable: &str,
+    ) -> Vec<layout::ChainPosSubEntry> {
+        let mut classes: Vec<Vec<String>> = Vec::new();
+        let mut bclasses: Vec<Vec<String>> = Vec::new();
+        let mut fclasses: Vec<Vec<String>> = Vec::new();
+        let mut entries: Vec<layout::ChainPosSubEntry> = Vec::new();
+
+        // The rule currently being accumulated.
+        let mut cur: Option<layout::ChainPosSubEntry> = None;
+
+        // `Class: <len> <glyph> <glyph> ...` -- drop the leading length.
+        let glyphs_of = |val: &str| -> Vec<String> {
+            val.split_whitespace().skip(1).map(String::from).collect()
+        };
+        // `ClsList: 1 3 2` -> the glyph groups for classes 1, 3, 2.
+        let resolve = |val: &str, defs: &[Vec<String>]| -> Vec<layout::GlyphGroup> {
+            val.split_whitespace()
+                .map(|t| match t.parse::<usize>() {
+                    // Class 0 is implicit: every glyph no sibling class claims.
+                    Ok(0) => layout::GlyphGroup::AllOthers(defs.to_vec()),
+                    Ok(i) if i <= defs.len() => layout::GlyphGroup::Glyphs(defs[i - 1].clone()),
+                    // Keep the position rather than closing the gap: SeqLookup indices
+                    // count positions, so dropping one here would move a lookup onto the
+                    // wrong glyph. An empty group makes the emitter discard the rule.
+                    _ => {
+                        log::warn!(
+                            "FPST class index {t:?} does not name one of the {} declared \
+                             classes; the rule it appears in is dropped",
+                            defs.len()
+                        );
+                        layout::GlyphGroup::Glyphs(Vec::new())
+                    }
+                })
+                .collect()
         };
 
-        self.chain_pos_sub.insert(
-            subtable.to_string(),
-            layout::ChainPosSubEntry {
-                kind: kind_str,
-                sfd_kind: kind.to_string(),
-                matches,
-                backtracks,
-                lookaheads,
-                lookups,
-            },
-        );
+        for line in lines {
+            if let Some((key, val)) = line
+                .split_once(": ")
+                .or(line.strip_suffix(':').map(|k| (k, "")))
+            {
+                match key {
+                    "Class" => classes.push(glyphs_of(val)),
+                    "BClass" => bclasses.push(glyphs_of(val)),
+                    "FClass" => fclasses.push(glyphs_of(val)),
+                    "ClsList" => {
+                        if let Some(e) = cur.as_mut() {
+                            e.matches = resolve(val, &classes);
+                        }
+                    }
+                    "BClsList" => {
+                        if let Some(e) = cur.as_mut() {
+                            e.backtracks = resolve(val, &bclasses);
+                        }
+                    }
+                    "FClsList" => {
+                        if let Some(e) = cur.as_mut() {
+                            e.lookaheads = resolve(val, &fclasses);
+                        }
+                    }
+                    "SeqLookup" => {
+                        if let Some(e) = cur.as_mut() {
+                            let trimmed = val.trim();
+                            if let Some(space) = trimmed.find(' ') {
+                                if let Ok(index) = trimmed[..space].parse::<usize>() {
+                                    let name = trimmed[space + 1..].trim().trim_matches('"');
+                                    e.lookups
+                                        .entry(index)
+                                        .or_default()
+                                        .push(decode_utf7(name).to_string());
+                                }
+                            }
+                        }
+                    }
+                    _ => {} // ClassNames / BClassNames / FClassNames
+                }
+                continue;
+            }
+
+            // A bare `<ninput> <nbacktrack> <nlookahead>` line opens the next rule.
+            let nums: Vec<&str> = line.split_whitespace().collect();
+            if nums.len() == 3 && nums.iter().all(|n| n.parse::<usize>().is_ok()) {
+                if let Some(e) = cur.take() {
+                    entries.push(e);
+                }
+                cur = Some(layout::ChainPosSubEntry {
+                    kind: rule_kind,
+                    sfd_kind: layout::SfdKind::Class,
+                    matches: Vec::new(),
+                    backtracks: Vec::new(),
+                    lookaheads: Vec::new(),
+                    lookups: IndexMap::new(),
+                });
+            }
+            // A bare single integer is the SeqLookup count. A count of zero makes
+            // the rule an `ignore`, which the emitter reads back off the empty
+            // lookup map, so there is nothing to store here.
+        }
+        if let Some(e) = cur.take() {
+            entries.push(e);
+        }
+        let body = layout::FpstBodyCounts {
+            classes: classes.len(),
+            backtrack_classes: bclasses.len(),
+            lookahead_classes: fclasses.len(),
+            rules: entries.len(),
+        };
+        for mismatch in declared.mismatches(&body) {
+            log::warn!("FPST {subtable:?} {mismatch}");
+        }
+
+        // A rule with no input sequence cannot be expressed; drop it rather than
+        // emitting invalid FEA.
+        let before = entries.len();
+        entries.retain(|e| !e.matches.is_empty());
+        if entries.len() < before {
+            log::warn!(
+                "dropped {} class FPST rule(s) with an empty input sequence",
+                before - entries.len()
+            );
+        }
+        entries
     }
 
     fn glyph_container(name: impl AsRef<str>) -> fea_rs_ast::GlyphContainer {
@@ -3234,117 +3453,206 @@ impl SfdParser {
             && !trimmed.contains(':')
     }
 
-    /// Convert lookup flags into AFDKO flag names.
-    fn make_lookup_flags(flag: u16) -> Vec<String> {
-        let mut flags = Vec::new();
-        if flag & 0x01 != 0 {
-            flags.push("RightToLeft".to_string());
-        }
-        if flag & 0x02 != 0 {
-            flags.push("IgnoreBaseGlyphs".to_string());
-        }
-        if flag & 0x04 != 0 {
-            flags.push("IgnoreLigatures".to_string());
-        }
-        if flag & 0x08 != 0 {
-            flags.push("IgnoreMarks".to_string());
-        }
-        flags
-    }
-
-    /// Generate a single feature rule line for a chain/context subtable entry.
-    /// Produces something like:
-    ///   sub [match]' lookup LookupName [backtrack] [lookahead];
-    fn make_chain_context_line(
+    /// Turn one chain/context rule into a feature statement:
+    ///
+    ///   [ignore] sub <backtrack> <input>' lookup <Name> <lookahead>;
+    ///
+    /// The rule is validated before any statement is built or any class is named,
+    /// so a rule that cannot be expressed leaves nothing behind -- no orphan
+    /// `@class` definitions, no references to lookups the file never defines.
+    /// `None` means the rule was dropped, with one warning stating the reason.
+    fn make_chain_context_statement(
         entry: &layout::ChainPosSubEntry,
-        sanitized_lookup_names: &HashSet<String>,
-    ) -> String {
-        let mut line = entry.kind.clone();
+        assigned_lookup_names: &HashMap<String, String>,
+        emitted_lookups: &HashSet<String>,
+        all_glyphs: &[String],
+        known_glyphs: &HashSet<&str>,
+        lookup_name: &str,
+        namer: &mut layout::ClassNamer,
+    ) -> Option<fea_rs_ast::Statement> {
+        // Resolve every position to concrete glyphs. An SFD keeps the class lists of
+        // glyphs that were later deleted, and a name the compiler cannot resolve must
+        // not reach the feature file.
+        let mut missing: Vec<String> = Vec::new();
+        let mut resolve = |groups: &[layout::GlyphGroup]| -> Vec<Vec<String>> {
+            groups
+                .iter()
+                .map(|g| {
+                    let (kept, gone): (Vec<String>, Vec<String>) = g
+                        .resolve(all_glyphs)
+                        .into_iter()
+                        .partition(|n| known_glyphs.contains(n.as_str()));
+                    missing.extend(gone);
+                    kept
+                })
+                .collect()
+        };
+        let matches = resolve(&entry.matches);
+        let backtracks = resolve(&entry.backtracks);
+        let lookaheads = resolve(&entry.lookaheads);
 
-        // Backtrack glyphs (before the matching sequence)
-        for glyphs in &entry.backtracks {
-            if glyphs.is_empty() {
-                continue;
+        if !missing.is_empty() {
+            // A class or coverage position is a set, so it stands without the absent
+            // names. A glyph-kind position is a single glyph, and a position that
+            // SeqLookup indices count, so the rule cannot survive losing one.
+            if entry.sfd_kind == layout::SfdKind::Glyph {
+                log::warn!(
+                    "lookup {lookup_name:?}: a contextual rule names glyphs the font does \
+                     not have ({}); the rule is dropped",
+                    missing.join(", ")
+                );
+                return None;
             }
-            line.push(' ');
-            line.push_str(&Self::glyphs_to_group(glyphs));
+            log::warn!(
+                "lookup {lookup_name:?}: glyphs the font does not have removed from a \
+                 contextual rule: {}",
+                missing.join(", ")
+            );
+        }
+        if matches.is_empty() {
+            log::warn!("lookup {lookup_name:?}: a contextual rule has no input; it is dropped");
+            return None;
+        }
+        if [&matches, &backtracks, &lookaheads]
+            .iter()
+            .any(|groups| groups.iter().any(|g| g.is_empty()))
+        {
+            // No glyph can occupy the position, so the rule can never fire. Leaving
+            // the position out would silently widen the rule instead.
+            log::warn!(
+                "lookup {lookup_name:?}: a contextual rule has a position no glyph can \
+                 occupy, so it can never fire; it is dropped"
+            );
+            return None;
         }
 
-        // Match glyphs with optional lookup references.
-        // For "coverage" kind: all glyphs form a group (class) with a single ' marker.
-        // For "glyph" kind: each glyph in the sequence gets its own ' marker and lookup.
-        if entry.sfd_kind == "coverage" {
-            // Coverage kind: all match glyphs in a group with a single ' marker
-            for (i, glyphs) in entry.matches.iter().enumerate() {
-                if !glyphs.is_empty() {
-                    line.push(' ');
-                    line.push_str(&Self::glyphs_to_group(glyphs));
-                    line.push('\'');
-                    if let Some(lookup_names) = entry.lookups.get(&i) {
-                        for lookup_name in lookup_names {
-                            let sanitized =
-                                Self::sanitize_name_from_map(lookup_name, sanitized_lookup_names);
-                            line.push_str(&format!(" lookup {}", sanitized));
+        // Resolve every lookup call against the lookups the feature file will
+        // actually define, so a reference can never dangle.
+        let position_count = match entry.sfd_kind {
+            layout::SfdKind::Glyph => matches.iter().map(Vec::len).sum(),
+            layout::SfdKind::Coverage | layout::SfdKind::Class => matches.len(),
+        };
+        let mut refs: IndexMap<usize, Vec<SmolStr>> = IndexMap::new();
+        for (&index, names) in &entry.lookups {
+            if index >= position_count {
+                log::warn!(
+                    "lookup {lookup_name:?}: SeqLookup index {index} is past the last \
+                     input position of its rule; the rule is dropped"
+                );
+                return None;
+            }
+            for name in names {
+                let Some(assigned) = assigned_lookup_names.get(name) else {
+                    log::warn!(
+                        "lookup {lookup_name:?}: a contextual rule calls {name:?}, which \
+                         the font never defines; the rule is dropped"
+                    );
+                    return None;
+                };
+                if !emitted_lookups.contains(assigned) {
+                    // The lookup exists but is empty, so it is never written out.
+                    // Calling it substitutes nothing, yet the match still stops later
+                    // rules at this position -- which is what `ignore` says, and what
+                    // this rule becomes if no other call survives.
+                    log::warn!(
+                        "lookup {lookup_name:?}: a contextual rule calls {name:?}, which \
+                         is empty; the call is dropped"
+                    );
+                    continue;
+                }
+                refs.entry(index).or_default().push(SmolStr::from(assigned));
+            }
+        }
+
+        // Everything is validated: build the statement. Nothing below may fail.
+        //
+        // The kinds disagree about backtrack order. A class section lists BClsList in
+        // feature-file order, farthest from the input first, which is what we want. A
+        // coverage or glyph section stores BCoverage/BString the way OpenType does,
+        // nearest the input first, so it has to be turned round.
+        let backtracks: Vec<Vec<String>> = match entry.sfd_kind {
+            layout::SfdKind::Class => backtracks,
+            layout::SfdKind::Coverage | layout::SfdKind::Glyph => {
+                backtracks.into_iter().rev().collect()
+            }
+        };
+
+        // A class-kind section declares its classes once, so name them and refer to
+        // them; the other kinds list their glyphs inline.
+        let container =
+            |glyphs: &[String], namer: &mut layout::ClassNamer| -> fea_rs_ast::GlyphContainer {
+                match entry.sfd_kind {
+                    layout::SfdKind::Class => namer.reference(glyphs, lookup_name),
+                    layout::SfdKind::Coverage | layout::SfdKind::Glyph => {
+                        if let [only] = glyphs {
+                            Self::glyph_container(only)
+                        } else {
+                            fea_rs_ast::GlyphContainer::GlyphClass(fea_rs_ast::GlyphClass::new(
+                                glyphs.iter().map(Self::glyph_container).collect(),
+                                0..0,
+                            ))
                         }
                     }
                 }
+            };
+        let prefix: Vec<_> = backtracks.iter().map(|g| container(g, namer)).collect();
+        let suffix: Vec<_> = lookaheads.iter().map(|g| container(g, namer)).collect();
+        // Each input position is one container; in a glyph-kind rule each glyph of
+        // the sequence is its own position, which is what SeqLookup indices count.
+        let glyphs: Vec<fea_rs_ast::GlyphContainer> = match entry.sfd_kind {
+            layout::SfdKind::Glyph => matches
+                .iter()
+                .flatten()
+                .map(Self::glyph_container)
+                .collect(),
+            layout::SfdKind::Coverage | layout::SfdKind::Class => {
+                matches.iter().map(|g| container(g, namer)).collect()
             }
-        } else {
-            // Glyph kind: each individual glyph gets its own ' marker and lookup
-            for (i, glyphs) in entry.matches.iter().enumerate() {
-                for glyph in glyphs {
-                    line.push(' ');
-                    line.push_str(glyph);
-                    line.push('\'');
-                    if let Some(lookup_names) = entry.lookups.get(&i) {
-                        for lookup_name in lookup_names {
-                            let sanitized =
-                                Self::sanitize_name_from_map(lookup_name, sanitized_lookup_names);
-                            line.push_str(&format!(" lookup {}", sanitized));
-                        }
-                    }
-                }
-            }
+        };
+
+        // A rule that calls no lookup matches only to stop a later, broader rule
+        // from firing. That is `ignore` in a feature file, not a rule with no action.
+        if refs.is_empty() {
+            let contexts = vec![(prefix, glyphs, suffix)];
+            return Some(match entry.kind {
+                layout::RuleKind::Sub => fea_rs_ast::Statement::IgnoreSubst(
+                    fea_rs_ast::IgnoreStatement::new(contexts, 0..0, fea_rs_ast::Subst),
+                ),
+                layout::RuleKind::Pos => fea_rs_ast::Statement::IgnorePos(
+                    fea_rs_ast::IgnoreStatement::new(contexts, 0..0, fea_rs_ast::Pos),
+                ),
+            });
         }
 
-        // Lookahead glyphs
-        for glyphs in &entry.lookaheads {
-            if glyphs.is_empty() {
-                continue;
+        let lookups: Vec<Vec<SmolStr>> = (0..glyphs.len())
+            .map(|i| refs.get(&i).cloned().unwrap_or_default())
+            .collect();
+        Some(match entry.kind {
+            layout::RuleKind::Sub => fea_rs_ast::Statement::ChainedContextSubst(
+                fea_rs_ast::ChainedContextStatement::new(
+                    glyphs,
+                    prefix,
+                    suffix,
+                    lookups,
+                    0..0,
+                    fea_rs_ast::Subst,
+                ),
+            ),
+            layout::RuleKind::Pos => {
+                fea_rs_ast::Statement::ChainedContextPos(fea_rs_ast::ChainedContextStatement::new(
+                    glyphs,
+                    prefix,
+                    suffix,
+                    lookups,
+                    0..0,
+                    fea_rs_ast::Pos,
+                ))
             }
-            line.push(' ');
-            line.push_str(&Self::glyphs_to_group(glyphs));
-        }
-
-        line.push(';');
-        line
+        })
     }
 
     /// Format a list of glyph names as a feature file glyph group.
     /// Single glyph -> just the glyph name; multiple -> [glyph1 glyph2 ...]
-    fn glyphs_to_group(glyphs: &[String]) -> String {
-        if glyphs.len() == 1 {
-            glyphs[0].clone()
-        } else {
-            format!("[{}]", glyphs.join(" "))
-        }
-    }
-
-    /// Look up a sanitized name from a map, or generate one.
-    fn sanitize_name_from_map(lookup_name: &str, _seen: &HashSet<String>) -> String {
-        // Replicate the sanitization logic without modifying the seen map
-        lookup_name
-            .chars()
-            .map(|c| {
-                if c.is_alphanumeric() || c == '_' {
-                    c
-                } else {
-                    '_'
-                }
-            })
-            .collect::<String>()
-    }
-
     /// Escape a string for a quoted Windows-platform FEA name: anything outside
     /// printable ASCII, plus the quote and backslash, becomes a `\XXXX` escape of
     /// its UTF-16 code units.
@@ -3364,22 +3672,38 @@ impl SfdParser {
     }
 
     fn insert_gtables(&mut self) {
-        // Collect all lookup names referenced by chain/context entries.
-        // These must be emitted before the chain/context lookups that reference them.
-        let all_deps: std::collections::HashSet<String> = self
-            .chain_pos_sub
-            .values()
-            .flat_map(|entry| {
-                entry.lookups.values().flat_map(|names| {
-                    names
-                        .iter()
-                        .map(|n| Self::sanitize_name_from_map(n, &self.taken_lookup_names))
-                })
-            })
+        // Needed to expand FontForge's implicit "All_Others" class (class 0), which is
+        // every glyph not named by a sibling class. Glyphs are fully parsed by now.
+        let all_glyphs: Vec<String> = self
+            .font
+            .glyphs
+            .0
+            .iter()
+            .map(|g| g.name.to_string())
             .collect();
+        let known_glyphs: HashSet<&str> = all_glyphs.iter().map(String::as_str).collect();
+        // The lookups written out so far, in their assigned names. A chain rule may
+        // only call a lookup that is already defined above it in the feature file,
+        // so its references are checked against this.
+        let mut emitted_lookups: HashSet<String> = HashSet::new();
 
-        // Build an ordered list of lookup names: dependencies first,
-        // then non-chain lookups, then chain/context lookups last.
+        // The lookups a chain lookup's rules call, by the caller's assigned name.
+        // Needed below to hoist a dependency defined after its caller.
+        let mut deps_by_lookup: HashMap<String, Vec<String>> = HashMap::new();
+        for (name, lookup) in self.gsub_lookups.0.iter().chain(self.gpos_lookups.0.iter()) {
+            let deps: Vec<String> = lookup
+                .subtables
+                .keys()
+                .filter_map(|sub| self.chain_pos_sub.get(sub.as_str()))
+                .flatten()
+                .flat_map(|entry| entry.lookups.values().flatten())
+                .filter_map(|n| self.assigned_lookup_names.get(n).cloned())
+                .collect();
+            if !deps.is_empty() {
+                deps_by_lookup.insert(name.clone(), deps);
+            }
+        }
+
         let mut is_chain: HashMap<String, bool> = HashMap::new();
         for (name, lookup) in self.gsub_lookups.0.iter().chain(self.gpos_lookups.0.iter()) {
             let has_chain = lookup
@@ -3389,16 +3713,16 @@ impl SfdParser {
             is_chain.insert(name.clone(), has_chain);
         }
 
-        // Take the names from the lookup tables, which are ordered, and NOT
-        // from `is_chain`, which is a HashMap. Rust seeds its hasher per
-        // process, so `is_chain.keys()` yields a different order on every run;
-        // the sort below is stable, so that order survives inside each bucket
-        // and the emitted feature code comes out shuffled. Two conversions of
-        // one unchanged .sfd produced different .glyphs files, different
-        // binaries, and a QA check on lookup order (smallcaps_before_ligatures)
-        // that passed or failed depending on the run.
+        // Definition order is application order: the compiled font applies lookups
+        // by their LookupList index, which follows the order they are defined here,
+        // and the feature block's reference order is discarded at compile time. So
+        // lookups are defined in the order the SFD declared them, with exactly one
+        // deviation: a lookup that a chain rule calls must already be defined when
+        // the chain is, so a dependency declared after its caller is hoisted to
+        // just before it. The names come from the lookup tables, which are ordered
+        // maps -- an unordered source here made conversion nondeterministic once.
         let mut seen_names = HashSet::new();
-        let mut ordered_names: Vec<String> = self
+        let declaration: Vec<String> = self
             .gsub_lookups
             .0
             .keys()
@@ -3406,17 +3730,25 @@ impl SfdParser {
             .filter(|name| seen_names.insert((*name).clone()))
             .cloned()
             .collect();
-        ordered_names.sort_by_key(|name| {
-            let ch = is_chain.get(name).copied().unwrap_or(false);
-            let is_dep = all_deps.contains(name.as_str());
-            if is_dep && !ch {
-                0 // Dependencies first
-            } else if ch {
-                2 // Chain/context lookups last
-            } else {
-                1 // Everything else in the middle
+        let mut ordered_names: Vec<String> = Vec::new();
+        let mut placed: HashSet<String> = HashSet::new();
+        fn place(
+            name: &str,
+            deps_by_lookup: &HashMap<String, Vec<String>>,
+            placed: &mut HashSet<String>,
+            out: &mut Vec<String>,
+        ) {
+            if !placed.insert(name.to_string()) {
+                return;
             }
-        });
+            for dep in deps_by_lookup.get(name).into_iter().flatten() {
+                place(dep, deps_by_lookup, placed, out);
+            }
+            out.push(name.to_string());
+        }
+        for name in &declaration {
+            place(name, &deps_by_lookup, &mut placed, &mut ordered_names);
+        }
 
         // The `aalt` feature may only contain feature references and single or
         // alternate substitution rules -- a lookup reference is a spec error and
@@ -3472,52 +3804,72 @@ impl SfdParser {
             let has_chain = is_chain.get(name).copied().unwrap_or(false);
 
             if has_chain {
-                // Generate chain context rules from the parsed data
-                let chain_lines: Vec<String> = lookup
+                // Generate the chain/context statements from the parsed data. They
+                // join the block like any other lookup's statements, so the one path
+                // below writes every kind of lookup out.
+                let mut namer = layout::ClassNamer::default();
+                let rules: Vec<fea_rs_ast::Statement> = lookup
                     .subtables
                     .keys()
-                    .filter_map(|sub_name| {
-                        self.chain_pos_sub.get(sub_name.as_str()).map(|entry| {
-                            Self::make_chain_context_line(entry, &self.taken_lookup_names)
-                        })
+                    .filter_map(|sub_name| self.chain_pos_sub.get(sub_name.as_str()))
+                    .flatten()
+                    .filter_map(|entry| {
+                        Self::make_chain_context_statement(
+                            entry,
+                            &self.assigned_lookup_names,
+                            &emitted_lookups,
+                            &all_glyphs,
+                            &known_glyphs,
+                            &lookup.block.name,
+                            &mut namer,
+                        )
                     })
                     .collect();
-                // Build a custom prefix with the lookup wrapper
-                if !chain_lines.is_empty() {
-                    let mut fea_code = format!("lookup {} {{\n", lookup.block.name);
-                    // Add lookupflag if present
-                    if lookup.flag != 0 {
-                        let flags = Self::make_lookup_flags(lookup.flag);
-                        if !flags.is_empty() {
-                            fea_code.push_str(&format!("    lookupflag {};\n", flags.join(" ")));
-                        }
+                // Every rule was dropped: leave the block empty, so the shared skip
+                // below keeps the feature registration from referencing a lookup
+                // that is never defined.
+                if !rules.is_empty() {
+                    // Only the four low bits have feature-file names; the high byte
+                    // is a mark-attachment class this convertor does not model yet,
+                    // and asserting `lookupflag 0` for it would claim the opposite
+                    // of what the SFD said.
+                    if lookup.flag & !0x000F != 0 {
+                        log::warn!(
+                            "lookup {:?}: flag {:#06x} carries bits (mark-attachment \
+                             class or filtering set) that are not converted",
+                            lookup.block.name,
+                            lookup.flag
+                        );
                     }
-                    for line in &chain_lines {
-                        fea_code.push_str(&format!("    {}\n", line));
+                    if lookup.flag & 0x000F != 0 {
+                        lookup
+                            .block
+                            .statements
+                            .push(fea_rs_ast::Statement::LookupFlag(
+                                fea_rs_ast::LookupFlagStatement::new(
+                                    lookup.flag & 0x000F,
+                                    None,
+                                    None,
+                                    0..0,
+                                ),
+                            ));
                     }
-                    fea_code.push_str(&format!("}} {};\n", lookup.block.name));
-                    self.font.features.prefixes.insert(
-                        SmolStr::from(name.as_str()),
-                        crate::features::PossiblyAutomaticCode {
-                            code: fea_code,
-                            ..Default::default()
-                        },
-                    );
+                    lookup.block.statements.extend(namer.definitions());
+                    lookup.block.statements.extend(rules);
                 }
-            } else {
-                if lookup.block.statements.is_empty() {
-                    // No statements: skip this lookup
-                    continue;
-                }
-                // Normal lookup: use the auto-generated block code
-                self.font.features.prefixes.insert(
-                    SmolStr::from(name.as_str()),
-                    crate::features::PossiblyAutomaticCode {
-                        code: lookup.block.as_fea(""),
-                        ..Default::default()
-                    },
-                );
             }
+            if lookup.block.statements.is_empty() {
+                // No statements: skip this lookup
+                continue;
+            }
+            emitted_lookups.insert(name.clone());
+            self.font.features.prefixes.insert(
+                SmolStr::from(name.as_str()),
+                crate::features::PossiblyAutomaticCode {
+                    code: lookup.block.as_fea(""),
+                    ..Default::default()
+                },
+            );
 
             inlinable_rules.insert(
                 SmolStr::from(lookup.block.name.as_str()),
@@ -3529,8 +3881,33 @@ impl SfdParser {
                     .filter(|line| is_single_or_alternate_sub(line))
                     .collect(),
             );
+        }
 
-            // Rearrange lookup.features as feature: Vec<FeatureLangSys>
+        // Register each emitted lookup with its features in declaration order. The
+        // compiled font ignores this order -- it applies lookups by LookupList
+        // index, arranged above -- but the feature file reads best when both agree,
+        // and FontForge's own export writes it this way.
+        let mut seen = HashSet::new();
+        let declaration_order: Vec<String> = self
+            .gsub_lookups
+            .0
+            .keys()
+            .chain(self.gpos_lookups.0.keys())
+            .filter(|name| seen.insert((*name).clone()))
+            .cloned()
+            .collect();
+        for name in &declaration_order {
+            if !emitted_lookups.contains(name) {
+                continue;
+            }
+            let Some(lookup) = self
+                .gsub_lookups
+                .0
+                .get(name)
+                .or_else(|| self.gpos_lookups.0.get(name))
+            else {
+                continue;
+            };
             for fls in &lookup.features {
                 feature_map
                     .entry(fls.feature.clone())
@@ -5781,92 +6158,21 @@ mod tests {
             indices.len()
         );
 
-        // The order is source order within each of three buckets --
-        // dependencies, then plain lookups, then chain/context lookups -- so
-        // the indices ascend except where a bucket changes. Two boundaries
-        // means at most two descents.
+        // Definition order is declaration order with one deviation: a lookup a
+        // chain rule calls is hoisted to just before its caller, since the
+        // feature file must define it first. Glegoo declares each contextual
+        // lookup ahead of its callees, so every swapped pair below is such a
+        // hoist; the final 0 is the first GPOS lookup following the GSUB ones.
         //
-        // This is what a shuffle breaks: over 30 lookups in random order,
-        // roughly half of each adjacent pair descends.
-        let descents = indices.windows(2).filter(|w| w[1] < w[0]).count();
-        assert!(
-            descents <= 2,
-            "lookup order is not source order within its buckets: {descents} descents in {indices:?}"
-        );
-    }
-
-    #[test]
-    fn test_generated_suffix_names_cannot_be_taken_twice() {
-        // "My Lookup" and "My-Lookup" sanitize alike, so the second is assigned
-        // My_Lookup_2. A third lookup literally NAMED "My Lookup 2" also sanitizes
-        // to My_Lookup_2; if generated names were not registered as taken, it would
-        // silently replace the second lookup wholesale.
-        let data = concat!(
-            "SplineFontDB: 3.0\n",
-            "Lookup: 1 0 0 \"My Lookup\" {\"first-sub\"} ['calt' ('DFLT' <'dflt'>)]\n",
-            "Lookup: 1 0 0 \"My-Lookup\" {\"second-sub\"} ['calt' ('DFLT' <'dflt'>)]\n",
-            "Lookup: 1 0 0 \"My Lookup 2\" {\"third-sub\"} ['calt' ('DFLT' <'dflt'>)]\n",
-            "BeginChars: 2 2\n",
-            "StartChar: glyph_a\n",
-            "Encoding: 97 97 0\n",
-            "Width: 250\n",
-            "Substitution2: \"first-sub\" glyph_b\n",
-            "Substitution2: \"second-sub\" glyph_b\n",
-            "Substitution2: \"third-sub\" glyph_b\n",
-            "EndChar\n",
-            "StartChar: glyph_b\n",
-            "Encoding: 98 98 1\n",
-            "Width: 250\n",
-            "EndChar\n",
-            "EndChars\n",
-            "EndSplineFont\n"
-        );
-
-        let font = load_str(data).expect("Failed to parse SFD");
-        let fea = font.features.to_fea();
-
-        for name in ["My_Lookup {", "My_Lookup_2 {", "My_Lookup_2_2 {"] {
-            assert!(
-                fea.contains(name),
-                "All three lookups must survive with distinct names, missing {name:?}:\n{fea}"
-            );
-        }
-    }
-
-    #[test]
-    fn test_keyword_and_digit_lookup_names_get_safe_labels() {
-        // A lookup literally named "sub" or "2 Alternates" produced a label that
-        // fails to parse ("Expected LABEL found SubKw" / "Expected ID found NUM"),
-        // aborting the whole conversion rather than one lookup.
-        let data = concat!(
-            "SplineFontDB: 3.0\n",
-            "Lookup: 1 0 0 \"sub\" {\"first-sub\"} ['calt' ('DFLT' <'dflt'>)]\n",
-            "Lookup: 1 0 0 \"2 Alternates\" {\"second-sub\"} ['calt' ('DFLT' <'dflt'>)]\n",
-            "BeginChars: 2 2\n",
-            "StartChar: glyph_a\n",
-            "Encoding: 97 97 0\n",
-            "Width: 250\n",
-            "Substitution2: \"first-sub\" glyph_b\n",
-            "Substitution2: \"second-sub\" glyph_b\n",
-            "EndChar\n",
-            "StartChar: glyph_b\n",
-            "Encoding: 98 98 1\n",
-            "Width: 250\n",
-            "EndChar\n",
-            "EndChars\n",
-            "EndSplineFont\n"
-        );
-
-        let font = load_str(data).expect("Failed to parse SFD");
-        let fea = font.features.to_fea();
-
-        assert!(
-            fea.contains("lookup sub_ {"),
-            "A keyword name takes a trailing underscore:\n{fea}"
-        );
-        assert!(
-            fea.contains("lookup _2_Alternates {"),
-            "A digit-leading name takes a leading underscore:\n{fea}"
+        // The exact sequence is asserted because it is what a hash-seeded
+        // shuffle destroys and what an ordering-policy change must own up to.
+        assert_eq!(
+            indices,
+            vec![
+                0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 13, 17, 16, 19, 18, 21, 20, 23,
+                22, 24, 25, 26, 27, 29, 28, 30, 31, 32, 34, 33, 0
+            ],
+            "lookup definition order changed"
         );
     }
 
@@ -5951,9 +6257,22 @@ mod tests {
             "  SeqLookup: 0 \"Other Lookup\"\n",
             "EndFPST\n",
             "Lookup: 1 0 0 \"Other Lookup\" {\"other-sub\"} [ ]\n",
-            "BeginChars: 1 1\n",
+            "BeginChars: 4 4\n",
             "StartChar: space\n",
             "Encoding: 32 32 0\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "StartChar: glyph_a\n",
+            "Encoding: 97 97 1\n",
+            "Width: 250\n",
+            "Substitution2: \"other-sub\" glyph_b\n",
+            "EndChar\n",
+            "StartChar: glyph_b\n",
+            "Encoding: 98 98 2\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "StartChar: glyph_c\n",
+            "Encoding: 99 99 3\n",
             "Width: 250\n",
             "EndChar\n",
             "EndChars\n",
@@ -5963,10 +6282,1028 @@ mod tests {
         let font = load_str(data).expect("Failed to parse chain context SFD");
         let fea = font.features.to_fea();
 
-        assert!(fea.contains("glyph_a"), "Should reference matching glyph");
-        assert!(fea.contains("glyph_b"), "Should reference matching glyph");
-        assert!(fea.contains("glyph_c"), "Should reference lookahead glyph");
-        assert!(fea.contains("sub"), "Should output 'sub' for ChainSub2");
+        assert!(
+            fea.contains("sub [glyph_a glyph_b]' lookup Other_Lookup glyph_c;"),
+            "The chain rule should carry its coverage, lookup and lookahead:\n{fea}"
+        );
+    }
+
+    #[test]
+    fn test_class_fpst_emission() {
+        // A `class` FPST defines its glyph classes once and then lists rules that
+        // reference them by index. Class 0 is never written: it means "any glyph not
+        // in one of the other classes", and has to be expanded from the glyph list.
+        let data = concat!(
+            "SplineFontDB: 3.0\n",
+            "Lookup: 6 0 0 \"Chain Lookup\" {\"chain-sub-1\"} [\n",
+            "ChainSub2: class \"chain-sub-1\" 3 1 3 2\n",
+            "  Class: 7 glyph_a\n",
+            "  Class: 7 glyph_b\n",
+            "  FClass: 7 glyph_c\n",
+            "  FClass: 7 glyph_d\n",
+            " 2 0 0\n",
+            "  ClsList: 1 2\n",
+            "  BClsList:\n",
+            "  FClsList:\n",
+            " 1\n",
+            "  SeqLookup: 0 \"Other Lookup\"\n",
+            " 1 0 2\n",
+            "  ClsList: 1\n",
+            "  BClsList:\n",
+            "  FClsList: 0 2\n",
+            " 1\n",
+            "  SeqLookup: 0 \"Other Lookup\"\n",
+            "  ClassNames: \"All_Others\" \"a\" \"b\"\n",
+            "EndFPST\n",
+            "Lookup: 1 0 0 \"Other Lookup\" {\"other-sub\"} [ ]\n",
+            "BeginChars: 5 5\n",
+            "StartChar: glyph_a\n",
+            "Encoding: 97 97 0\n",
+            "Width: 250\n",
+            "Substitution2: \"other-sub\" glyph_b\n",
+            "EndChar\n",
+            "StartChar: glyph_b\n",
+            "Encoding: 98 98 1\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "StartChar: glyph_c\n",
+            "Encoding: 99 99 2\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "StartChar: glyph_d\n",
+            "Encoding: 100 100 3\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "StartChar: space\n",
+            "Encoding: 32 32 4\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "EndChars\n",
+            "EndSplineFont\n"
+        );
+
+        let font = load_str(data).expect("Failed to parse class FPST SFD");
+        let fea = font.features.to_fea();
+
+        // Both rules of the subtable must be emitted, not just the first.
+        assert_eq!(
+            fea.matches("' lookup Other_Lookup").count(),
+            2,
+            "Each rule of a class FPST should produce a line:\n{fea}"
+        );
+        // Rule 1: two input classes, the lookup applied at position 0.
+        assert!(
+            fea.contains("sub glyph_a' lookup Other_Lookup glyph_b';"),
+            "Class indices should resolve to their glyph lists:\n{fea}"
+        );
+        // Rule 2: `FClsList: 0 2` is "any other glyph, then class 2 (glyph_d)".
+        // Class 0 must expand to the glyphs not named by FClass 1 or FClass 2.
+        // A multi-glyph class is declared once and referred to, the way FontForge's
+        // own export writes it, rather than repeated at every position.
+        assert!(
+            fea.contains("@Chain_Lookup_c1 = [glyph_a glyph_b space];"),
+            "Class 0 should expand to every glyph not in a sibling class:\n{fea}"
+        );
+        assert!(
+            fea.contains("sub glyph_a' lookup Other_Lookup @Chain_Lookup_c1 glyph_d;"),
+            "The rule should refer to the declared class:\n{fea}"
+        );
+    }
+
+    #[test]
+    fn test_class_fpst_backtrack_order_is_preserved() {
+        // FontForge stores backtrack classes in feature-file order, farthest
+        // from the input first, and its own SFD -> FEA export writes them that
+        // way: Monomakh's `BClsList: 3 1` becomes
+        // `sub @cc22_back_3 @cc22_back_1 @cc22_match_4' ...`. Reversing here
+        // inverts every rule with more than one backtrack class.
+        let data = concat!(
+            "SplineFontDB: 3.0\n",
+            "Lookup: 6 0 0 \"Chain Lookup\" {\"chain-sub-1\"} [\n",
+            "ChainSub2: class \"chain-sub-1\" 2 3 1 1\n",
+            "  Class: 7 glyph_c\n",
+            "  BClass: 7 glyph_a\n",
+            "  BClass: 7 glyph_b\n",
+            " 1 2 0\n",
+            "  ClsList: 1\n",
+            "  BClsList: 2 1\n",
+            "  FClsList:\n",
+            " 1\n",
+            "  SeqLookup: 0 \"Other Lookup\"\n",
+            "EndFPST\n",
+            "Lookup: 1 0 0 \"Other Lookup\" {\"other-sub\"} [ ]\n",
+            "BeginChars: 3 3\n",
+            "StartChar: glyph_a\n",
+            "Encoding: 97 97 0\n",
+            "Width: 250\n",
+            "Substitution2: \"other-sub\" glyph_b\n",
+            "EndChar\n",
+            "StartChar: glyph_b\n",
+            "Encoding: 98 98 1\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "StartChar: glyph_c\n",
+            "Encoding: 99 99 2\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "EndChars\n",
+            "EndSplineFont\n"
+        );
+
+        let font = load_str(data).expect("Failed to parse class FPST SFD");
+        let fea = font.features.to_fea();
+
+        // BClass 1 is glyph_a and BClass 2 is glyph_b, so `BClsList: 2 1`
+        // must emit glyph_b then glyph_a, in that order.
+        assert!(
+            fea.contains("sub glyph_b glyph_a glyph_c' lookup Other_Lookup;"),
+            "Backtrack classes must keep their on-disk order:\n{fea}"
+        );
+    }
+
+    #[test]
+    fn test_class_fpst_ponomar() {
+        // Ponomar's contextual lookups are all `class`-kind, so the contextual half
+        // of its `ccmp` rests entirely on this path.
+        let sfd_path =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/fontforge/Ponomar.sfd");
+        let data = String::from_utf8_lossy(&fs::read(&sfd_path).expect("Missing SFD")).into_owned();
+        let font = load_str(&data).expect("Failed to parse Ponomar SFD");
+        let fea = font.features.to_fea();
+
+        assert!(
+            fea.contains("' lookup Psi_Truncation"),
+            "Class-kind chain rules should reference their nested lookup"
+        );
+        assert!(
+            fea.contains("feature ccmp"),
+            "ccmp is built only from class-kind contextual lookups"
+        );
+    }
+
+    #[test]
+    fn test_feature_references_follow_declaration_order() {
+        // Definitions are hoisted so a lookup exists before a chain references it,
+        // while the references inside the feature block keep declaration order,
+        // exactly as FontForge's own export writes them. (The compiled font follows
+        // the definition order; the reference order is for the reader.)
+        let data = concat!(
+            "SplineFontDB: 3.0\n",
+            "Lookup: 6 0 0 \"Aaa First\" {\"chain-sub-1\"} ['calt' ('DFLT' <'dflt'>)]\n",
+            "ChainSub2: coverage \"chain-sub-1\"  0 0 0 1\n",
+            " 1 0 0\n",
+            "  Coverage: 7 glyph_a\n",
+            " 1\n",
+            "  SeqLookup: 0 \"Bbb Second\"\n",
+            "EndFPST\n",
+            "Lookup: 1 0 0 \"Bbb Second\" {\"second-sub\"} ['calt' ('DFLT' <'dflt'>)]\n",
+            "BeginChars: 2 2\n",
+            "StartChar: glyph_a\n",
+            "Encoding: 97 97 0\n",
+            "Width: 250\n",
+            "Substitution2: \"second-sub\" glyph_b\n",
+            "EndChar\n",
+            "StartChar: glyph_b\n",
+            "Encoding: 98 98 1\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "EndChars\n",
+            "EndSplineFont\n"
+        );
+
+        let font = load_str(data).expect("Failed to parse SFD");
+        let fea = font.features.to_fea();
+
+        let block_start = fea.find("feature calt {").expect("calt feature emitted");
+        let block = &fea[block_start..];
+        let first = block
+            .find("lookup Aaa_First;")
+            .expect("calt should reference the chain lookup");
+        let second = block
+            .find("lookup Bbb_Second;")
+            .expect("calt should reference the simple lookup");
+        assert!(
+            first < second,
+            "References must follow declaration order, not the definition buckets:\n{fea}"
+        );
+        let def = fea
+            .find("lookup Bbb_Second {")
+            .expect("the simple lookup should be defined");
+        let chain_def = fea.find("lookup Aaa_First {").expect("chain defined");
+        assert!(
+            def < chain_def,
+            "The referenced lookup must still be defined before the chain that calls \
+             it:\n{fea}"
+        );
+    }
+
+    #[test]
+    fn test_call_to_an_empty_lookup_becomes_ignore() {
+        // A lookup with no rules is never written out, so a call to it cannot be
+        // emitted as a reference. But the rule still matches, and a match with
+        // nothing to do stops later rules at that position -- which is exactly what
+        // `ignore` says. Dropping the rule instead would let those later rules fire.
+        let data = concat!(
+            "SplineFontDB: 3.0\n",
+            "Lookup: 6 0 0 \"Chain Lookup\" {\"chain-sub-1\"} ['calt' ('DFLT' <'dflt'>)]\n",
+            "ChainSub2: coverage \"chain-sub-1\"  0 0 0 1\n",
+            " 1 0 1\n",
+            "  Coverage: 7 glyph_a\n",
+            "  FCoverage: 7 glyph_b\n",
+            " 1\n",
+            "  SeqLookup: 0 \"Empty Lookup\"\n",
+            "EndFPST\n",
+            "Lookup: 1 0 0 \"Empty Lookup\" {\"empty-sub\"} [ ]\n",
+            "BeginChars: 2 2\n",
+            "StartChar: glyph_a\n",
+            "Encoding: 97 97 0\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "StartChar: glyph_b\n",
+            "Encoding: 98 98 1\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "EndChars\n",
+            "EndSplineFont\n"
+        );
+
+        let font = load_str(data).expect("Failed to parse coverage FPST SFD");
+        let fea = font.features.to_fea();
+
+        assert!(
+            fea.contains("ignore sub glyph_a' glyph_b;"),
+            "A call to an empty lookup should leave an ignore rule, not a dangling \
+             reference and not a dropped rule:\n{fea}"
+        );
+        assert!(
+            !fea.contains("lookup Empty_Lookup"),
+            "The empty lookup must not be referenced or defined:\n{fea}"
+        );
+    }
+
+    #[test]
+    fn test_seqlookup_index_past_the_last_position_drops_the_rule() {
+        // A rule that names lookups but lands none of them is neither the substitution
+        // the section asked for nor an `ignore`, and fea-rs cannot represent it.
+        let data = concat!(
+            "SplineFontDB: 3.0\n",
+            "Lookup: 6 0 0 \"Chain Lookup\" {\"chain-sub-1\"} ['calt' ('DFLT' <'dflt'>)]\n",
+            "ChainSub2: glyph \"chain-sub-1\"  0 0 0 1\n",
+            " String: 7 glyph_a\n",
+            " BString: 0 \n",
+            " FString: 0 \n",
+            " 1\n",
+            "  SeqLookup: 5 \"Other Lookup\"\n",
+            "EndFPST\n",
+            "Lookup: 1 0 0 \"Other Lookup\" {\"other-sub\"} [ ]\n",
+            "BeginChars: 1 1\n",
+            "StartChar: glyph_a\n",
+            "Encoding: 97 97 0\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "EndChars\n",
+            "EndSplineFont\n"
+        );
+
+        let font = load_str(data).expect("Failed to parse glyph FPST SFD");
+        let fea = font.features.to_fea();
+
+        assert!(
+            !fea.contains("glyph_a'"),
+            "A rule whose lookups all miss must not be emitted:\n{fea}"
+        );
+    }
+
+    #[test]
+    fn test_reference_resolves_to_the_lookup_that_was_defined() {
+        // Two SFD lookup names can sanitize alike; the second is defined as `_2`. A
+        // reference that just re-sanitizes would resolve to the first one.
+        let data = concat!(
+            "SplineFontDB: 3.0\n",
+            "Lookup: 1 0 0 \"My Lookup\" {\"first-sub\"} [ ]\n",
+            "Lookup: 1 0 0 \"My-Lookup\" {\"second-sub\"} [ ]\n",
+            "Lookup: 6 0 0 \"Chain Lookup\" {\"chain-sub-1\"} ['calt' ('DFLT' <'dflt'>)]\n",
+            "ChainSub2: glyph \"chain-sub-1\"  0 0 0 1\n",
+            " String: 7 glyph_a\n",
+            " BString: 0 \n",
+            " FString: 0 \n",
+            " 1\n",
+            "  SeqLookup: 0 \"My-Lookup\"\n",
+            "EndFPST\n",
+            "BeginChars: 1 1\n",
+            "StartChar: glyph_a\n",
+            "Encoding: 97 97 0\n",
+            "Width: 250\n",
+            "Substitution2: \"first-sub\" glyph_a\n",
+            "Substitution2: \"second-sub\" glyph_a\n",
+            "EndChar\n",
+            "EndChars\n",
+            "EndSplineFont\n"
+        );
+
+        let font = load_str(data).expect("Failed to parse glyph FPST SFD");
+        let fea = font.features.to_fea();
+
+        assert!(
+            fea.contains("sub glyph_a' lookup My_Lookup_2;"),
+            "The rule names the second lookup, so it must resolve to My_Lookup_2:\n{fea}"
+        );
+    }
+
+    #[test]
+    fn test_generated_suffix_names_cannot_be_taken_twice() {
+        // "My Lookup" and "My-Lookup" sanitize alike, so the second is assigned
+        // My_Lookup_2. A third lookup literally NAMED "My Lookup 2" also sanitizes
+        // to My_Lookup_2; if generated names were not registered as taken, it would
+        // silently replace the second lookup wholesale.
+        let data = concat!(
+            "SplineFontDB: 3.0\n",
+            "Lookup: 1 0 0 \"My Lookup\" {\"first-sub\"} ['calt' ('DFLT' <'dflt'>)]\n",
+            "Lookup: 1 0 0 \"My-Lookup\" {\"second-sub\"} ['calt' ('DFLT' <'dflt'>)]\n",
+            "Lookup: 1 0 0 \"My Lookup 2\" {\"third-sub\"} ['calt' ('DFLT' <'dflt'>)]\n",
+            "BeginChars: 2 2\n",
+            "StartChar: glyph_a\n",
+            "Encoding: 97 97 0\n",
+            "Width: 250\n",
+            "Substitution2: \"first-sub\" glyph_b\n",
+            "Substitution2: \"second-sub\" glyph_b\n",
+            "Substitution2: \"third-sub\" glyph_b\n",
+            "EndChar\n",
+            "StartChar: glyph_b\n",
+            "Encoding: 98 98 1\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "EndChars\n",
+            "EndSplineFont\n"
+        );
+
+        let font = load_str(data).expect("Failed to parse SFD");
+        let fea = font.features.to_fea();
+
+        for name in ["My_Lookup {", "My_Lookup_2 {", "My_Lookup_2_2 {"] {
+            assert!(
+                fea.contains(name),
+                "All three lookups must survive with distinct names, missing {name:?}:\n{fea}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_keyword_and_digit_lookup_names_get_safe_labels() {
+        // A lookup literally named "sub" or "2 Alternates" produced a label that
+        // fails to parse ("Expected LABEL found SubKw" / "Expected ID found NUM"),
+        // aborting the whole conversion rather than one lookup.
+        let data = concat!(
+            "SplineFontDB: 3.0\n",
+            "Lookup: 1 0 0 \"sub\" {\"first-sub\"} ['calt' ('DFLT' <'dflt'>)]\n",
+            "Lookup: 1 0 0 \"2 Alternates\" {\"second-sub\"} ['calt' ('DFLT' <'dflt'>)]\n",
+            "BeginChars: 2 2\n",
+            "StartChar: glyph_a\n",
+            "Encoding: 97 97 0\n",
+            "Width: 250\n",
+            "Substitution2: \"first-sub\" glyph_b\n",
+            "Substitution2: \"second-sub\" glyph_b\n",
+            "EndChar\n",
+            "StartChar: glyph_b\n",
+            "Encoding: 98 98 1\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "EndChars\n",
+            "EndSplineFont\n"
+        );
+
+        let font = load_str(data).expect("Failed to parse SFD");
+        let fea = font.features.to_fea();
+
+        assert!(
+            fea.contains("lookup sub_ {"),
+            "A keyword name takes a trailing underscore:\n{fea}"
+        );
+        assert!(
+            fea.contains("lookup _2_Alternates {"),
+            "A digit-leading name takes a leading underscore:\n{fea}"
+        );
+    }
+
+    #[test]
+    fn test_utf7_escaped_lookup_and_subtable_names_still_match() {
+        // FontForge escapes names as UTF-7, where `+-` is a literal `+`. Decoding the
+        // reference but not the definition, or the section key but not the subtable
+        // name, loses the rule.
+        let data = concat!(
+            "SplineFontDB: 3.0\n",
+            "Lookup: 6 0 0 \"calt+-probe\" {\"calt+-sub-1\"} ['calt' ('DFLT' <'dflt'>)]\n",
+            "ChainSub2: glyph \"calt+-sub-1\"  0 0 0 1\n",
+            " String: 7 glyph_a\n",
+            " BString: 0 \n",
+            " FString: 0 \n",
+            " 1\n",
+            "  SeqLookup: 0 \"Other+-Lookup\"\n",
+            "EndFPST\n",
+            "Lookup: 1 0 0 \"Other+-Lookup\" {\"other-sub\"} [ ]\n",
+            "BeginChars: 1 1\n",
+            "StartChar: glyph_a\n",
+            "Encoding: 97 97 0\n",
+            "Width: 250\n",
+            "Substitution2: \"other-sub\" glyph_a\n",
+            "EndChar\n",
+            "EndChars\n",
+            "EndSplineFont\n"
+        );
+
+        let font = load_str(data).expect("Failed to parse glyph FPST SFD");
+        let fea = font.features.to_fea();
+
+        assert!(
+            fea.contains("sub glyph_a' lookup Other_Lookup;"),
+            "A UTF-7 escaped name must match on both sides:\n{fea}"
+        );
+    }
+
+    #[test]
+    fn test_utf7_escaped_subtable_name_still_finds_its_oneline_rules() {
+        // A Ligature2/Substitution2 line names its subtable too. Decoding the name on
+        // the Lookup: line but not here leaves the rule unable to find its subtable,
+        // and the whole lookup is lost.
+        let data = concat!(
+            "SplineFontDB: 3.0\n",
+            "Lookup: 4 0 0 \"liga+-lookup\" {\"liga+-sub-1\"} ['liga' ('DFLT' <'dflt'>)]\n",
+            "BeginChars: 3 3\n",
+            "StartChar: f\n",
+            "Encoding: 102 102 0\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "StartChar: i\n",
+            "Encoding: 105 105 1\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "StartChar: f_i\n",
+            "Encoding: -1 -1 2\n",
+            "Width: 250\n",
+            "Ligature2: \"liga+-sub-1\" f i\n",
+            "EndChar\n",
+            "EndChars\n",
+            "EndSplineFont\n"
+        );
+
+        let font = load_str(data).expect("Failed to parse SFD");
+        let fea = font.features.to_fea();
+
+        assert!(
+            fea.contains("sub f i by f_i;"),
+            "A one-line rule must find its subtable through the decoded name:\n{fea}"
+        );
+    }
+
+    #[test]
+    fn test_fpst_drops_glyphs_the_font_does_not_have() {
+        // An SFD keeps the class lists of glyphs that were later deleted. Writing those
+        // names into the feature file gives the compiler a glyph it cannot resolve, so
+        // a class position drops the absent names and keeps the rest.
+        let data = concat!(
+            "SplineFontDB: 3.0\n",
+            "Lookup: 6 0 0 \"Chain Lookup\" {\"chain-sub-1\"} ['calt' ('DFLT' <'dflt'>)]\n",
+            "ChainSub2: class \"chain-sub-1\" 2 1 1 1\n",
+            "  Class: 23 glyph_a glyph_gone\n",
+            " 1 0 0\n",
+            "  ClsList: 1\n",
+            "  BClsList:\n",
+            "  FClsList:\n",
+            " 1\n",
+            "  SeqLookup: 0 \"Other Lookup\"\n",
+            "EndFPST\n",
+            "Lookup: 1 0 0 \"Other Lookup\" {\"other-sub\"} [ ]\n",
+            "BeginChars: 2 2\n",
+            "StartChar: glyph_a\n",
+            "Encoding: 97 97 0\n",
+            "Width: 250\n",
+            "Substitution2: \"other-sub\" glyph_b\n",
+            "EndChar\n",
+            "StartChar: glyph_b\n",
+            "Encoding: 98 98 1\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "EndChars\n",
+            "EndSplineFont\n"
+        );
+
+        let font = load_str(data).expect("Failed to parse class FPST SFD");
+        let fea = font.features.to_fea();
+
+        assert!(
+            !fea.contains("glyph_gone"),
+            "A glyph the font does not have must not reach the feature file:\n{fea}"
+        );
+        assert!(
+            fea.contains("sub glyph_a' lookup Other_Lookup;"),
+            "The rest of the class should survive:\n{fea}"
+        );
+    }
+
+    #[test]
+    fn test_glyph_kind_rule_with_a_missing_glyph_is_dropped() {
+        // In a glyph-kind rule each glyph is a position that SeqLookup indices count,
+        // so an absent one cannot simply be removed: that would move the lookup onto
+        // its neighbour. The rule goes instead.
+        let data = concat!(
+            "SplineFontDB: 3.0\n",
+            "Lookup: 6 0 0 \"Chain Lookup\" {\"chain-sub-1\"} ['calt' ('DFLT' <'dflt'>)]\n",
+            "ChainSub2: glyph \"chain-sub-1\"  0 0 0 1\n",
+            " String: 23 glyph_gone glyph_a\n",
+            " BString: 0 \n",
+            " FString: 0 \n",
+            " 1\n",
+            "  SeqLookup: 0 \"Other Lookup\"\n",
+            "EndFPST\n",
+            "Lookup: 1 0 0 \"Other Lookup\" {\"other-sub\"} [ ]\n",
+            "BeginChars: 2 2\n",
+            "StartChar: glyph_a\n",
+            "Encoding: 97 97 0\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "StartChar: glyph_b\n",
+            "Encoding: 98 98 1\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "EndChars\n",
+            "EndSplineFont\n"
+        );
+
+        let font = load_str(data).expect("Failed to parse glyph FPST SFD");
+        let fea = font.features.to_fea();
+
+        assert!(
+            !fea.contains("glyph_gone"),
+            "A glyph the font does not have must not reach the feature file:\n{fea}"
+        );
+        assert!(
+            !fea.contains("glyph_a'"),
+            "Pruning the position would move the lookup onto glyph_a, so the rule \
+             must be dropped whole:\n{fea}"
+        );
+    }
+
+    #[test]
+    fn test_coverage_kind_backtrack_is_turned_round() {
+        // A coverage section stores BCoverage the way OpenType does, nearest the input
+        // first, unlike a class section whose BClsList is already in feature-file
+        // order. Donegal One's ordinals are the real case: BCoverage period, then the
+        // digits, and FontForge's own build puts period nearest the input, so the text
+        // reads "digit period o".
+        let data = concat!(
+            "SplineFontDB: 3.0\n",
+            "Lookup: 6 0 0 \"Chain Lookup\" {\"chain-sub-1\"} [\n",
+            "ChainSub2: coverage \"chain-sub-1\"  0 0 0 1\n",
+            " 1 2 0\n",
+            "  Coverage: 7 glyph_c\n",
+            "  BCoverage: 7 glyph_a\n",
+            "  BCoverage: 7 glyph_b\n",
+            " 1\n",
+            "  SeqLookup: 0 \"Other Lookup\"\n",
+            "EndFPST\n",
+            "Lookup: 1 0 0 \"Other Lookup\" {\"other-sub\"} [ ]\n",
+            "BeginChars: 3 3\n",
+            "StartChar: glyph_a\n",
+            "Encoding: 97 97 0\n",
+            "Width: 250\n",
+            "Substitution2: \"other-sub\" glyph_b\n",
+            "EndChar\n",
+            "StartChar: glyph_b\n",
+            "Encoding: 98 98 1\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "StartChar: glyph_c\n",
+            "Encoding: 99 99 2\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "EndChars\n",
+            "EndSplineFont\n"
+        );
+
+        let font = load_str(data).expect("Failed to parse coverage FPST SFD");
+        let fea = font.features.to_fea();
+
+        assert!(
+            fea.contains("sub glyph_b glyph_a glyph_c' lookup Other_Lookup;"),
+            "BCoverage is nearest-first and must be reversed for the feature file:\n{fea}"
+        );
+    }
+
+    #[test]
+    fn test_coverage_section_with_two_rules_keeps_them_apart() {
+        // A rule opens with its bare `<ninput> <nbacktrack> <nlookahead>` line, so a
+        // section holds as many rules as its header declares. Reading the whole body
+        // as one rule concatenates the inputs and stacks every lookup on position 0.
+        let data = concat!(
+            "SplineFontDB: 3.0\n",
+            "Lookup: 6 0 0 \"Chain Lookup\" {\"chain-sub-1\"} ['calt' ('DFLT' <'dflt'>)]\n",
+            "ChainSub2: coverage \"chain-sub-1\"  0 0 0 2\n",
+            " 1 0 1\n",
+            "  Coverage: 7 glyph_a\n",
+            "  FCoverage: 7 glyph_b\n",
+            " 1\n",
+            "  SeqLookup: 0 \"Lookup One\"\n",
+            " 1 0 1\n",
+            "  Coverage: 7 glyph_c\n",
+            "  FCoverage: 7 glyph_d\n",
+            " 1\n",
+            "  SeqLookup: 0 \"Lookup Two\"\n",
+            "EndFPST\n",
+            "Lookup: 1 0 0 \"Lookup One\" {\"one-sub\"} [ ]\n",
+            "Lookup: 1 0 0 \"Lookup Two\" {\"two-sub\"} [ ]\n",
+            "BeginChars: 4 4\n",
+            "StartChar: glyph_a\n",
+            "Encoding: 97 97 0\n",
+            "Width: 250\n",
+            "Substitution2: \"one-sub\" glyph_b\n",
+            "Substitution2: \"two-sub\" glyph_b\n",
+            "EndChar\n",
+            "StartChar: glyph_b\n",
+            "Encoding: 98 98 1\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "StartChar: glyph_c\n",
+            "Encoding: 99 99 2\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "StartChar: glyph_d\n",
+            "Encoding: 100 100 3\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "EndChars\n",
+            "EndSplineFont\n"
+        );
+
+        let font = load_str(data).expect("Failed to parse coverage FPST SFD");
+        let fea = font.features.to_fea();
+
+        assert!(
+            fea.contains("sub glyph_a' lookup Lookup_One glyph_b;"),
+            "The first rule should carry only its own positions and lookup:\n{fea}"
+        );
+        assert!(
+            fea.contains("sub glyph_c' lookup Lookup_Two glyph_d;"),
+            "The second rule should be its own statement:\n{fea}"
+        );
+    }
+
+    #[test]
+    fn test_glyph_kind_backtrack_is_one_position_per_glyph() {
+        // A glyph-kind BString spells one glyph per backtrack position, the same way
+        // its String: spells the input. Treating the line as a single position turns a
+        // two-glyph sequence into a class matching either glyph.
+        let data = concat!(
+            "SplineFontDB: 3.0\n",
+            "Lookup: 6 0 0 \"Chain Lookup\" {\"chain-sub-1\"} [\n",
+            "ChainSub2: glyph \"chain-sub-1\"  0 0 0 1\n",
+            " String: 7 glyph_c\n",
+            " BString: 15 glyph_a glyph_b\n",
+            " FString: 0 \n",
+            " 1\n",
+            "  SeqLookup: 0 \"Other Lookup\"\n",
+            "EndFPST\n",
+            "Lookup: 1 0 0 \"Other Lookup\" {\"other-sub\"} [ ]\n",
+            "BeginChars: 3 3\n",
+            "StartChar: glyph_a\n",
+            "Encoding: 97 97 0\n",
+            "Width: 250\n",
+            "Substitution2: \"other-sub\" glyph_b\n",
+            "EndChar\n",
+            "StartChar: glyph_b\n",
+            "Encoding: 98 98 1\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "StartChar: glyph_c\n",
+            "Encoding: 99 99 2\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "EndChars\n",
+            "EndSplineFont\n"
+        );
+
+        let font = load_str(data).expect("Failed to parse glyph FPST SFD");
+        let fea = font.features.to_fea();
+
+        assert!(
+            fea.contains("sub glyph_b glyph_a glyph_c' lookup Other_Lookup;"),
+            "Each BString glyph is its own position, nearest the input first:\n{fea}"
+        );
+        assert!(
+            !fea.contains("[glyph_a glyph_b]"),
+            "A backtrack sequence must not collapse into one glyph class:\n{fea}"
+        );
+    }
+
+    #[test]
+    fn test_glyph_kind_lookups_follow_their_position() {
+        // A glyph-kind section spells its input as one `String:` line, but each glyph
+        // is a separate input position and SeqLookup indices count positions. Keying
+        // the lookups off the group instead puts position 0's lookups on every glyph.
+        let data = concat!(
+            "SplineFontDB: 3.0\n",
+            "Lookup: 6 0 0 \"Chain Lookup\" {\"chain-sub-1\"} [\n",
+            "ChainSub2: glyph \"chain-sub-1\"  0 0 0 1\n",
+            " String: 15 glyph_a glyph_b\n",
+            " BString: 0 \n",
+            " FString: 0 \n",
+            " 2\n",
+            "  SeqLookup: 0 \"Lookup One\"\n",
+            "  SeqLookup: 1 \"Lookup Two\"\n",
+            "EndFPST\n",
+            "Lookup: 1 0 0 \"Lookup One\" {\"one-sub\"} [ ]\n",
+            "Lookup: 1 0 0 \"Lookup Two\" {\"two-sub\"} [ ]\n",
+            "BeginChars: 2 2\n",
+            "StartChar: glyph_a\n",
+            "Encoding: 97 97 0\n",
+            "Width: 250\n",
+            "Substitution2: \"one-sub\" glyph_b\n",
+            "Substitution2: \"two-sub\" glyph_b\n",
+            "EndChar\n",
+            "StartChar: glyph_b\n",
+            "Encoding: 98 98 1\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "EndChars\n",
+            "EndSplineFont\n"
+        );
+
+        let font = load_str(data).expect("Failed to parse glyph FPST SFD");
+        let fea = font.features.to_fea();
+
+        assert!(
+            fea.contains("sub glyph_a' lookup Lookup_One glyph_b' lookup Lookup_Two;"),
+            "Each glyph should carry the lookups of its own position:\n{fea}"
+        );
+    }
+
+    #[test]
+    fn test_class_fpst_lookup_at_a_later_position() {
+        // SeqLookup indices count input positions. A lookup attached to position 1
+        // must land on the second glyph, not the first: a rule that resolved a
+        // position away, or keyed the map wrongly, would silently move it.
+        let data = concat!(
+            "SplineFontDB: 3.0\n",
+            "Lookup: 6 0 0 \"Chain Lookup\" {\"chain-sub-1\"} [\n",
+            "ChainSub2: class \"chain-sub-1\" 3 1 1 1\n",
+            "  Class: 7 glyph_a\n",
+            "  Class: 7 glyph_b\n",
+            " 2 0 0\n",
+            "  ClsList: 1 2\n",
+            "  BClsList:\n",
+            "  FClsList:\n",
+            " 1\n",
+            "  SeqLookup: 1 \"Other Lookup\"\n",
+            "EndFPST\n",
+            "Lookup: 1 0 0 \"Other Lookup\" {\"other-sub\"} [ ]\n",
+            "BeginChars: 2 2\n",
+            "StartChar: glyph_a\n",
+            "Encoding: 97 97 0\n",
+            "Width: 250\n",
+            "Substitution2: \"other-sub\" glyph_b\n",
+            "EndChar\n",
+            "StartChar: glyph_b\n",
+            "Encoding: 98 98 1\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "EndChars\n",
+            "EndSplineFont\n"
+        );
+
+        let font = load_str(data).expect("Failed to parse class FPST SFD");
+        let fea = font.features.to_fea();
+
+        assert!(
+            fea.contains("sub glyph_a' glyph_b' lookup Other_Lookup;"),
+            "The lookup belongs on the second position, not the first:\n{fea}"
+        );
+    }
+
+    #[test]
+    fn test_class_fpst_emission_order_is_stable() {
+        // The lookup ordering list is seeded from a map's iteration order, so that
+        // map must be ordered: converting one unchanged file twice has to emit the
+        // same lookups in the same order. Ponomar exercises it because all of its
+        // contextual lookups feed that map.
+        let sfd_path =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/fontforge/Ponomar.sfd");
+        let data = String::from_utf8_lossy(&fs::read(&sfd_path).expect("Missing SFD")).into_owned();
+
+        let first = load_str(&data)
+            .expect("Failed to parse Ponomar SFD")
+            .features
+            .to_fea();
+        let second = load_str(&data)
+            .expect("Failed to parse Ponomar SFD")
+            .features
+            .to_fea();
+
+        assert_eq!(
+            first, second,
+            "Converting the same SFD twice must produce the same feature file"
+        );
+    }
+
+    #[test]
+    fn test_fpst_header_counts_detect_a_misread_body() {
+        use super::layout::{FpstBodyCounts, FpstHeaderCounts};
+
+        // Monomakh's calt header: 5 classes each way, 3 rules, and a body holding
+        // four `Class:` lines, because class 0 is implicit.
+        let header = FpstHeaderCounts {
+            classes: 5,
+            backtrack_classes: 5,
+            lookahead_classes: 5,
+            rules: 3,
+        };
+        let good = FpstBodyCounts {
+            classes: 4,
+            backtrack_classes: 4,
+            lookahead_classes: 4,
+            rules: 3,
+        };
+        assert!(
+            header.mismatches(&good).is_empty(),
+            "A consistent section must not warn: {:?}",
+            header.mismatches(&good)
+        );
+
+        // A section declaring nothing has no classes at all, not "minus one".
+        let empty = FpstHeaderCounts {
+            classes: 0,
+            backtrack_classes: 0,
+            lookahead_classes: 0,
+            rules: 0,
+        };
+        let nothing = FpstBodyCounts {
+            classes: 0,
+            backtrack_classes: 0,
+            lookahead_classes: 0,
+            rules: 0,
+        };
+        assert!(empty.mismatches(&nothing).is_empty());
+
+        // A rule the parser failed to see is exactly what this catches.
+        let short = FpstBodyCounts { rules: 2, ..good };
+        assert_eq!(header.mismatches(&short).len(), 1);
+        assert!(header.mismatches(&short)[0].contains("declares 3 rules"));
+    }
+
+    #[test]
+    fn test_class_fpst_ponomar_contextual_kerning() {
+        // Ponomar's two ContextPos2 sections are class-kind contextual kerning. They
+        // exercise the positioning half of the parser, which the substitution tests
+        // never reach.
+        let sfd_path =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/fontforge/Ponomar.sfd");
+        let data = String::from_utf8_lossy(&fs::read(&sfd_path).expect("Missing SFD")).into_owned();
+        let font = load_str(&data).expect("Failed to parse Ponomar SFD");
+        let fea = font.features.to_fea();
+
+        let rule = fea
+            .lines()
+            .find(|l| l.contains("lookup Combining_Letter_Kerning") && l.contains('\''))
+            .expect("Ponomar's contextual kerning rule should be emitted");
+        assert!(
+            rule.trim_start().starts_with("pos "),
+            "A ContextPos2 rule must be emitted as `pos`, not `sub`:\n{rule}"
+        );
+    }
+
+    #[test]
+    fn test_class_fpst_ignore_rule() {
+        // A rule with a SeqLookup count of zero matches in order to stop a later,
+        // broader rule from firing. FontForge's own SFD -> FEA export writes those
+        // as `ignore sub`; a rule with no action at all means something else.
+        let data = concat!(
+            "SplineFontDB: 3.0\n",
+            "Lookup: 6 0 0 \"Chain Lookup\" {\"chain-sub-1\"} [\n",
+            "ChainSub2: class \"chain-sub-1\" 2 1 2 1\n",
+            "  Class: 7 glyph_a\n",
+            "  FClass: 7 glyph_b\n",
+            " 1 0 1\n",
+            "  ClsList: 1\n",
+            "  BClsList:\n",
+            "  FClsList: 1\n",
+            " 0\n",
+            "EndFPST\n",
+            "BeginChars: 2 2\n",
+            "StartChar: glyph_a\n",
+            "Encoding: 97 97 0\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "StartChar: glyph_b\n",
+            "Encoding: 98 98 1\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "EndChars\n",
+            "EndSplineFont\n"
+        );
+
+        let font = load_str(data).expect("Failed to parse class FPST SFD");
+        let fea = font.features.to_fea();
+
+        assert!(
+            fea.contains("ignore sub glyph_a' glyph_b;"),
+            "A rule calling no lookup should be an `ignore` rule:\n{fea}"
+        );
+    }
+
+    #[test]
+    fn test_class_fpst_unsatisfiable_position_drops_the_rule_and_its_reference() {
+        // "All_Others" is empty when its sibling classes cover the whole font. No
+        // glyph can occupy that position, so the rule can never fire. Leaving the
+        // position out instead would silently widen the rule, and writing it as `[]`
+        // is not feature-file syntax -- so the rule goes. When that empties the whole
+        // lookup, the feature must not go on referencing it either, or the FEA names
+        // a lookup that is never defined and fontc rejects the font.
+        let data = concat!(
+            "SplineFontDB: 3.0\n",
+            "Lookup: 6 0 0 \"Chain Lookup\" {\"chain-sub-1\"} ['calt' ('DFLT' <'dflt'>)]\n",
+            "ChainSub2: class \"chain-sub-1\" 2 1 3 1\n",
+            "  Class: 7 glyph_a\n",
+            "  FClass: 7 glyph_a\n",
+            "  FClass: 7 glyph_b\n",
+            " 1 0 1\n",
+            "  ClsList: 1\n",
+            "  BClsList:\n",
+            "  FClsList: 0\n",
+            " 1\n",
+            "  SeqLookup: 0 \"Other Lookup\"\n",
+            "EndFPST\n",
+            "Lookup: 1 0 0 \"Other Lookup\" {\"other-sub\"} [ ]\n",
+            "BeginChars: 2 2\n",
+            "StartChar: glyph_a\n",
+            "Encoding: 97 97 0\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "StartChar: glyph_b\n",
+            "Encoding: 98 98 1\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "EndChars\n",
+            "EndSplineFont\n"
+        );
+
+        let font = load_str(data).expect("Failed to parse class FPST SFD");
+        let fea = font.features.to_fea();
+
+        assert!(
+            !fea.contains("[]"),
+            "An empty All_Others must not be written as an empty glyph class:\n{fea}"
+        );
+        assert!(
+            !fea.contains("glyph_a'"),
+            "The rule can never match, so it must not be emitted:\n{fea}"
+        );
+        assert!(
+            !fea.contains("lookup Chain_Lookup;"),
+            "A lookup left with no rules must not still be referenced by its feature:\n{fea}"
+        );
+    }
+
+    #[test]
+    fn test_reverse_chain_is_not_emitted_as_a_forward_rule() {
+        // Reverse chaining substitutes inline from a replacement list; a feature
+        // file spells it `rsub ... by ...`. Emitting it as a forward `sub` gives a
+        // rule with no action, and an actionless rule is an `ignore` -- which would
+        // suppress substitutions in exactly the context that wanted one.
+        let data = concat!(
+            "SplineFontDB: 3.0\n",
+            "Lookup: 0 0 0 \"rev probe\" {\"rev-sub-1\"} [\n",
+            "ReverseChain2: coverage \"rev-sub-1\"  0 0 0 1\n",
+            " 1 0 1\n",
+            "  Coverage: 2 glyph_a glyph_b\n",
+            "  FCoverage: 1 glyph_c\n",
+            "  Replace: 2 glyph_x glyph_y\n",
+            "EndFPST\n",
+            "BeginChars: 3 3\n",
+            "StartChar: glyph_a\n",
+            "Encoding: 97 97 0\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "StartChar: glyph_b\n",
+            "Encoding: 98 98 1\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "StartChar: glyph_c\n",
+            "Encoding: 99 99 2\n",
+            "Width: 250\n",
+            "EndChar\n",
+            "EndChars\n",
+            "EndSplineFont\n"
+        );
+
+        let font = load_str(data).expect("Failed to parse reverse chain SFD");
+        let fea = font.features.to_fea();
+
+        assert!(
+            !fea.contains("ignore"),
+            "A reverse chaining lookup must not become an ignore rule:\n{fea}"
+        );
+        assert!(
+            !fea.contains("glyph_a"),
+            "It must not be emitted as a forward contextual rule either:\n{fea}"
+        );
     }
 }
 
