@@ -147,7 +147,7 @@ dependencies = [
  "itertools",
  "kurbo 0.13.1",
  "log",
- "norad 0.17.0",
+ "norad 0.18.4 (git+https://github.com/yanone/norad?rev=cdd7469a1f4d5459cf5c264079c04ac6149f23aa)",
  "num-traits",
  "ordered-float",
  "paste",
@@ -1477,27 +1477,6 @@ checksum = "e94e1e6445d314f972ff7395df2de295fe51b71821694f0b0e1e79c4f12c8577"
 
 [[package]]
 name = "norad"
-version = "0.17.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df868796aec99b7bbaa3f7a4267c10d9145ff871c5692cdb7d760ed1a5d56591"
-dependencies = [
- "base64",
- "close_already",
- "indexmap 2.14.0",
- "kurbo 0.13.1",
- "log",
- "plist",
- "quick-xml 0.38.4",
- "rayon",
- "serde",
- "serde_derive",
- "serde_repr",
- "thiserror",
- "uuid",
-]
-
-[[package]]
-name = "norad"
 version = "0.18.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d223261353c1d60c5e00c3b669c6936c47b2e9dc860b5121bc57b964389c47bb"
@@ -1512,6 +1491,27 @@ dependencies = [
  "serde_derive",
  "serde_repr",
  "thiserror",
+]
+
+[[package]]
+name = "norad"
+version = "0.18.4"
+source = "git+https://github.com/yanone/norad?rev=cdd7469a1f4d5459cf5c264079c04ac6149f23aa#cdd7469a1f4d5459cf5c264079c04ac6149f23aa"
+dependencies = [
+ "base64",
+ "close_already",
+ "indexmap 2.14.0",
+ "kurbo 0.13.1",
+ "log",
+ "plist",
+ "quick-xml 0.41.0",
+ "rayon",
+ "serde",
+ "serde_derive",
+ "serde_repr",
+ "smol_str",
+ "thiserror",
+ "uuid",
 ]
 
 [[package]]
@@ -1793,6 +1793,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e660451e55124f798a69a5af3f49ccfbefbd41910eefd25caf2393e1f3473ec1"
 dependencies = [
  "memchr",
+ "serde",
 ]
 
 [[package]]
@@ -2542,7 +2543,7 @@ dependencies = [
  "indexmap 2.14.0",
  "kurbo 0.13.1",
  "log",
- "norad 0.18.4",
+ "norad 0.18.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "ordered-float",
  "plist",
  "serde",

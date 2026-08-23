@@ -17,9 +17,3 @@ regex = "1.12.2"
 thiserror = "2.0.17"
 indexmap = { version = "2.12.0", features = ["serde"] }
 clap = { version = "4.5.51", features = ["derive"] }
-
-[patch."https://github.com/googlefonts/fontations"]
-font-types = { path = "/Users/yanone/.cargo/git/checkouts/fontations-2d2a1d0cf2f3a70a/4d690b5/font-types" }
-read-fonts = { path = "/Users/yanone/.cargo/git/checkouts/fontations-2d2a1d0cf2f3a70a/4d690b5/read-fonts" }
-write-fonts = { path = "/Users/yanone/.cargo/git/checkouts/fontations-2d2a1d0cf2f3a70a/4d690b5/write-fonts" }
-skrifa = { path = "/Users/yanone/.cargo/git/checkouts/fontations-2d2a1d0cf2f3a70a/4d690b5/skrifa" }

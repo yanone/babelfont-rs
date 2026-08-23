@@ -54,7 +54,7 @@ reactive = ["dep:reactive_stores"]
 [dependencies]
 chrono = { version = "0.4.3", features = ["serde"] }
 glyphslib = { version = "0.2.6", optional = true }
-norad = { version = "0.18", features = ["kurbo"], optional = true }
+norad = { git = "https://github.com/yanone/norad", rev = "cdd7469a1f4d5459cf5c264079c04ac6149f23aa", features = ["kurbo"], optional = true }
 log = { workspace = true }
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
