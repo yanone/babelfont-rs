@@ -80,6 +80,7 @@ impl Component {
                 for node in &contour.nodes {
                     let new_point = transform * kurbo::Point::new(node.x, node.y);
                     decomposed_contour.nodes.push(Node {
+                        id: None,
                         x: new_point.x,
                         y: new_point.y,
                         nodetype: node.nodetype,
