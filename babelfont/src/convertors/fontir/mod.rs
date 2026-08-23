@@ -104,6 +104,12 @@ impl BabelfontIrSource {
         if options.produce_varc_table {
             RewriteSmartAxes.apply(&mut font)?;
         }
+        // Turn Glyphs stylistic-set labels into featureNames *before* layout
+        // subsetting. RetainGlyphs/SubsetLayout round-trip FEA through
+        // Features::from_fea, which dumps everything into an anonymous prefix
+        // and drops per-feature format_specific data (including the labels).
+        GlyphsStylisticSetLabel.apply(&mut font)?;
+
         // Unexported glyphs - decompose and drop
         RetainGlyphs::new(
             font.glyphs
@@ -117,7 +123,6 @@ impl BabelfontIrSource {
         // Glyphs.app magic handling filters
         GlyphsNumberValue.apply(&mut font)?;
         GlyphsData.apply(&mut font)?;
-        GlyphsStylisticSetLabel.apply(&mut font)?;
         GlyphsBracketLayers::new(vec![]).apply(&mut font)?;
 
         // These really should be errors, not assertions
@@ -330,7 +335,18 @@ mod tests {
             drop_incompatible_paths: false,
             debug_feature_file: None,
         };
-        let result = BabelfontIrSource::compile(font, options);
-        assert!(result.is_ok());
+        let bytes = BabelfontIrSource::compile(font, options).unwrap();
+        let font_ref = write_fonts::read::FontRef::new(&bytes).unwrap();
+        use write_fonts::read::TableProvider;
+        let name = font_ref.name().unwrap();
+        let name_strings: Vec<String> = name
+            .name_record()
+            .iter()
+            .filter_map(|rec| rec.string(name.string_data()).ok().map(|s| s.to_string()))
+            .collect();
+        assert!(
+            name_strings.iter().any(|s| s == "Geometric a g"),
+            "ss03 featureNames should land in the name table, got {name_strings:?}"
+        );
     }
 }
