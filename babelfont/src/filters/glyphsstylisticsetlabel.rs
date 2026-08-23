@@ -260,9 +260,10 @@ mod tests {
             serde_json::json!([{ "language": "ENG", "value": "Geometric a g" }]),
         );
         font.features.features.push(("ss01".into(), code));
-        GlyphsStylisticSetLabel
-            .apply(&mut font)
-            .expect("label conversion");
+        assert!(
+            GlyphsStylisticSetLabel.apply(&mut font).is_ok(),
+            "label conversion"
+        );
         let fea = &font.features.features[0].1.code;
         assert!(fea.contains("featureNames"), "{fea}");
         assert!(fea.contains("Geometric a g"), "{fea}");
