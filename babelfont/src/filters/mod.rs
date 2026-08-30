@@ -114,6 +114,7 @@ declare_filters! {
     }
     group "Filters for manipulating outlines" {
         DecomposeComponentReferences(decomposecomponentreferences) => "decomposecomponents",
+        Fip001Boolean(fip001boolean) => "fip001boolean",
         CubicToQuadratic(cubic2quadratic) => "cubic2quadratic",
         QuadraticToCubic(quadratic2cubic) => "quadratic2cubic",
         CleanupPaths(cleanuppaths) => "cleanuppaths",
@@ -150,6 +151,11 @@ declare_filters! {
         AddInstancePerMaster(addinstancepermaster) => "addinstancepermaster",
     }
 }
+
+pub use fip001boolean::{
+    apply_boolean_to_layer, apply_boolean_to_paths, path_is_subtraction, FIP001_BOOLEAN_KEY,
+    FIP001_BOOLEAN_SUBTRACTION,
+};
 
 /// A trait for font filters that can be applied to a font
 pub trait FontFilter {

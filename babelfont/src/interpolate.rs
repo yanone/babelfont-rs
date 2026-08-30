@@ -266,6 +266,7 @@ impl Path {
             });
         }
         new_path.closed = self.closed;
+        new_path.format_specific = self.format_specific.clone();
         new_path
     }
 }

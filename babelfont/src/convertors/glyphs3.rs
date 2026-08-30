@@ -29,6 +29,7 @@ pub(crate) const KEY_ANCHOR_ORIENTATION: &str = "com.schriftgestalt.Glyphs.ancho
 pub(crate) const KEY_ANNOTATIONS: &str = "com.schriftgestalt.Glyphs.annotations";
 pub(crate) const KEY_APP_VERSION: &str = "com.schriftgestalt.Glyphs.appVersion";
 pub(crate) const KEY_ATTR: &str = "com.schriftgestalt.Glyphs.attr";
+pub(crate) const KEY_FIP001_BOOLEAN: &str = "fip001-boolean";
 pub(crate) const KEY_COLOR_LABEL: &str = "com.schriftgestalt.Glyphs.colorLabel";
 pub(crate) const KEY_COMPONENT_ANCHOR: &str = "com.schriftgestalt.Glyphs.componentAnchor";
 pub(crate) const KEY_COMPONENT_LOCKED: &str = "com.schriftgestalt.Glyphs.componentLocked";

@@ -66,6 +66,7 @@ fontbe = { workspace = true, optional = true }
 fontc = { workspace = true, optional = true }
 write-fonts = { workspace = true }
 kurbo = { workspace = true }
+linesweeper = "0.4"
 smol_str = { version = "0.3.0", features = ["serde"] }
 ordered-float = "5.1.0"
 indexmap = { workspace = true }

@@ -89,6 +89,7 @@ impl Component {
                     });
                 }
                 decomposed_contour.closed = contour.closed;
+                decomposed_contour.format_specific = contour.format_specific.clone();
                 contours.push(decomposed_contour);
             }
 
@@ -434,6 +435,7 @@ impl Shape {
                     })
                 }
                 contour.closed = p.closed;
+                contour.format_specific = p.format_specific.clone();
 
                 Shape::Path(contour)
             }
@@ -592,7 +594,7 @@ mod glyphs {
     use indexmap::IndexMap;
 
     use crate::convertors::glyphs3::{
-        KEY_ALIGNMENT, KEY_ATTR, KEY_COMPONENT_ANCHOR, KEY_COMPONENT_LOCKED,
+        KEY_ALIGNMENT, KEY_ATTR, KEY_COMPONENT_ANCHOR, KEY_COMPONENT_LOCKED, KEY_FIP001_BOOLEAN,
     };
 
     use super::*;
@@ -722,6 +724,43 @@ mod glyphs {
             assert_eq!(round_tripped.alignment, -1);
             assert!(round_tripped.alignment_explicit);
         }
+
+        #[test]
+        fn preserves_path_fip001_boolean_in_glyphs_attr() {
+            let mut path = Path {
+                id: None,
+                nodes: vec![Node {
+                    id: None,
+                    x: 0.0,
+                    y: 0.0,
+                    nodetype: NodeType::Line,
+                    smooth: false,
+                    format_specific: FormatSpecific::default(),
+                }],
+                closed: true,
+                format_specific: FormatSpecific::default(),
+            };
+            path.format_specific.insert(
+                KEY_FIP001_BOOLEAN.to_string(),
+                serde_json::json!("subtraction"),
+            );
+            let glyphs_path: glyphslib::glyphs3::Path = (&path).into();
+            assert_eq!(
+                glyphs_path
+                    .attr
+                    .get(KEY_FIP001_BOOLEAN)
+                    .and_then(glyphslib::Plist::as_str),
+                Some("subtraction")
+            );
+            let restored: Path = (&glyphs_path).into();
+            assert_eq!(
+                restored
+                    .format_specific
+                    .get(KEY_FIP001_BOOLEAN)
+                    .and_then(|value| value.as_str()),
+                Some("subtraction")
+            );
+        }
     }
 
     impl From<&glyphslib::glyphs3::Path> for Path {
@@ -735,6 +774,16 @@ mod glyphs {
                 format_specific.insert(
                     KEY_ATTR.into(),
                     serde_json::to_value(&val.attr).unwrap_or_default(),
+                );
+            }
+            if let Some(boolean) = val
+                .attr
+                .get(KEY_FIP001_BOOLEAN)
+                .and_then(glyphslib::Plist::as_str)
+            {
+                format_specific.insert(
+                    KEY_FIP001_BOOLEAN.into(),
+                    serde_json::Value::String(boolean.to_string()),
                 );
             }
             Path {
@@ -752,14 +801,21 @@ mod glyphs {
             for node in &val.nodes {
                 nodes.push(node.into());
             }
+            let mut attr: std::collections::BTreeMap<SmolStr, glyphslib::Plist> =
+                val.format_specific.get_json(KEY_ATTR);
+            if let Some(boolean) = val
+                .format_specific
+                .get(KEY_FIP001_BOOLEAN)
+                .and_then(|value| value.as_str())
+            {
+                attr.insert(KEY_FIP001_BOOLEAN.into(), boolean.to_string().into());
+            } else {
+                attr.remove(KEY_FIP001_BOOLEAN);
+            }
             glyphslib::glyphs3::Path {
                 nodes,
                 closed: val.closed,
-                attr: val
-                    .format_specific
-                    .get(KEY_ATTR)
-                    .and_then(|x| serde_json::from_value(x.clone()).ok())
-                    .unwrap_or_default(),
+                attr,
             }
         }
     }
