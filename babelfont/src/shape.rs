@@ -89,6 +89,7 @@ impl Component {
                     });
                 }
                 decomposed_contour.closed = contour.closed;
+                decomposed_contour.format_specific = contour.format_specific.clone();
                 contours.push(decomposed_contour);
             }
 
@@ -474,6 +475,7 @@ impl Shape {
                     })
                 }
                 contour.closed = p.closed;
+                contour.format_specific = p.format_specific.clone();
 
                 Shape::Path(contour)
             }
@@ -637,7 +639,7 @@ mod glyphs {
         copy_user_data, KEY_ALIGNMENT, KEY_ATTR, KEY_COMPONENT_ALIGNMENT_EXPLICIT,
         KEY_COMPONENT_ANCHOR, KEY_COMPONENT_ANCHOR_TO, KEY_COMPONENT_LOCKED,
         KEY_COMPONENT_MASTER_ID, KEY_COMPONENT_ORIENTATION, KEY_COMPONENT_TRAVERSE_ANCHORS,
-        KEY_SHAPE_TYPE, KEY_USER_DATA,
+        KEY_FIP001_BOOLEAN, KEY_SHAPE_TYPE, KEY_USER_DATA,
     };
 
     use super::*;
@@ -859,6 +861,43 @@ mod glyphs {
             assert_eq!(round_tripped.alignment, -1);
             assert!(round_tripped.alignment_explicit);
         }
+
+        #[test]
+        fn preserves_path_fip001_boolean_in_glyphs_attr() {
+            let mut path = Path {
+                id: None,
+                nodes: vec![Node {
+                    id: None,
+                    x: 0.0,
+                    y: 0.0,
+                    nodetype: NodeType::Line,
+                    smooth: false,
+                    format_specific: FormatSpecific::default(),
+                }],
+                closed: true,
+                format_specific: FormatSpecific::default(),
+            };
+            path.format_specific.insert(
+                KEY_FIP001_BOOLEAN.to_string(),
+                serde_json::json!("subtraction"),
+            );
+            let glyphs_path: glyphslib::glyphs3::Path = (&path).into();
+            assert_eq!(
+                glyphs_path
+                    .attr
+                    .get(KEY_FIP001_BOOLEAN)
+                    .and_then(glyphslib::Plist::as_str),
+                Some("subtraction")
+            );
+            let restored: Path = (&glyphs_path).into();
+            assert_eq!(
+                restored
+                    .format_specific
+                    .get(KEY_FIP001_BOOLEAN)
+                    .and_then(|value| value.as_str()),
+                Some("subtraction")
+            );
+        }
     }
 
     impl From<&glyphslib::glyphs3::Path> for Path {
@@ -872,6 +911,16 @@ mod glyphs {
                 format_specific.insert(
                     KEY_ATTR.into(),
                     serde_json::to_value(&val.attr).unwrap_or_default(),
+                );
+            }
+            if let Some(boolean) = val
+                .attr
+                .get(KEY_FIP001_BOOLEAN)
+                .and_then(glyphslib::Plist::as_str)
+            {
+                format_specific.insert(
+                    KEY_FIP001_BOOLEAN.into(),
+                    serde_json::Value::String(boolean.to_string()),
                 );
             }
             Path {
@@ -891,7 +940,7 @@ mod glyphs {
             for node in &val.nodes {
                 nodes.push(node.try_into()?);
             }
-            Ok(glyphslib::glyphs3::Path {
+            let mut path = glyphslib::glyphs3::Path {
                 nodes,
                 closed: val.closed,
                 attr: val
@@ -899,7 +948,18 @@ mod glyphs {
                     .get(KEY_ATTR)
                     .and_then(|x| serde_json::from_value(x.clone()).ok())
                     .unwrap_or_default(),
-            })
+            };
+            if let Some(boolean) = val
+                .format_specific
+                .get(KEY_FIP001_BOOLEAN)
+                .and_then(|value| value.as_str())
+            {
+                path.attr
+                    .insert(KEY_FIP001_BOOLEAN.into(), boolean.to_string().into());
+            } else {
+                path.attr.remove(KEY_FIP001_BOOLEAN);
+            }
+            Ok(path)
         }
     }
 }

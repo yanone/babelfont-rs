@@ -48,6 +48,30 @@ impl DecomposeComponentReferences {
     pub fn all() -> Self {
         DecomposeComponentReferences(None)
     }
+
+    /// Fully decompose component references in the listed glyphs only.
+    ///
+    /// Other glyphs are left unchanged and are used as the resolve source, so
+    /// parents see original component paths (including `format_specific`).
+    pub fn flatten_glyphs<I, S>(
+        font: &mut crate::Font,
+        glyph_names: I,
+    ) -> Result<(), crate::BabelfontError>
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<SmolStr>,
+    {
+        let fontdrasil_axes = font
+            .axes
+            .iter()
+            .map(|ax| ax.clone().try_into())
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut manager = DecompositionManager::new(None, &fontdrasil_axes);
+        for glyph_name in glyph_names {
+            manager.fully_decompose(font, glyph_name.into())?;
+        }
+        Ok(())
+    }
 }
 
 struct DecompositionManager<'a> {

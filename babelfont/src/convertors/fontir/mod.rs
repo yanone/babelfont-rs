@@ -2,7 +2,8 @@ use crate::{
     convertors::fontir::varc::insert_varc_table,
     error::FeatureError,
     filters::{
-        DropIncompatiblePaths, FontFilter as _, GlyphsBracketLayers, GlyphsData, GlyphsNumberValue,
+        DropIncompatiblePaths, Fip001Boolean, FontFilter as _, GlyphsBracketLayers, GlyphsData,
+        GlyphsNumberValue,
         GlyphsStylisticSetLabel, RetainGlyphs, RewriteSmartAxes,
     },
     BabelfontError, Font,
@@ -97,6 +98,7 @@ impl BabelfontIrSource {
     pub fn compile(font: Font, options: CompilationOptions) -> Result<Vec<u8>, BabelfontError> {
         let mut font = font.clone();
         assert!(!font.masters.is_empty());
+        Fip001Boolean.apply(&mut font)?;
         if options.drop_incompatible_paths {
             DropIncompatiblePaths::new(vec![]).apply(&mut font)?;
         }
