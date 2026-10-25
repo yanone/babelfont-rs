@@ -166,11 +166,11 @@ declare_filters! {
 // `SubsetVisitor` normally operates behind the `SubsetLayout` filter, but callers
 // (such as fontmerge) may want to drive it directly, e.g. to preseed it with
 // lookups that should be dropped.
-pub use subsetlayout::SubsetVisitor;
 pub use fip001boolean::{
     apply_boolean_to_layer, apply_boolean_to_paths, path_is_subtraction, FIP001_BOOLEAN_KEY,
     FIP001_BOOLEAN_SUBTRACTION,
 };
+pub use subsetlayout::SubsetVisitor;
 
 /// A trait for font filters that can be applied to a font
 pub trait FontFilter {
