@@ -32,11 +32,6 @@ pub const KEY_STYLE_MAP_FAMILY_NAME: &str = "ufo.styleMapFamilyName";
 pub const KEY_STYLE_MAP_STYLE_NAME: &str = "ufo.styleMapStyleName";
 /// Key for storing style name in FormatSpecific
 pub const KEY_STYLE_NAME: &str = "ufo.styleName";
-/// Key for storing the UFO identifier in FormatSpecific
-pub const KEY_IDENTIFIER: &str = "ufo.identifier";
-/// Key for storing original guide type in FormatSpecific, used to roundtrip horizontal and vertical guides which UFO can either represent as such, or as angled guides with specific angles. Values are "horizontal" or "vertical".
-pub const KEY_ORIGINAL_GUIDE: &str = "ufo.originalGuide";
-
 /// Key for storing identifier in FormatSpecific
 pub const KEY_IDENTIFIER: &str = "ufo.identifier";
 /// Key for storing original guide type in FormatSpecific, used to roundtrip horizontal and vertical guides which UFO can either represent as such, or as angled guides with specific angles. Values are "horizontal" or "vertical".
