@@ -115,6 +115,7 @@ fn test_component_closure() {
     font2.glyphs.get_mut("D").unwrap().layers[0]
         .shapes
         .push(Shape::Component(Component {
+            id: None,
             reference: "comp".into(),
             transform: DecomposedAffine::default(),
             location: Default::default(),
@@ -241,6 +242,7 @@ fn test_dotted_circle() {
         font.glyphs.get_mut("dottedCircle").unwrap().layers[0]
             .anchors
             .push(Anchor {
+                id: None,
                 x,
                 y,
                 name: name.to_string(),

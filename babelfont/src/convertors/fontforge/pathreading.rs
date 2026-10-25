@@ -59,6 +59,7 @@ pub(crate) fn splines_to_path(
                             serde_json::Value::String(flags.clone()),
                         );
                         nodes.push(Node {
+                            id: None,
                             x: *x,
                             y: *y,
                             nodetype: NodeType::Move,
@@ -77,6 +78,7 @@ pub(crate) fn splines_to_path(
                             serde_json::Value::String(flags.clone()),
                         );
                         nodes.push(Node {
+                            id: None,
                             x: *x,
                             y: *y,
                             nodetype: NodeType::Line,
@@ -90,6 +92,7 @@ pub(crate) fn splines_to_path(
                     if is_quadratic {
                         if let (Some((cx, cy)), Some((x, y))) = (points.first(), points.last()) {
                             nodes.push(Node {
+                                id: None,
                                 x: *cx,
                                 y: *cy,
                                 nodetype: NodeType::OffCurve,
@@ -102,6 +105,7 @@ pub(crate) fn splines_to_path(
                                 serde_json::Value::String(flags.clone()),
                             );
                             nodes.push(Node {
+                                id: None,
                                 x: *x,
                                 y: *y,
                                 nodetype: NodeType::QCurve,
@@ -116,6 +120,7 @@ pub(crate) fn splines_to_path(
                             if i < 2 {
                                 // Off-curve control points
                                 nodes.push(Node {
+                                    id: None,
                                     x: *x,
                                     y: *y,
                                     nodetype: NodeType::OffCurve,
@@ -130,6 +135,7 @@ pub(crate) fn splines_to_path(
                                     serde_json::Value::String(flags.clone()),
                                 );
                                 nodes.push(Node {
+                                    id: None,
                                     x: *x,
                                     y: *y,
                                     nodetype: NodeType::Curve,

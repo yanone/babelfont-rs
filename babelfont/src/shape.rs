@@ -395,12 +395,16 @@ pub enum Shape {
     FormatSpecific(FormatSpecific),
 }
 
+/// Opaque format-specific shapes carry no CRDT id.
+static NO_ID: Option<String> = None;
+
 impl Shape {
     /// Stable identifier for CRDT addressing (from the underlying Path/Component)
     pub fn id(&self) -> &Option<String> {
         match self {
             Shape::Component(c) => &c.id,
             Shape::Path(p) => &p.id,
+            Shape::FormatSpecific(_) => &NO_ID,
         }
     }
 
@@ -793,7 +797,6 @@ mod glyphs {
                 angle: (val.transform.rotation as f32).to_degrees(),
                 slant: (val.transform.skew.0 as f32, val.transform.skew.1 as f32),
                 alignment: alignment.unwrap_or(-1),
-                alignment_explicit: alignment.is_some(),
                 anchor: val.format_specific.get_optionstring(KEY_COMPONENT_ANCHOR),
                 attr: val.format_specific.get_json(KEY_ATTR),
                 smart_component_location: val
@@ -806,9 +809,11 @@ mod glyphs {
                     .format_specific
                     .get_bool_or(KEY_COMPONENT_TRAVERSE_ANCHORS, true),
                 orientation: val.format_specific.get_json(KEY_COMPONENT_ORIENTATION),
-                alignment_explicit: val
-                    .format_specific
-                    .get_bool(KEY_COMPONENT_ALIGNMENT_EXPLICIT),
+                // A stored alignment is always explicit; Glyphs only stores it then.
+                alignment_explicit: alignment.is_some()
+                    || val
+                        .format_specific
+                        .get_bool(KEY_COMPONENT_ALIGNMENT_EXPLICIT),
                 master_id: val
                     .format_specific
                     .get_optionstring(KEY_COMPONENT_MASTER_ID),
@@ -881,7 +886,7 @@ mod glyphs {
                 KEY_FIP001_BOOLEAN.to_string(),
                 serde_json::json!("subtraction"),
             );
-            let glyphs_path: glyphslib::glyphs3::Path = (&path).into();
+            let glyphs_path: glyphslib::glyphs3::Path = (&path).try_into().unwrap();
             assert_eq!(
                 glyphs_path
                     .attr

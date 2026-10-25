@@ -375,7 +375,7 @@ fn load_master_from_entries(
     for g in glyphs.iter() {
         let mut glyph_layer_list = vec![];
         if let Some(norad_glyph) = ufo_layer.get_glyph(g.name.as_str()) {
-            let mut our_layer = norad_glyph_to_babelfont_layer(norad_glyph, ufo_layer, &master.id);
+            let mut our_layer = norad_glyph_to_babelfont_layer(norad_glyph, ufo_layer, &master);
             our_layer.master = crate::LayerType::DefaultForMaster(master.id.to_string());
             glyph_layer_list.push(our_layer);
         }

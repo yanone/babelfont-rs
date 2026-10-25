@@ -300,6 +300,7 @@ fn load_glyph(font: &mut Font, items: Vec<GlyphEntry>) -> Result<(), BabelfontEr
                 for (index, layer) in glyph.layers.iter_mut().enumerate() {
                     for component in components.iter() {
                         let our_component = crate::shape::Component {
+                            id: None,
                             reference: component.glyph_index.to_string().into(), // Will fix later
                             transform: DecomposedAffine {
                                 translation: (

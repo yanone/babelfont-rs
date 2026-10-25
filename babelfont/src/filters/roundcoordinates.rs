@@ -120,13 +120,24 @@ mod tests {
         let mut layer = Layer::new(500.0);
         layer.shapes.push(Shape::Path(Path {
             nodes: vec![
-                Node { x: 10.4, y: -0.4, nodetype: NodeType::Line, ..Default::default() },
-                Node { x: 44.5, y: 45.5, nodetype: NodeType::Line, ..Default::default() },
+                Node {
+                    x: 10.4,
+                    y: -0.4,
+                    nodetype: NodeType::Line,
+                    ..Default::default()
+                },
+                Node {
+                    x: 44.5,
+                    y: 45.5,
+                    nodetype: NodeType::Line,
+                    ..Default::default()
+                },
             ],
             closed: true,
             ..Default::default()
         }));
         let mut component = Component {
+            id: None,
             reference: "a".into(),
             transform: Default::default(),
             location: Default::default(),
@@ -136,16 +147,24 @@ mod tests {
         component.transform.scale = (-1.0, 1.0);
         layer.shapes.push(Shape::Component(component));
         let mut font = Font::new();
-        font.glyphs.0.push(Glyph { name: "g".into(), layers: vec![layer], ..Default::default() });
+        font.glyphs.0.push(Glyph {
+            name: "g".into(),
+            layers: vec![layer],
+            ..Default::default()
+        });
 
         RoundCoordinates::new().apply(&mut font).unwrap();
 
         let shapes = &font.glyphs.0[0].layers[0].shapes;
-        let Shape::Path(path) = &shapes[0] else { panic!() };
+        let Shape::Path(path) = &shapes[0] else {
+            panic!()
+        };
         let points: Vec<(f64, f64)> = path.nodes.iter().map(|n| (n.x, n.y)).collect();
         assert_eq!(points, vec![(10.0, 0.0), (44.0, 46.0)]);
         assert!(points[0].1.is_sign_positive());
-        let Shape::Component(c) = &shapes[1] else { panic!() };
+        let Shape::Component(c) = &shapes[1] else {
+            panic!()
+        };
         assert_eq!(c.transform.translation, (856.0, 0.0));
         assert!(c.transform.translation.1.is_sign_positive());
         assert_eq!(c.transform.scale, (-1.0, 1.0));
@@ -153,7 +172,12 @@ mod tests {
 
     #[test]
     fn test_implied_on_curve_point_stays_implied() {
-        let node = |x, y, nodetype| Node { x, y, nodetype, ..Default::default() };
+        let node = |x, y, nodetype| Node {
+            x,
+            y,
+            nodetype,
+            ..Default::default()
+        };
         let mut path = Path {
             nodes: vec![
                 node(10.4, 0.4, NodeType::OffCurve),
@@ -166,6 +190,9 @@ mod tests {
         };
         round_path(&mut path);
         let points: Vec<(f64, f64)> = path.nodes.iter().map(|n| (n.x, n.y)).collect();
-        assert_eq!(points, vec![(10.0, 0.0), (15.0, 10.0), (20.0, 20.0), (30.0, 0.0)]);
+        assert_eq!(
+            points,
+            vec![(10.0, 0.0), (15.0, 10.0), (20.0, 20.0), (30.0, 0.0)]
+        );
     }
 }
