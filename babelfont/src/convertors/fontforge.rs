@@ -2250,6 +2250,7 @@ impl SfdParser {
             name = "_".to_string() + &name;
         }
         Some(crate::Anchor {
+            id: None,
             name,
             x,
             y,
@@ -2449,6 +2450,7 @@ impl SfdParser {
         }
 
         let component = Component {
+            id: None,
             reference: reference_name.into(),
             transform,
             location: Default::default(),
