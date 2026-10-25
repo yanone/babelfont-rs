@@ -3,8 +3,7 @@ use crate::{
     error::FeatureError,
     filters::{
         DropIncompatiblePaths, Fip001Boolean, FontFilter as _, GlyphsBracketLayers, GlyphsData,
-        GlyphsNumberValue,
-        GlyphsStylisticSetLabel, RetainGlyphs, RewriteSmartAxes,
+        GlyphsNumberValue, GlyphsStylisticSetLabel, RetainGlyphs, RewriteSmartAxes,
     },
     BabelfontError, Font,
 };

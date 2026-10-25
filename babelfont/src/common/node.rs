@@ -261,10 +261,16 @@ mod glyphs {
             if let Some(user_data) = &val.user_data {
                 copy_user_data(&mut format_specific, user_data);
             }
-            format_specific.insert_json(KEY_NODE_LOCKED, &val.locked);
-            format_specific.insert_json(KEY_NODE_TANGENT, &val.tangent);
-            format_specific.insert_json(KEY_NODE_ORIENTATION, &val.orientation);
-            format_specific.insert_json(KEY_NODE_HOI, &val.hoi);
+            // Store only non-default values: every node carries these, and
+            // export falls back to the Glyphs defaults when a key is missing.
+            format_specific.insert_if_ne_json(KEY_NODE_LOCKED, &val.locked, &false);
+            format_specific.insert_if_ne_json(KEY_NODE_TANGENT, &val.tangent, &false);
+            format_specific.insert_if_ne_json(
+                KEY_NODE_ORIENTATION,
+                &val.orientation,
+                &glyphslib::common::Orientation::Left,
+            );
+            format_specific.insert_some_json(KEY_NODE_HOI, &val.hoi);
 
             Node {
                 id: None,
