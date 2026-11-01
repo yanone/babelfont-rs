@@ -26,6 +26,7 @@ pub fn close_layout(
     let mut visitor = LayoutClosureVisitor::new(font, glyphs);
 
     let mut count = visitor.glyphs.len();
+    let max_rounds = font_glyphs.len().saturating_add(1);
     let mut rounds = 0;
     loop {
         visitor.visit(&mut feature_file).map_err(|e| {
@@ -35,7 +36,7 @@ pub fn close_layout(
         if visitor.glyphs.len() == count {
             break;
         }
-        if rounds > 10 {
+        if rounds > max_rounds {
             return Err(BabelfontError::LayoutClosureError);
         }
         count = visitor.glyphs.len();
@@ -287,6 +288,22 @@ mod tests {
             ),
             vec!["a"],
             vec!["a", "b", "c"],
+        );
+    }
+
+    #[test]
+    fn test_closure_allows_more_than_ten_ordered_rounds() {
+        test_closure(
+            dummy_font_with_glyphs_and_features(
+                vec![
+                    "g0", "g1", "g2", "g3", "g4", "g5", "g6", "g7", "g8", "g9", "g10", "g11", "g12",
+                ],
+                "feature foo { sub g11 by g12; sub g10 by g11; sub g9 by g10; sub g8 by g9; sub g7 by g8; sub g6 by g7; sub g5 by g6; sub g4 by g5; sub g3 by g4; sub g2 by g3; sub g1 by g2; sub g0 by g1; } foo;",
+            ),
+            vec!["g0"],
+            vec![
+                "g0", "g1", "g10", "g11", "g12", "g2", "g3", "g4", "g5", "g6", "g7", "g8", "g9",
+            ],
         );
     }
 }
