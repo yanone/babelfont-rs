@@ -138,6 +138,8 @@
 extern crate serde_json_path_to_error as serde_json;
 
 mod anchor;
+mod computed_anchors;
+pub mod compile_filter;
 mod axis;
 mod common;
 /// Convertors for various font file formats
@@ -175,6 +177,10 @@ pub use crate::{
     guide::Guide,
     i18ndictionary::I18NDictionary,
     instance::Instance,
+    computed_anchors::{
+        computed_anchors, fill_font_missing_inherited_anchors, fill_missing_inherited_anchors,
+        linked_compile_filter_ids, ComputedAnchorMap,
+    },
     layer::{Layer, LayerType},
     layout::closure::close_layout,
     master::Master,
