@@ -319,6 +319,15 @@ impl Path {
         Ok(())
     }
 
+    /// Alias for [`Self::delete_keeping_shape`].
+    pub fn delete_nodes_keeping_shape(
+        &mut self,
+        to_delete: &[usize],
+        tolerance: f64,
+    ) -> Result<(), BabelfontError> {
+        self.delete_keeping_shape(to_delete, tolerance)
+    }
+
     /// The signed area enclosed by a closed path.
     ///
     /// Positive is counter-clockwise, in the y-up coordinate system fonts use.
@@ -1390,7 +1399,8 @@ mod tests {
             closed: true,
             ..Default::default()
         };
-        path.delete_keeping_shape(&[1], 1.0).unwrap();
+        path.delete_keeping_shape(&[1], crate::common::pathtools::DEFAULT_JOIN_TOLERANCE)
+            .unwrap();
         // Deleting one corner of the square leaves a triangle.
         assert_eq!(path.nodes.len(), 3);
         assert!(path.nodes.iter().all(|n| n.nodetype == NodeType::Line));

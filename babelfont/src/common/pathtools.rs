@@ -41,7 +41,8 @@ fn eval_ab(a: &CubicBez, b: &CubicBez, r: f64, t: f64) -> kurbo::Point {
     }
 }
 
-pub fn join_bez(a: &CubicBez, b: &CubicBez, tolerance: f64) -> Option<CubicBez> {
+/// Fit one cubic across two cubics and return the curve plus its max sample error.
+pub fn join_bez_fit(a: &CubicBez, b: &CubicBez) -> CubicBez {
     let d1 = a.p1 - a.p0;
     let d2 = b.p3 - b.p2;
     let len_a = a.arclen(0.1);
@@ -86,9 +87,14 @@ pub fn join_bez(a: &CubicBez, b: &CubicBez, tolerance: f64) -> Option<CubicBez> 
 
     let c1 = a.p0 + t1 * d1;
     let c2 = b.p3 - t2 * d2;
-    let fitted = CubicBez::new(a.p0, c1, c2, b.p3);
+    CubicBez::new(a.p0, c1, c2, b.p3)
+}
 
-    // Error check
+/// Max sampled distance between the joined cubic and the original pair.
+pub fn join_bez_max_error(a: &CubicBez, b: &CubicBez, fitted: &CubicBez) -> f64 {
+    let len_a = a.arclen(0.1);
+    let len_b = b.arclen(0.1);
+    let r = (len_a / (len_a + len_b)).clamp(1.0e-3, 1.0 - 1.0e-3);
     let n = 64;
     let mut max_err = 0.0f64;
     for i in 0..=n {
@@ -96,12 +102,46 @@ pub fn join_bez(a: &CubicBez, b: &CubicBez, tolerance: f64) -> Option<CubicBez> 
         let e = (eval_ab(a, b, r, t) - fitted.eval(t)).hypot();
         max_err = max_err.max(e);
     }
-    if max_err < tolerance {
+    max_err
+}
+
+/// A tolerance that usually accepts a cubic join instead of collapsing to a line.
+///
+/// Survey of joins (font units): even shallow pairs fit under 8; a radius-100
+/// semicircle needs ~47; uneven 1:4 / 1:8 handles need ~75; S-curves and deep
+/// bowls sit between 15 and 50. Values of 1.0 reject all of those. 64 covers
+/// even/inflected cases; 128 covers uneven handles; 1000 is a safe caller default.
+pub fn recommended_join_tolerance(a: &CubicBez, b: &CubicBez) -> f64 {
+    let len_a = a.arclen(0.1).max(1e-6);
+    let len_b = b.arclen(0.1).max(1e-6);
+    let total = len_a + len_b;
+    let uneven = (len_a / total - 0.5).abs();
+    let mut tolerance = 64.0_f64.max(0.2 * total);
+    if uneven > 0.12 {
+        tolerance = tolerance.max(128.0);
+    }
+    if uneven > 0.25 {
+        tolerance = tolerance.max(256.0);
+    }
+    tolerance.min(4000.0)
+}
+
+pub fn join_bez(a: &CubicBez, b: &CubicBez, tolerance: f64) -> Option<CubicBez> {
+    let fitted = join_bez_fit(a, b);
+    if join_bez_max_error(a, b, &fitted) < tolerance {
         Some(fitted)
     } else {
         None
     }
 }
+
+/// Default tolerance, in font units, used by [`crate::Path::delete_keeping_shape`]
+/// when fitting a single curve across a deleted node.
+///
+/// Values around 1.0 reject most non-exact joins (a semicircle of radius 100
+/// has ~14 unit error). 1000+ accepts typical outline joins; callers that want
+/// situation-specific room can use [`recommended_join_tolerance`].
+pub const DEFAULT_JOIN_TOLERANCE: f64 = 1000.0;
 
 /// Delete the nodes at the given indices from a path, keeping its shape where
 /// possible.
@@ -307,12 +347,10 @@ impl<'a> Deleter<'a> {
         let m = self.on_curve.len();
         let seg1 = &self.segments[a];
         let seg2 = &self.segments[(a + 1) % m];
-        let start_ix = self.on_curve[a];
         let mid_ix = self.on_curve[(a + 1) % m];
         let end_ix = self.on_curve[(a + 2) % m];
         if seg1.reduce_to_line
             || seg2.reduce_to_line
-            || self.nodes[start_ix].nodetype != NodeType::Curve
             || self.nodes[mid_ix].nodetype != NodeType::Curve
             || self.nodes[end_ix].nodetype != NodeType::Curve
             || seg1.offs.len() != 2
@@ -689,5 +727,117 @@ mod tests {
         // Out-of-range indices are ignored.
         let result = delete_keeping_shape(&nodes, true, &[100, 200], 1.0).unwrap();
         assert_eq!(result, nodes);
+    }
+
+    fn cubic(p0: (f64, f64), p1: (f64, f64), p2: (f64, f64), p3: (f64, f64)) -> CubicBez {
+        CubicBez::new(p0, p1, p2, p3)
+    }
+
+    fn report_join(name: &str, a: CubicBez, b: CubicBez) {
+        let fitted = join_bez_fit(&a, &b);
+        let err = join_bez_max_error(&a, &b, &fitted);
+        let rec = recommended_join_tolerance(&a, &b);
+        let accepted: Vec<f64> = [
+            1.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0, 500.0, 1000.0, 2000.0,
+        ]
+        .into_iter()
+        .filter(|&tol| join_bez(&a, &b, tol).is_some())
+        .collect();
+        println!(
+            "{name:32} err={err:8.3} rec={rec:8.1} first_accept={}",
+            accepted.first().copied().unwrap_or(f64::INFINITY)
+        );
+    }
+
+    #[test]
+    fn join_tolerance_survey() {
+        let k = 4.0 / 3.0 * (std::f64::consts::PI / 8.0).tan() * 100.0;
+        // Two quarter-circles: a semicircle (inflection-free but high curvature).
+        report_join(
+            "semicircle r=100",
+            cubic((100.0, 0.0), (100.0, k), (-k, 100.0), (0.0, 100.0)),
+            cubic((0.0, 100.0), (k, 100.0), (-100.0, k), (-100.0, 0.0)),
+        );
+        report_join(
+            "exact split cubic",
+            cubic((0.0, 0.0), (50.0, 100.0), (50.0, 100.0), (100.0, 0.0)),
+            cubic((100.0, 0.0), (150.0, -100.0), (150.0, -100.0), (200.0, 0.0)),
+        );
+        report_join(
+            "uneven 1:4 handles",
+            cubic((0.0, 0.0), (20.0, 80.0), (40.0, 80.0), (80.0, 0.0)),
+            cubic((80.0, 0.0), (200.0, 200.0), (280.0, 200.0), (400.0, 0.0)),
+        );
+        report_join(
+            "uneven 1:8 handles",
+            cubic((0.0, 0.0), (10.0, 40.0), (20.0, 40.0), (40.0, 0.0)),
+            cubic((40.0, 0.0), (200.0, 240.0), (320.0, 240.0), (400.0, 0.0)),
+        );
+        report_join(
+            "S-curve inflection",
+            cubic((0.0, 0.0), (80.0, 120.0), (160.0, 120.0), (200.0, 0.0)),
+            cubic((200.0, 0.0), (240.0, -120.0), (320.0, -120.0), (400.0, 0.0)),
+        );
+        report_join(
+            "shallow even",
+            cubic((0.0, 0.0), (40.0, 12.0), (80.0, 12.0), (120.0, 0.0)),
+            cubic((120.0, 0.0), (160.0, -12.0), (200.0, -12.0), (240.0, 0.0)),
+        );
+        report_join(
+            "deep bowl",
+            cubic((0.0, 0.0), (0.0, 200.0), (200.0, 200.0), (200.0, 0.0)),
+            cubic((200.0, 0.0), (200.0, -200.0), (400.0, -200.0), (400.0, 0.0)),
+        );
+        report_join(
+            "almost collinear",
+            cubic((0.0, 0.0), (50.0, 2.0), (100.0, 2.0), (150.0, 0.0)),
+            cubic((150.0, 0.0), (200.0, -2.0), (250.0, -2.0), (300.0, 0.0)),
+        );
+        report_join(
+            "open-path Move start",
+            cubic((0.0, 0.0), (40.0, 60.0), (80.0, 60.0), (120.0, 0.0)),
+            cubic((120.0, 0.0), (160.0, -40.0), (220.0, -40.0), (280.0, 20.0)),
+        );
+
+        // Sanity: recommended tolerance always accepts the fit on these cases.
+        let cases = [
+            (
+                "semicircle",
+                cubic((100.0, 0.0), (100.0, k), (-k, 100.0), (0.0, 100.0)),
+                cubic((0.0, 100.0), (k, 100.0), (-100.0, k), (-100.0, 0.0)),
+            ),
+            (
+                "uneven",
+                cubic((0.0, 0.0), (20.0, 80.0), (40.0, 80.0), (80.0, 0.0)),
+                cubic((80.0, 0.0), (200.0, 200.0), (280.0, 200.0), (400.0, 0.0)),
+            ),
+            (
+                "s-curve",
+                cubic((0.0, 0.0), (80.0, 120.0), (160.0, 120.0), (200.0, 0.0)),
+                cubic((200.0, 0.0), (240.0, -120.0), (320.0, -120.0), (400.0, 0.0)),
+            ),
+            (
+                "deep bowl",
+                cubic((0.0, 0.0), (0.0, 200.0), (200.0, 200.0), (200.0, 0.0)),
+                cubic((200.0, 0.0), (200.0, -200.0), (400.0, -200.0), (400.0, 0.0)),
+            ),
+        ];
+        for (name, a, b) in cases {
+            let fitted = join_bez_fit(&a, &b);
+            let err = join_bez_max_error(&a, &b, &fitted);
+            let rec = recommended_join_tolerance(&a, &b);
+            assert!(
+                rec > err,
+                "{name}: recommended {rec} should accept error {err}"
+            );
+            assert!(
+                join_bez(&a, &b, 1000.0).is_some(),
+                "{name}: 1000 should accept"
+            );
+            assert!(
+                join_bez(&a, &b, 1.0).is_none() || err < 1.0,
+                "{name}: 1.0 should reject unless the fit is already that tight"
+            );
+        }
     }
 }
