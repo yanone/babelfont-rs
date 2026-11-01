@@ -207,7 +207,7 @@
             },
             "shapes": [
             {
-                "nodes": "0 380 l 1000 380 l 1000 390 l 0 390 l",
+                "nodes": [{"x":0,"y":380,"nodetype":"Line"},{"x":1000,"y":380,"nodetype":"Line"},{"x":1000,"y":390,"nodetype":"Line"},{"x":0,"y":390,"nodetype":"Line"}],
                 "closed": true
             }],
             "smart_component_location":
@@ -227,7 +227,7 @@
             },
             "shapes": [
             {
-                "nodes": "0 380 l 1000 380 l 1000 580 l 0 580 l",
+                "nodes": [{"x":0,"y":380,"nodetype":"Line"},{"x":1000,"y":380,"nodetype":"Line"},{"x":1000,"y":580,"nodetype":"Line"},{"x":0,"y":580,"nodetype":"Line"}],
                 "closed": true
             }],
             "smart_component_location":
@@ -247,7 +247,7 @@
             },
             "shapes": [
             {
-                "nodes": "0 380 l 10 380 l 10 390 l 0 390 l",
+                "nodes": [{"x":0,"y":380,"nodetype":"Line"},{"x":10,"y":380,"nodetype":"Line"},{"x":10,"y":390,"nodetype":"Line"},{"x":0,"y":390,"nodetype":"Line"}],
                 "closed": true
             }],
             "smart_component_location":
@@ -293,7 +293,7 @@
             },
             "shapes": [
             {
-                "nodes": "500 -120 l 510 -120 l 510 880 l 500 880 l",
+                "nodes": [{"x":500,"y":-120,"nodetype":"Line"},{"x":510,"y":-120,"nodetype":"Line"},{"x":510,"y":880,"nodetype":"Line"},{"x":500,"y":880,"nodetype":"Line"}],
                 "closed": true
             }],
             "smart_component_location":
@@ -314,7 +314,7 @@
             },
             "shapes": [
             {
-                "nodes": "500 -120 l 700 -120 l 700 880 l 500 880 l",
+                "nodes": [{"x":500,"y":-120,"nodetype":"Line"},{"x":700,"y":-120,"nodetype":"Line"},{"x":700,"y":880,"nodetype":"Line"},{"x":500,"y":880,"nodetype":"Line"}],
                 "closed": true
             }],
             "smart_component_location":
@@ -335,7 +335,7 @@
             },
             "shapes": [
             {
-                "nodes": "500 870 l 510 870 l 510 880 l 500 880 l",
+                "nodes": [{"x":500,"y":870,"nodetype":"Line"},{"x":510,"y":870,"nodetype":"Line"},{"x":510,"y":880,"nodetype":"Line"},{"x":500,"y":880,"nodetype":"Line"}],
                 "closed": true
             }],
             "smart_component_location":
@@ -356,7 +356,7 @@
             },
             "shapes": [
             {
-                "nodes": "500 -1120 l 510 -1120 l 510 880 l 500 880 l",
+                "nodes": [{"x":500,"y":-1120,"nodetype":"Line"},{"x":510,"y":-1120,"nodetype":"Line"},{"x":510,"y":880,"nodetype":"Line"},{"x":500,"y":880,"nodetype":"Line"}],
                 "closed": true
             }],
             "smart_component_location":
@@ -377,7 +377,7 @@
             },
             "shapes": [
             {
-                "nodes": "500 -120 l 510 -120 l 510 980 l 500 880 l",
+                "nodes": [{"x":500,"y":-120,"nodetype":"Line"},{"x":510,"y":-120,"nodetype":"Line"},{"x":510,"y":980,"nodetype":"Line"},{"x":500,"y":880,"nodetype":"Line"}],
                 "closed": true
             }],
             "smart_component_location":
@@ -434,11 +434,11 @@
             },
             "shapes": [
             {
-                "nodes": "0 -120 l 30 -120 l 30 850 l 970 850 l 970 -120 l 1000 -120 l 1000 880 l 0 880 l",
+                "nodes": [{"x":0,"y":-120,"nodetype":"Line"},{"x":30,"y":-120,"nodetype":"Line"},{"x":30,"y":850,"nodetype":"Line"},{"x":970,"y":850,"nodetype":"Line"},{"x":970,"y":-120,"nodetype":"Line"},{"x":1000,"y":-120,"nodetype":"Line"},{"x":1000,"y":880,"nodetype":"Line"},{"x":0,"y":880,"nodetype":"Line"}],
                 "closed": true
             },
             {
-                "nodes": "10 -120 l 999 -120 l 999 -90 l 10 -90 l",
+                "nodes": [{"x":10,"y":-120,"nodetype":"Line"},{"x":999,"y":-120,"nodetype":"Line"},{"x":999,"y":-90,"nodetype":"Line"},{"x":10,"y":-90,"nodetype":"Line"}],
                 "closed": true
             }],
             "smart_component_location":
@@ -467,11 +467,11 @@
             },
             "shapes": [
             {
-                "nodes": "0 -120 l 160 -120 l 160 720 l 840 720 l 840 -120 l 1000 -120 l 1000 880 l 0 880 l",
+                "nodes": [{"x":0,"y":-120,"nodetype":"Line"},{"x":160,"y":-120,"nodetype":"Line"},{"x":160,"y":720,"nodetype":"Line"},{"x":840,"y":720,"nodetype":"Line"},{"x":840,"y":-120,"nodetype":"Line"},{"x":1000,"y":-120,"nodetype":"Line"},{"x":1000,"y":880,"nodetype":"Line"},{"x":0,"y":880,"nodetype":"Line"}],
                 "closed": true
             },
             {
-                "nodes": "10 -120 l 999 -120 l 999 40 l 10 40 l",
+                "nodes": [{"x":10,"y":-120,"nodetype":"Line"},{"x":999,"y":-120,"nodetype":"Line"},{"x":999,"y":40,"nodetype":"Line"},{"x":10,"y":40,"nodetype":"Line"}],
                 "closed": true
             }],
             "smart_component_location":
@@ -500,11 +500,11 @@
             },
             "shapes": [
             {
-                "nodes": "0 -120 l 30 -120 l 30 750 l 970 750 l 970 -120 l 1000 -120 l 1000 880 l 0 880 l",
+                "nodes": [{"x":0,"y":-120,"nodetype":"Line"},{"x":30,"y":-120,"nodetype":"Line"},{"x":30,"y":750,"nodetype":"Line"},{"x":970,"y":750,"nodetype":"Line"},{"x":970,"y":-120,"nodetype":"Line"},{"x":1000,"y":-120,"nodetype":"Line"},{"x":1000,"y":880,"nodetype":"Line"},{"x":0,"y":880,"nodetype":"Line"}],
                 "closed": true
             },
             {
-                "nodes": "10 -120 l 999 -120 l 999 -90 l 10 -90 l",
+                "nodes": [{"x":10,"y":-120,"nodetype":"Line"},{"x":999,"y":-120,"nodetype":"Line"},{"x":999,"y":-90,"nodetype":"Line"},{"x":10,"y":-90,"nodetype":"Line"}],
                 "closed": true
             }],
             "smart_component_location":
@@ -533,11 +533,11 @@
             },
             "shapes": [
             {
-                "nodes": "0 -120 l 30 -120 l 30 950 l 970 950 l 970 -120 l 1000 -120 l 1000 880 l 0 880 l",
+                "nodes": [{"x":0,"y":-120,"nodetype":"Line"},{"x":30,"y":-120,"nodetype":"Line"},{"x":30,"y":950,"nodetype":"Line"},{"x":970,"y":950,"nodetype":"Line"},{"x":970,"y":-120,"nodetype":"Line"},{"x":1000,"y":-120,"nodetype":"Line"},{"x":1000,"y":880,"nodetype":"Line"},{"x":0,"y":880,"nodetype":"Line"}],
                 "closed": true
             },
             {
-                "nodes": "10 -120 l 999 -120 l 999 -90 l 10 -90 l",
+                "nodes": [{"x":10,"y":-120,"nodetype":"Line"},{"x":999,"y":-120,"nodetype":"Line"},{"x":999,"y":-90,"nodetype":"Line"},{"x":10,"y":-90,"nodetype":"Line"}],
                 "closed": true
             }],
             "smart_component_location":
@@ -566,11 +566,11 @@
             },
             "shapes": [
             {
-                "nodes": "0 -120 l 30 -120 l 30 850 l 970 850 l 970 -120 l 1000 -120 l 1000 880 l 0 880 l",
+                "nodes": [{"x":0,"y":-120,"nodetype":"Line"},{"x":30,"y":-120,"nodetype":"Line"},{"x":30,"y":850,"nodetype":"Line"},{"x":970,"y":850,"nodetype":"Line"},{"x":970,"y":-120,"nodetype":"Line"},{"x":1000,"y":-120,"nodetype":"Line"},{"x":1000,"y":880,"nodetype":"Line"},{"x":0,"y":880,"nodetype":"Line"}],
                 "closed": true
             },
             {
-                "nodes": "10 -120 l 999 -120 l 999 10 l 10 10 l",
+                "nodes": [{"x":10,"y":-120,"nodetype":"Line"},{"x":999,"y":-120,"nodetype":"Line"},{"x":999,"y":10,"nodetype":"Line"},{"x":10,"y":10,"nodetype":"Line"}],
                 "closed": true
             }],
             "smart_component_location":
@@ -599,11 +599,11 @@
             },
             "shapes": [
             {
-                "nodes": "0 -120 l 30 -120 l 30 850 l 970 850 l 970 -120 l 1000 -120 l 1000 880 l 0 880 l",
+                "nodes": [{"x":0,"y":-120,"nodetype":"Line"},{"x":30,"y":-120,"nodetype":"Line"},{"x":30,"y":850,"nodetype":"Line"},{"x":970,"y":850,"nodetype":"Line"},{"x":970,"y":-120,"nodetype":"Line"},{"x":1000,"y":-120,"nodetype":"Line"},{"x":1000,"y":880,"nodetype":"Line"},{"x":0,"y":880,"nodetype":"Line"}],
                 "closed": true
             },
             {
-                "nodes": "10 -120 l 999 -120 l 999 -190 l 10 -190 l",
+                "nodes": [{"x":10,"y":-120,"nodetype":"Line"},{"x":999,"y":-120,"nodetype":"Line"},{"x":999,"y":-190,"nodetype":"Line"},{"x":10,"y":-190,"nodetype":"Line"}],
                 "closed": true
             }],
             "smart_component_location":
@@ -632,11 +632,11 @@
             },
             "shapes": [
             {
-                "nodes": "0 -120 l 130 -120 l 130 850 l 970 850 l 970 -120 l 1000 -120 l 1000 880 l 0 880 l",
+                "nodes": [{"x":0,"y":-120,"nodetype":"Line"},{"x":130,"y":-120,"nodetype":"Line"},{"x":130,"y":850,"nodetype":"Line"},{"x":970,"y":850,"nodetype":"Line"},{"x":970,"y":-120,"nodetype":"Line"},{"x":1000,"y":-120,"nodetype":"Line"},{"x":1000,"y":880,"nodetype":"Line"},{"x":0,"y":880,"nodetype":"Line"}],
                 "closed": true
             },
             {
-                "nodes": "10 -120 l 999 -120 l 999 -90 l 10 -90 l",
+                "nodes": [{"x":10,"y":-120,"nodetype":"Line"},{"x":999,"y":-120,"nodetype":"Line"},{"x":999,"y":-90,"nodetype":"Line"},{"x":10,"y":-90,"nodetype":"Line"}],
                 "closed": true
             }],
             "smart_component_location":
@@ -665,11 +665,11 @@
             },
             "shapes": [
             {
-                "nodes": "0 -120 l -70 -120 l -70 850 l 970 850 l 970 -120 l 1000 -120 l 1000 880 l 0 880 l",
+                "nodes": [{"x":0,"y":-120,"nodetype":"Line"},{"x":-70,"y":-120,"nodetype":"Line"},{"x":-70,"y":850,"nodetype":"Line"},{"x":970,"y":850,"nodetype":"Line"},{"x":970,"y":-120,"nodetype":"Line"},{"x":1000,"y":-120,"nodetype":"Line"},{"x":1000,"y":880,"nodetype":"Line"},{"x":0,"y":880,"nodetype":"Line"}],
                 "closed": true
             },
             {
-                "nodes": "10 -120 l 999 -120 l 999 -90 l 10 -90 l",
+                "nodes": [{"x":10,"y":-120,"nodetype":"Line"},{"x":999,"y":-120,"nodetype":"Line"},{"x":999,"y":-90,"nodetype":"Line"},{"x":10,"y":-90,"nodetype":"Line"}],
                 "closed": true
             }],
             "smart_component_location":
@@ -698,11 +698,11 @@
             },
             "shapes": [
             {
-                "nodes": "0 -120 l 30 -120 l 30 850 l 870 850 l 870 -120 l 1000 -120 l 1000 880 l 0 880 l",
+                "nodes": [{"x":0,"y":-120,"nodetype":"Line"},{"x":30,"y":-120,"nodetype":"Line"},{"x":30,"y":850,"nodetype":"Line"},{"x":870,"y":850,"nodetype":"Line"},{"x":870,"y":-120,"nodetype":"Line"},{"x":1000,"y":-120,"nodetype":"Line"},{"x":1000,"y":880,"nodetype":"Line"},{"x":0,"y":880,"nodetype":"Line"}],
                 "closed": true
             },
             {
-                "nodes": "10 -120 l 999 -120 l 999 -90 l 10 -90 l",
+                "nodes": [{"x":10,"y":-120,"nodetype":"Line"},{"x":999,"y":-120,"nodetype":"Line"},{"x":999,"y":-90,"nodetype":"Line"},{"x":10,"y":-90,"nodetype":"Line"}],
                 "closed": true
             }],
             "smart_component_location":
@@ -731,11 +731,11 @@
             },
             "shapes": [
             {
-                "nodes": "0 -120 l 30 -120 l 30 850 l 1070 850 l 1070 -120 l 1000 -120 l 1000 880 l 0 880 l",
+                "nodes": [{"x":0,"y":-120,"nodetype":"Line"},{"x":30,"y":-120,"nodetype":"Line"},{"x":30,"y":850,"nodetype":"Line"},{"x":1070,"y":850,"nodetype":"Line"},{"x":1070,"y":-120,"nodetype":"Line"},{"x":1000,"y":-120,"nodetype":"Line"},{"x":1000,"y":880,"nodetype":"Line"},{"x":0,"y":880,"nodetype":"Line"}],
                 "closed": true
             },
             {
-                "nodes": "10 -120 l 999 -120 l 999 -90 l 10 -90 l",
+                "nodes": [{"x":10,"y":-120,"nodetype":"Line"},{"x":999,"y":-120,"nodetype":"Line"},{"x":999,"y":-90,"nodetype":"Line"},{"x":10,"y":-90,"nodetype":"Line"}],
                 "closed": true
             }],
             "smart_component_location":
@@ -764,11 +764,11 @@
             },
             "shapes": [
             {
-                "nodes": "0 820 l 30 820 l 30 850 l 970 850 l 970 820 l 1000 820 l 1000 880 l 0 880 l",
+                "nodes": [{"x":0,"y":820,"nodetype":"Line"},{"x":30,"y":820,"nodetype":"Line"},{"x":30,"y":850,"nodetype":"Line"},{"x":970,"y":850,"nodetype":"Line"},{"x":970,"y":820,"nodetype":"Line"},{"x":1000,"y":820,"nodetype":"Line"},{"x":1000,"y":880,"nodetype":"Line"},{"x":0,"y":880,"nodetype":"Line"}],
                 "closed": true
             },
             {
-                "nodes": "10 820 l 999 820 l 999 850 l 10 850 l",
+                "nodes": [{"x":10,"y":820,"nodetype":"Line"},{"x":999,"y":820,"nodetype":"Line"},{"x":999,"y":850,"nodetype":"Line"},{"x":10,"y":850,"nodetype":"Line"}],
                 "closed": true
             }],
             "smart_component_location":
@@ -797,11 +797,11 @@
             },
             "shapes": [
             {
-                "nodes": "0 -120 l 30 -120 l 30 850 l 30 850 l 30 -120 l 60 -120 l 60 880 l 0 880 l",
+                "nodes": [{"x":0,"y":-120,"nodetype":"Line"},{"x":30,"y":-120,"nodetype":"Line"},{"x":30,"y":850,"nodetype":"Line"},{"x":30,"y":850,"nodetype":"Line"},{"x":30,"y":-120,"nodetype":"Line"},{"x":60,"y":-120,"nodetype":"Line"},{"x":60,"y":880,"nodetype":"Line"},{"x":0,"y":880,"nodetype":"Line"}],
                 "closed": true
             },
             {
-                "nodes": "10 -120 l 59 -120 l 59 -90 l 10 -90 l",
+                "nodes": [{"x":10,"y":-120,"nodetype":"Line"},{"x":59,"y":-120,"nodetype":"Line"},{"x":59,"y":-90,"nodetype":"Line"},{"x":10,"y":-90,"nodetype":"Line"}],
                 "closed": true
             }],
             "smart_component_location":
@@ -830,11 +830,11 @@
             },
             "shapes": [
             {
-                "nodes": "0 820 l 30 820 l 30 850 l 30 850 l 30 820 l 60 820 l 60 880 l 0 880 l",
+                "nodes": [{"x":0,"y":820,"nodetype":"Line"},{"x":30,"y":820,"nodetype":"Line"},{"x":30,"y":850,"nodetype":"Line"},{"x":30,"y":850,"nodetype":"Line"},{"x":30,"y":820,"nodetype":"Line"},{"x":60,"y":820,"nodetype":"Line"},{"x":60,"y":880,"nodetype":"Line"},{"x":0,"y":880,"nodetype":"Line"}],
                 "closed": true
             },
             {
-                "nodes": "10 820 l 59 820 l 59 850 l 10 850 l",
+                "nodes": [{"x":10,"y":820,"nodetype":"Line"},{"x":59,"y":820,"nodetype":"Line"},{"x":59,"y":850,"nodetype":"Line"},{"x":10,"y":850,"nodetype":"Line"}],
                 "closed": true
             }],
             "smart_component_location":
@@ -863,11 +863,11 @@
             },
             "shapes": [
             {
-                "nodes": "0 -320 l 30 -320 l 30 850 l 970 850 l 970 -120 l 1000 -120 l 1000 880 l 0 880 l",
+                "nodes": [{"x":0,"y":-320,"nodetype":"Line"},{"x":30,"y":-320,"nodetype":"Line"},{"x":30,"y":850,"nodetype":"Line"},{"x":970,"y":850,"nodetype":"Line"},{"x":970,"y":-120,"nodetype":"Line"},{"x":1000,"y":-120,"nodetype":"Line"},{"x":1000,"y":880,"nodetype":"Line"},{"x":0,"y":880,"nodetype":"Line"}],
                 "closed": true
             },
             {
-                "nodes": "10 -120 l 999 -120 l 999 -90 l 10 -90 l",
+                "nodes": [{"x":10,"y":-120,"nodetype":"Line"},{"x":999,"y":-120,"nodetype":"Line"},{"x":999,"y":-90,"nodetype":"Line"},{"x":10,"y":-90,"nodetype":"Line"}],
                 "closed": true
             }],
             "smart_component_location":
@@ -896,11 +896,11 @@
             },
             "shapes": [
             {
-                "nodes": "0 -120 l 30 -120 l 30 850 l 970 850 l 970 -320 l 1000 -320 l 1000 880 l 0 880 l",
+                "nodes": [{"x":0,"y":-120,"nodetype":"Line"},{"x":30,"y":-120,"nodetype":"Line"},{"x":30,"y":850,"nodetype":"Line"},{"x":970,"y":850,"nodetype":"Line"},{"x":970,"y":-320,"nodetype":"Line"},{"x":1000,"y":-320,"nodetype":"Line"},{"x":1000,"y":880,"nodetype":"Line"},{"x":0,"y":880,"nodetype":"Line"}],
                 "closed": true
             },
             {
-                "nodes": "10 -120 l 999 -120 l 999 -90 l 10 -90 l",
+                "nodes": [{"x":10,"y":-120,"nodetype":"Line"},{"x":999,"y":-120,"nodetype":"Line"},{"x":999,"y":-90,"nodetype":"Line"},{"x":10,"y":-90,"nodetype":"Line"}],
                 "closed": true
             }],
             "smart_component_location":
@@ -929,11 +929,11 @@
             },
             "shapes": [
             {
-                "nodes": "0 -120 l 30 -120 l 30 850 l 970 850 l 970 -120 l 1000 -120 l 1000 880 l 0 880 l",
+                "nodes": [{"x":0,"y":-120,"nodetype":"Line"},{"x":30,"y":-120,"nodetype":"Line"},{"x":30,"y":850,"nodetype":"Line"},{"x":970,"y":850,"nodetype":"Line"},{"x":970,"y":-120,"nodetype":"Line"},{"x":1000,"y":-120,"nodetype":"Line"},{"x":1000,"y":880,"nodetype":"Line"},{"x":0,"y":880,"nodetype":"Line"}],
                 "closed": true
             },
             {
-                "nodes": "10 180 l 999 180 l 999 210 l 10 210 l",
+                "nodes": [{"x":10,"y":180,"nodetype":"Line"},{"x":999,"y":180,"nodetype":"Line"},{"x":999,"y":210,"nodetype":"Line"},{"x":10,"y":210,"nodetype":"Line"}],
                 "closed": true
             }],
             "smart_component_location":
@@ -962,11 +962,11 @@
             },
             "shapes": [
             {
-                "nodes": "0 -120 l 30 -120 l 30 850 l 970 850 l 970 -120 l 1000 -120 l 1000 880 l 0 880 l",
+                "nodes": [{"x":0,"y":-120,"nodetype":"Line"},{"x":30,"y":-120,"nodetype":"Line"},{"x":30,"y":850,"nodetype":"Line"},{"x":970,"y":850,"nodetype":"Line"},{"x":970,"y":-120,"nodetype":"Line"},{"x":1000,"y":-120,"nodetype":"Line"},{"x":1000,"y":880,"nodetype":"Line"},{"x":0,"y":880,"nodetype":"Line"}],
                 "closed": true
             },
             {
-                "nodes": "10 -420 l 999 -420 l 999 -390 l 10 -390 l",
+                "nodes": [{"x":10,"y":-420,"nodetype":"Line"},{"x":999,"y":-420,"nodetype":"Line"},{"x":999,"y":-390,"nodetype":"Line"},{"x":10,"y":-390,"nodetype":"Line"}],
                 "closed": true
             }],
             "smart_component_location":
@@ -995,11 +995,11 @@
             },
             "shapes": [
             {
-                "nodes": "0 -120 l 30 -120 l 30 850 l 970 850 l 970 -120 l 1000 -120 l 1000 880 l 0 880 l",
+                "nodes": [{"x":0,"y":-120,"nodetype":"Line"},{"x":30,"y":-120,"nodetype":"Line"},{"x":30,"y":850,"nodetype":"Line"},{"x":970,"y":850,"nodetype":"Line"},{"x":970,"y":-120,"nodetype":"Line"},{"x":1000,"y":-120,"nodetype":"Line"},{"x":1000,"y":880,"nodetype":"Line"},{"x":0,"y":880,"nodetype":"Line"}],
                 "closed": true
             },
             {
-                "nodes": "260 -120 l 740 -120 l 740 -90 l 260 -90 l",
+                "nodes": [{"x":260,"y":-120,"nodetype":"Line"},{"x":740,"y":-120,"nodetype":"Line"},{"x":740,"y":-90,"nodetype":"Line"},{"x":260,"y":-90,"nodetype":"Line"}],
                 "closed": true
             }],
             "smart_component_location":
