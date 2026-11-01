@@ -57,6 +57,12 @@ fn main() {
                 .long("verbosity")
                 .help("Set the level of verbosity")
                 .action(clap::ArgAction::Count),
+        )
+        .arg(
+            clap::Arg::new("compile_filter_wheels")
+                .long("compile-filter-wheels")
+                .help("Directory of vendored CompileFilter wheels to run before TTF compilation")
+                .value_name("DIR"),
         );
 
     let command = command.next_help_heading("TTF Compilation Options");
@@ -179,6 +185,11 @@ fn main() {
 
     let mut input = babelfont::load(input_name).expect("Failed to load font");
     assert!(input.source.is_some(), "Loaded font has no source path");
+    if let Some(wheels) = args.get_one::<String>("compile_filter_wheels") {
+        babelfont::compile_filter::apply_compile_filters(&mut input, Some(PathBuf::from(wheels).as_path()))
+            .expect("Failed to apply compile filters");
+    }
+
     if !filters.is_empty() {
         log::info!("Applying filters...");
         let before_filters = std::time::Instant::now();
