@@ -182,7 +182,7 @@ fn normalize_virtual_path(path: &str) -> Option<String> {
 /// Convert a Babelfont Font to a norad UFO font
 ///
 /// This is currently unfinished and may not preserve all data.
-pub fn as_norad(font: &Font, _master_ix: usize) -> Result<norad::Font, BabelfontError> {
+pub fn as_norad(font: &Font, master_ix: usize) -> Result<norad::Font, BabelfontError> {
     let mut ufo = norad::Font::new();
     // Move some things into lib key before serializing it:
     // exports
@@ -196,22 +196,43 @@ pub fn as_norad(font: &Font, _master_ix: usize) -> Result<norad::Font, Babelfont
         .masters
         .first()
         .ok_or(BabelfontError::NoDefaultMaster)?;
+    let target_master = font.masters.get(master_ix).unwrap_or(first_master);
     for g in font.glyphs.iter() {
         for layer in g.layers.iter() {
+            // Backgrounds belong to whichever layer points at them.
+            let owner = if layer.is_background {
+                g.layers
+                    .iter()
+                    .find(|l| l.background_layer_id.is_some() && l.background_layer_id == layer.id)
+            } else {
+                Some(layer)
+            };
+            let Some(owner) = owner else { continue };
+            let belongs_to_master = match &owner.master {
+                LayerType::DefaultForMaster(id) => id == &target_master.id,
+                LayerType::AssociatedWithMaster(_) => {
+                    owner.id.as_deref() == Some(target_master.id.as_str())
+                }
+                LayerType::FreeFloating => master_ix == 0 && !layer.is_background,
+            };
+            if !belongs_to_master {
+                continue;
+            }
             let norad_layer = babelfont_layer_to_norad_glyph(g, layer)?;
-            // If the layer ID is the master ID, it's the default layer
-            let layer = if layer.name.as_ref() == Some(&first_master.id) {
+            let target = if layer.is_background {
+                ufo.layers.get_or_create_layer("public.background")?
+            } else if matches!(owner.master, LayerType::DefaultForMaster(_)) {
                 ufo.default_layer_mut()
             } else {
                 ufo.layers
                     .get_or_create_layer(layer.name.as_deref().unwrap_or("public.default"))?
             };
-            layer.insert_glyph(norad_layer);
+            target.insert_glyph(norad_layer);
         }
     }
 
     let merged: IndexMap<(SmolStr, SmolStr), i16> = font
-        .merged_kerning_for_master(first_master)
+        .merged_kerning_for_master(target_master)
         .into_iter()
         .collect();
     save_kerning(&mut ufo.kerning, &merged)?;
