@@ -1181,7 +1181,7 @@ mod tests {
     fn test_to_kurbo() {
         let path: Path = serde_json::from_str(r#"
             {
-              "nodes": "394 173 o 467 246 o 467 337 cs 467 427 o 394 500 o 304 500 cs 213 500 o 140 427 o 140 337 cs 140 246 o 213 173 o 304 173 cs",
+              "nodes": [{"x":394,"y":173,"nodetype":"OffCurve"},{"x":467,"y":246,"nodetype":"OffCurve"},{"x":467,"y":337,"nodetype":"Curve","smooth":true},{"x":467,"y":427,"nodetype":"OffCurve"},{"x":394,"y":500,"nodetype":"OffCurve"},{"x":304,"y":500,"nodetype":"Curve","smooth":true},{"x":213,"y":500,"nodetype":"OffCurve"},{"x":140,"y":427,"nodetype":"OffCurve"},{"x":140,"y":337,"nodetype":"Curve","smooth":true},{"x":140,"y":246,"nodetype":"OffCurve"},{"x":213,"y":173,"nodetype":"OffCurve"},{"x":304,"y":173,"nodetype":"Curve","smooth":true}],
               "closed": true
             }
 "#).unwrap();
