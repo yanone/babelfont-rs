@@ -3207,18 +3207,59 @@ mod tests {
         }
     }
 
-    /// Points along each axis, and for two axes a grid of them
+    /// Normalized locations: every axis on its own at every step, and a grid
+    /// over all axes, as fine as keeps it to 41 x 41 locations (every step
+    /// for up to two axes)
     fn locations(axis_count: usize, steps: i32) -> Vec<Vec<F2Dot14>> {
-        let along: Vec<F2Dot14> = (-steps..=steps)
-            .map(|s| F2Dot14::from_f32(s as f32 / steps as f32))
-            .collect();
-        match axis_count {
-            1 => along.into_iter().map(|c| vec![c]).collect(),
-            _ => along
-                .iter()
-                .flat_map(|a| along.iter().map(move |b| vec![*a, *b]))
-                .collect(),
+        let along = |k: i32| -> Vec<F2Dot14> {
+            (-k..=k)
+                .map(|s| F2Dot14::from_f32(s as f32 / k as f32))
+                .collect()
+        };
+        let mut k = steps;
+        while k > 1
+            && (2 * k as usize + 1)
+                .checked_pow(axis_count as u32)
+                .is_none_or(|n| n > 41 * 41)
+        {
+            k -= 1;
         }
+        let mut grid: Vec<Vec<F2Dot14>> = vec![vec![]];
+        for _ in 0..axis_count {
+            grid = grid
+                .into_iter()
+                .flat_map(|location| {
+                    along(k).into_iter().map(move |c| {
+                        let mut location = location.clone();
+                        location.push(c);
+                        location
+                    })
+                })
+                .collect();
+        }
+        for axis in 0..axis_count {
+            for c in along(steps) {
+                let mut location = vec![F2Dot14::ZERO; axis_count];
+                location[axis] = c;
+                if !grid.contains(&location) {
+                    grid.push(location);
+                }
+            }
+        }
+        grid
+    }
+
+    #[test]
+    fn test_locations_cover_every_axis() {
+        assert_eq!(locations(1, 20).len(), 41);
+        assert_eq!(locations(2, 20).len(), 41 * 41);
+        let three = locations(3, 20);
+        // an 11 x 11 x 11 grid, and the 30 further steps along each axis
+        assert_eq!(three.len(), 11 * 11 * 11 + 3 * 30);
+        assert!(three.iter().all(|l| l.len() == 3));
+        let one = F2Dot14::ONE;
+        assert!(three.contains(&vec![one, -one, one]));
+        assert!(three.contains(&vec![F2Dot14::ZERO, F2Dot14::ZERO, F2Dot14::from_f32(0.05)]));
     }
 
     /// The recompiled font draws every glyph, and advances it, as the original
