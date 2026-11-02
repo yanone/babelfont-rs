@@ -1931,6 +1931,7 @@ mod tests {
     const COMPOSITES: &str = "resources/ttf/Composites.ttf";
     const REDDIT_SANS: &str = "resources/ttf/RedditSans-Subset.ttf";
     const COINCIDENT: &str = "resources/ttf/Coincident.ttf";
+    const INTER: &str = "resources/ttf/Inter-Subset.ttf";
     const MALFORMED: &str = "resources/ttf/Malformed.ttf";
     const CFF: &str = "resources/ttf/Cff.otf";
 
@@ -3202,6 +3203,7 @@ mod tests {
             COMPOSITES,
             REDDIT_SANS,
             COINCIDENT,
+            INTER,
         ] {
             assert_layers_read_as_drawn(path);
         }
@@ -3315,6 +3317,7 @@ mod tests {
         assert_interpolates_as_original(COMPOSITES, 8);
         assert_interpolates_as_original(REDDIT_SANS, 20);
         assert_interpolates_as_original(COINCIDENT, 20);
+        assert_interpolates_as_original(INTER, 10);
     }
 
     #[test]
