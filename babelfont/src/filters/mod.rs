@@ -123,6 +123,7 @@ declare_filters! {
         Fip001Boolean(fip001boolean) => "fip001boolean",
         CubicToQuadratic(cubic2quadratic) => "cubic2quadratic",
         QuadraticToCubic(quadratic2cubic) => "quadratic2cubic",
+        DropImpliedOnCurves(dropimpliedoncurves) => "dropimpliedoncurves",
         CleanupPaths(cleanuppaths) => "cleanuppaths",
         #[cfg(feature = "linesweeper")]
         RemoveOverlaps(removeoverlaps) => "removeoverlaps",
