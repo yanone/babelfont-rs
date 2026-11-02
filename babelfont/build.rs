@@ -4,8 +4,8 @@ use serde::Deserialize;
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct GlyphInfo {
-    // unicode: Option<u32>,
-    // unicode_legacy: Option<String>,
+    unicode: Option<String>,
+    description: Option<String>,
     name: String,
     category: String,
     sub_category: Option<String>,
@@ -37,6 +37,9 @@ fn main() {
             ("category", "category"),
             ("subCategory", "sub_category"),
             ("production", "production"),
+            ("unicode", "unicode"),
+            ("description", "description"),
+            ("script", "script"),
             ("altNames", "alt_names"),
         ] {
             if let Some(value) = node.attribute(attribute) {

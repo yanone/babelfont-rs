@@ -58,6 +58,7 @@ pub fn load_bytes(binary: &[u8]) -> Result<Font, BabelfontError> {
     load_features(&fontref, &mut font)?;
     load_legacy_kerning(&fontref, &mut font)?;
     name_unnamed_glyphs(&fontref, &mut font)?;
+    name_placeholder_anchors(&mut font);
     {
         use crate::filters::FontFilter;
         crate::filters::DropImpliedOnCurves.apply(&mut font)?;
@@ -98,6 +99,149 @@ fn name_unnamed_glyphs(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(),
         crate::filters::RenameGlyphs::new(renames).apply(font)?;
     }
     Ok(())
+}
+
+/// The prefix of the names sr-aef gives anchors it found no name for
+const PLACEHOLDER_ANCHOR_PREFIX: &str = "mark_class_";
+
+/// The anchor a mark attaches by, as what the mark is says: from its Unicode
+/// combining class, else from its description. Arabic harakat have classes of
+/// their own (27-35), above but for kasra and kasratan.
+fn anchor_name_for_mark(codepoint: Option<u32>, description: Option<&str>) -> Option<&'static str> {
+    use icu_properties::props::CanonicalCombiningClass;
+    let description = description.unwrap_or_default().to_ascii_uppercase();
+    if description.contains("OGONEK") {
+        return Some("ogonek");
+    }
+    if let Some(c) = codepoint.and_then(char::from_u32) {
+        let class = CodePointMapData::<CanonicalCombiningClass>::new()
+            .get(c)
+            .to_icu4c_value();
+        let name = match class {
+            1 => Some("center"),
+            202 | 220 | 29 | 32 => Some("bottom"),
+            218 => Some("bottomleft"),
+            222 => Some("bottomright"),
+            214 | 230 | 27 | 28 | 30 | 31 | 33 | 34 | 35 => Some("top"),
+            228 => Some("topleft"),
+            232 => Some("topright"),
+            _ => None,
+        };
+        if name.is_some() {
+            return name;
+        }
+    }
+    if description.contains("OVERLAY") {
+        Some("center")
+    } else if description.contains(" BELOW") {
+        Some("bottom")
+    } else if description.contains(" ABOVE") {
+        Some("top")
+    } else {
+        None
+    }
+}
+
+/// What a mark glyph is: its codepoint and description, from the font's cmap,
+/// else from Glyphs.app's glyph data for its name (or its name before a suffix)
+fn mark_identity(glyph: &Glyph) -> (Option<u32>, Option<String>) {
+    let codepoint = glyph.codepoints.iter().min().copied().or_else(|| {
+        // a production name states its codepoint
+        glyph
+            .name
+            .strip_prefix("uni")
+            .filter(|hex| hex.len() == 4)
+            .and_then(|hex| u32::from_str_radix(hex, 16).ok())
+    });
+    #[cfg(feature = "glyphs")]
+    {
+        use crate::filters::glyphsdata::glyph_info;
+        let base_name = glyph.name.split('.').next().unwrap_or_default();
+        if let Some(info) = glyph_info(&glyph.name).or_else(|| glyph_info(base_name)) {
+            let data_codepoint = info
+                .unicode
+                .as_deref()
+                .and_then(|hex| u32::from_str_radix(hex, 16).ok());
+            return (codepoint.or(data_codepoint), info.description.clone());
+        }
+    }
+    (codepoint, None)
+}
+
+/// Names the anchors sr-aef left as placeholders after the marks that attach
+/// by them, where every mark that says what it is agrees on a name no other
+/// anchor has. The mark class in the feature code is renamed with them.
+fn name_placeholder_anchors(font: &mut Font) {
+    let anchor_names: HashSet<String> = font
+        .glyphs
+        .iter()
+        .flat_map(|g| g.layers.iter())
+        .flat_map(|l| l.anchors.iter().map(|a| a.name.to_string()))
+        .collect();
+    let mut placeholders: Vec<&str> = anchor_names
+        .iter()
+        .filter_map(|name| name.strip_prefix('_'))
+        .filter(|name| name.starts_with(PLACEHOLDER_ANCHOR_PREFIX))
+        .collect();
+    placeholders.sort();
+    let fea = font.features.to_fea();
+    let mut taken: HashSet<String> = anchor_names
+        .iter()
+        .map(|name| name.trim_start_matches('_').to_string())
+        .collect();
+    let mut renames: Vec<(String, String)> = vec![];
+    for placeholder in placeholders {
+        let mark_anchor = format!("_{placeholder}");
+        let names: HashSet<&'static str> = font
+            .glyphs
+            .iter()
+            .filter(|g| {
+                g.layers
+                    .iter()
+                    .any(|l| l.anchors.iter().any(|a| a.name == mark_anchor))
+            })
+            .filter_map(|g| {
+                let (codepoint, description) = mark_identity(g);
+                anchor_name_for_mark(codepoint, description.as_deref())
+            })
+            .collect();
+        let mut names = names.into_iter();
+        let (Some(name), None) = (names.next(), names.next()) else {
+            continue;
+        };
+        if taken.contains(name) || fea.contains(&format!("@{name}")) {
+            continue;
+        }
+        taken.insert(name.to_string());
+        renames.push((placeholder.to_string(), name.to_string()));
+    }
+    if renames.is_empty() {
+        return;
+    }
+    for layer in font.glyphs.iter_mut().flat_map(|g| g.layers.iter_mut()) {
+        for anchor in layer.anchors.iter_mut() {
+            for (placeholder, name) in &renames {
+                if anchor.name == placeholder.as_str() {
+                    anchor.name = name.clone();
+                } else if anchor.name.strip_prefix('_') == Some(placeholder.as_str()) {
+                    anchor.name = format!("_{name}");
+                }
+            }
+        }
+    }
+    let rename_classes = |code: &mut String| {
+        for (placeholder, name) in &renames {
+            if let Ok(pattern) = regex::Regex::new(&format!(r"@{}\b", regex::escape(placeholder))) {
+                *code = pattern.replace_all(code, format!("@{name}")).into_owned();
+            }
+        }
+    };
+    for code in font.features.prefixes.values_mut() {
+        rename_classes(&mut code.code);
+    }
+    for (_, code) in font.features.features.iter_mut() {
+        rename_classes(&mut code.code);
+    }
 }
 
 /// head.fontRevision as major and minor versions, the minor in thousandths as
@@ -1542,6 +1686,99 @@ mod tests {
         let font = load(QUADRATIC).unwrap();
         assert_close(&component_coeffs(&font, "dotO")[1][4..], &[500.0, 200.0]);
     }
+    #[test]
+    fn test_anchor_name_for_mark() {
+        // from the combining class: above, below, overlay, attached below
+        assert_eq!(anchor_name_for_mark(Some(0x0301), None), Some("top"));
+        assert_eq!(anchor_name_for_mark(Some(0x0323), None), Some("bottom"));
+        assert_eq!(anchor_name_for_mark(Some(0x0335), None), Some("center"));
+        assert_eq!(anchor_name_for_mark(Some(0x0327), None), Some("bottom"));
+        // Arabic harakat: fatha above, kasra below
+        assert_eq!(anchor_name_for_mark(Some(0x064E), None), Some("top"));
+        assert_eq!(anchor_name_for_mark(Some(0x0650), None), Some("bottom"));
+        // the ogonek, attached below like a cedilla, by its name
+        assert_eq!(
+            anchor_name_for_mark(Some(0x0328), Some("COMBINING OGONEK")),
+            Some("ogonek")
+        );
+        // without a codepoint, from the description
+        assert_eq!(
+            anchor_name_for_mark(None, Some("ARABIC THREE DOTS BELOW")),
+            Some("bottom")
+        );
+        assert_eq!(anchor_name_for_mark(None, Some("ARABIC DOT CENTER")), None);
+    }
+
+    #[cfg(feature = "glyphs")]
+    #[test]
+    fn test_placeholder_anchors_named_by_their_marks() {
+        let anchored = |name: &str, codepoints: Vec<u32>, anchors: &[&str]| {
+            let mut glyph = Glyph::new(name);
+            glyph.codepoints = codepoints;
+            let mut layer = Layer::new(0.0);
+            for anchor in anchors {
+                layer.anchors.push(Anchor {
+                    name: anchor.to_string(),
+                    x: 0.0,
+                    y: 0.0,
+                    format_specific: FormatSpecific::default(),
+                });
+            }
+            glyph.layers.push(layer);
+            glyph
+        };
+        let mut font = Font::new();
+        font.glyphs.push(anchored(
+            "o",
+            vec![0x6F],
+            &["top", "mark_class_0x1", "mark_class_0x2", "mark_class_0x3"],
+        ));
+        // overlay marks: one by Unicode, one by its Glyphs name (U+0336)
+        font.glyphs
+            .push(anchored("uni0335", vec![0x0335], &["_mark_class_0x1"]));
+        font.glyphs.push(anchored(
+            "strokelongcomb.case",
+            vec![],
+            &["_mark_class_0x1"],
+        ));
+        // above, but top is taken
+        font.glyphs
+            .push(anchored("acutecomb", vec![0x0301], &["_top"]));
+        font.glyphs
+            .push(anchored("gravecomb.alt", vec![], &["_mark_class_0x2"]));
+        // nothing says what it is
+        font.glyphs
+            .push(anchored("blob", vec![], &["_mark_class_0x3"]));
+        font.features.prefixes.insert(
+            "Decompiled".into(),
+            PossiblyAutomaticCode::new(
+                "markClass uni0335 <anchor 0 0> @mark_class_0x1;\n\
+                 markClass gravecomb.alt <anchor 0 0> @mark_class_0x2;",
+            ),
+        );
+        name_placeholder_anchors(&mut font);
+        let names = |glyph: &str| -> Vec<String> {
+            font.glyphs.get(glyph).unwrap().layers[0]
+                .anchors
+                .iter()
+                .map(|a| a.name.clone())
+                .collect()
+        };
+        assert_eq!(
+            names("o"),
+            ["top", "center", "mark_class_0x2", "mark_class_0x3"]
+        );
+        assert_eq!(names("uni0335"), ["_center"]);
+        assert_eq!(names("strokelongcomb.case"), ["_center"]);
+        assert_eq!(names("gravecomb.alt"), ["_mark_class_0x2"]);
+        assert_eq!(names("blob"), ["_mark_class_0x3"]);
+        let code = &font.features.prefixes.get("Decompiled").unwrap().code;
+        assert!(
+            code.contains("@center;") && code.contains("@mark_class_0x2;"),
+            "{code}"
+        );
+    }
+
     #[test]
     fn test_anchor_names() {
         let font = load(ANCHORS).unwrap();
