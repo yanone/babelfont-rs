@@ -1599,9 +1599,20 @@ fn load_features(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babel
         .lookups
         .values()
         .map(|statements| statements.as_fea(""));
+    // Feature variations: condition sets, then the lookups each feature
+    // takes in their place (Outfit's rvrn swaps a glyph from wght 668 on)
+    let feature_variations =
+        uncompile_context
+            .feature_variations
+            .iter()
+            .flat_map(|(condition_set, variations)| {
+                std::iter::once(condition_set.as_fea(""))
+                    .chain(variations.iter().map(|variation| variation.as_fea("")))
+            });
     let code = std::iter::once(language_systems.join("\n"))
         .chain(std::iter::once(mark_class_definitions))
         .chain(lookups)
+        .chain(feature_variations)
         .filter(|block| !block.is_empty())
         .join("\n");
     if !code.is_empty() {

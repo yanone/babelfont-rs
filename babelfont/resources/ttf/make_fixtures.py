@@ -992,3 +992,24 @@ lookup m { pos base [A V O] <anchor (wght=100:290 wght=400:300 wght=900:330) (wg
 feature mark { lookup m; } mark;
 """)
 save(fb, "ShapingVariable.ttf")
+
+
+# Feature variations: rvrn swaps A for A.heavy from wght 600 on.
+from fontTools.varLib.featureVars import addFeatureVariations
+order = [".notdef", "A", "A.heavy", "V"]
+fb = FontBuilder(1000, isTTF=True)
+fb.setupGlyphOrder(order)
+fb.setupCharacterMap({0x41: "A", 0x56: "V"})
+fb.setupGlyf({g: shaping_box(700 if g == "A.heavy" else 600) for g in order})
+fb.setupHorizontalMetrics({g: (700 if g == "A.heavy" else 600, 50) for g in order})
+fb.setupHorizontalHeader(ascent=800, descent=-200)
+fb.setupNameTable({"familyName": "Fixture Shaping Feature Variations", "styleName": "Regular"})
+fb.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWinAscent=800, usWinDescent=200)
+fb.setupPost()
+fb.setupFvar([("wght", 100, 400, 900, "Weight")], [])
+fb.setupGvar({g: [TupleVariation({"wght": (0, 1, 1)}, [(0, 0), (0, 100), (0, 100), (0, 0)] + [(0, 0)] * 4)]
+              for g in order})
+addOpenTypeFeaturesFromString(fb.font, "languagesystem DFLT dflt; languagesystem latn dflt;\n"
+                              "feature kern { pos A V -30; } kern;")
+addFeatureVariations(fb.font, [([{"wght": (0.4, 1.0)}], {"A": "A.heavy"})], featureTag="rvrn")
+save(fb, "ShapingFeatureVariations.ttf")
