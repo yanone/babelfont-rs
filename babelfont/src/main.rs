@@ -183,7 +183,13 @@ fn main() {
 
     log::info!("Loading {}", input_name.display());
 
-    let mut input = babelfont::load(input_name).expect("Failed to load font");
+    let mut input = match babelfont::load(&input_name) {
+        Ok(font) => font,
+        Err(e) => {
+            eprintln!("Failed to load {}: {e}", input_name.display());
+            std::process::exit(1);
+        }
+    };
     assert!(input.source.is_some(), "Loaded font has no source path");
     if let Some(wheels) = args.get_one::<String>("compile_filter_wheels") {
         babelfont::compile_filter::apply_compile_filters(&mut input, Some(PathBuf::from(wheels).as_path()))
