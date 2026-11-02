@@ -823,3 +823,25 @@ addOpenTypeFeaturesFromString(fb.font, "languagesystem DFLT dflt; languagesystem
                               "feature kern { pos A V -30; } kern;")
 addFeatureVariations(fb.font, [([{"wght": (0.4, 1.0)}], {"A": "A.heavy"})], featureTag="rvrn")
 save(fb, "ShapingFeatureVariations.ttf")
+
+
+# GDEF beyond glyph classes: a ligature caret and attachment points.
+order = [".notdef", "f", "f_f"]
+fb = FontBuilder(1000, isTTF=True)
+fb.setupGlyphOrder(order)
+fb.setupCharacterMap({ord("f"): "f"})
+fb.setupGlyf({g: shaping_box(800 if g == "f_f" else 400) for g in order})
+fb.setupHorizontalMetrics({g: (800 if g == "f_f" else 400, 50) for g in order})
+fb.setupHorizontalHeader(ascent=800, descent=-200)
+fb.setupNameTable({"familyName": "Fixture Gdef Carets", "styleName": "Regular"})
+fb.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWinAscent=800, usWinDescent=200)
+fb.setupPost()
+addOpenTypeFeaturesFromString(fb.font, """
+feature liga { sub f f by f_f; } liga;
+table GDEF {
+    GlyphClassDef [f], [f_f], , ;
+    LigatureCaretByPos f_f 400;
+    Attach f 1 2;
+} GDEF;
+""")
+save(fb, "GdefCarets.ttf")
