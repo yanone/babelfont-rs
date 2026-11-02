@@ -64,6 +64,7 @@ pub fn load_bytes(binary: &[u8]) -> Result<Font, BabelfontError> {
     {
         use crate::filters::FontFilter;
         crate::filters::DropImpliedOnCurves.apply(&mut font)?;
+        mark_smooth_points(&mut font);
         crate::filters::MoveKerningFromFeatures.apply(&mut font)?;
         crate::filters::MoveMarksFromFeatures.apply(&mut font)?;
     }
@@ -102,6 +103,91 @@ fn name_unnamed_glyphs(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(),
         crate::filters::RenameGlyphs::new(renames).apply(font)?;
     }
     Ok(())
+}
+
+/// How far from a straight line, as the sine of the angle, a smooth point's
+/// neighbours may be
+const SMOOTH_TOLERANCE: f64 = 0.005;
+
+/// Whether an on-curve point runs on along its neighbours' tangent: they lie on
+/// one line through it, on either side, and one of them is an off-curve (a
+/// point between two lines is a corner)
+fn runs_smoothly(path: &crate::Path, index: usize) -> bool {
+    let nodes = &path.nodes;
+    let count = nodes.len();
+    let Some(node) = nodes.get(index) else {
+        return false;
+    };
+    if node.nodetype == crate::NodeType::OffCurve || count < 3 {
+        return false;
+    }
+    if !path.closed && (index == 0 || index + 1 == count) {
+        return false;
+    }
+    let previous = &nodes[(index + count - 1) % count];
+    let next = &nodes[(index + 1) % count];
+    if previous.nodetype != crate::NodeType::OffCurve && next.nodetype != crate::NodeType::OffCurve
+    {
+        return false;
+    }
+    let (ax, ay) = (previous.x - node.x, previous.y - node.y);
+    let (bx, by) = (next.x - node.x, next.y - node.y);
+    let (a, b) = ((ax * ax + ay * ay).sqrt(), (bx * bx + by * by).sqrt());
+    if a == 0.0 || b == 0.0 {
+        return false;
+    }
+    let sine = (ax * by - ay * bx) / (a * b);
+    let opposite = ax * bx + ay * by < 0.0;
+    opposite && sine.abs() <= SMOOTH_TOLERANCE
+}
+
+/// Marks smooth points, which TrueType does not store: on-curve points that
+/// run smoothly in every layer of their glyph that interpolates
+fn mark_smooth_points(font: &mut Font) {
+    for glyph in font.glyphs.iter_mut() {
+        let layers: Vec<usize> = (0..glyph.layers.len())
+            .filter(|&i| !glyph.layers[i].is_background)
+            .collect();
+        let shapes = |layer: &Layer| -> Vec<Vec<crate::NodeType>> {
+            layer
+                .paths()
+                .map(|p| p.nodes.iter().map(|n| n.nodetype).collect())
+                .collect()
+        };
+        let Some(first) = layers.first().map(|&i| shapes(&glyph.layers[i])) else {
+            continue;
+        };
+        if layers.iter().any(|&i| shapes(&glyph.layers[i]) != first) {
+            continue;
+        }
+        let smooth: Vec<Vec<bool>> = first
+            .iter()
+            .enumerate()
+            .map(|(path_index, types)| {
+                (0..types.len())
+                    .map(|node_index| {
+                        layers.iter().all(|&i| {
+                            glyph.layers[i]
+                                .paths()
+                                .nth(path_index)
+                                .is_some_and(|p| runs_smoothly(p, node_index))
+                        })
+                    })
+                    .collect()
+            })
+            .collect();
+        for &i in &layers {
+            let paths = glyph.layers[i].shapes.iter_mut().filter_map(|s| match s {
+                crate::Shape::Path(p) => Some(p),
+                _ => None,
+            });
+            for (path, flags) in paths.zip(&smooth) {
+                for (node, &flag) in path.nodes.iter_mut().zip(flags) {
+                    node.smooth = flag;
+                }
+            }
+        }
+    }
 }
 
 /// The prefix of the names sr-aef gives anchors it found no name for
@@ -2407,6 +2493,48 @@ mod tests {
         let fontref = skrifa::FontRef::new(&compiled).unwrap();
         let fea = sr_aef::uncompile(&fontref, true).unwrap().as_fea("");
         assert!(fea.contains("<-50 0 -50 0>"), "{fea}");
+    }
+
+    #[test]
+    fn test_smooth_points() {
+        let font = load(QUADRATIC).unwrap();
+        let smooth = |glyph: &str| -> Vec<(f64, f64)> {
+            let mut points: Vec<(f64, f64)> = font.glyphs.get(glyph).unwrap().layers[0]
+                .paths()
+                .flat_map(|p| p.nodes.iter().filter(|n| n.smooth).map(|n| (n.x, n.y)))
+                .collect();
+            points.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            points
+        };
+        // lines running into curves along their tangents; the top corners are not
+        assert_eq!(smooth("u"), [(0.0, 250.0), (500.0, 250.0)]);
+        // two curves meeting at an angle
+        assert_eq!(smooth("v"), []);
+        // on-curves between off-curves on one line
+        assert_eq!(smooth("O"), [(250.0, 0.0), (500.0, 350.0)]);
+    }
+
+    #[test]
+    fn test_smooth_only_where_smooth_in_every_master() {
+        // Q's top on-curve is halfway, hence smooth, in Thin and Regular; in
+        // Black it is not halfway but still on the line between its off-curves
+        let font = load(VARIABLE).unwrap();
+        for name in ["Thin", "Regular", "Black"] {
+            let smooth = layer(&font, "A", name)
+                .paths()
+                .flat_map(|p| p.nodes.iter())
+                .any(|n| n.smooth);
+            assert!(!smooth, "A is all corners in {name}");
+        }
+        let count = |name: &str| {
+            layer(&font, "Q", name)
+                .paths()
+                .flat_map(|p| p.nodes.iter())
+                .filter(|n| n.smooth)
+                .count()
+        };
+        assert_eq!(count("Thin"), count("Black"));
+        assert!(count("Thin") > 0);
     }
 
     #[test]
