@@ -793,26 +793,74 @@ fn load_names(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babelfon
             *record = name_id_to_i18n(fontref, name_id);
         }
     }
+    // IDs 1 and 2 as they are: a compiler that derives them from the family and
+    // style names joins a style other than the four style-linked ones to the
+    // family ("Big Caslon Medium"), and a TTF's need not be those four (Hoefler
+    // Text Ornaments' style is "Ornaments"). As UFO states them (see
+    // `ufo::KEY_STYLE_MAP_FAMILY_NAME`).
+    for (name_id, key) in [
+        (StringId::FAMILY_NAME, "ufo.styleMapFamilyName"),
+        (StringId::SUBFAMILY_NAME, "ufo.styleMapStyleName"),
+    ] {
+        if let Some(name) = name_id_to_i18n(fontref, name_id).get_default() {
+            font.format_specific
+                .insert(key.into(), serde_json::Value::String(name.clone()));
+        }
+    }
     Ok(())
 }
 
-/// The fsSelection bits a source states; a compiler sets ITALIC, BOLD and
-/// REGULAR from the style.
-const SOURCE_FS_SELECTION_BITS: u16 = !(1 << 0 | 1 << 5 | 1 << 6);
-
 fn load_custom_ot_values(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), BabelfontError> {
     let os2 = fontref.os2()?;
+    let post = fontref.post()?;
     let ot = &mut font.custom_ot_values;
     ot.os2_vendor_id = Some(os2.ach_vend_id());
     ot.os2_fs_type = Some(os2.fs_type());
     ot.os2_family_class = Some(os2.s_family_class() as u16);
     ot.os2_panose = os2.panose_10().try_into().ok();
-    ot.os2_fs_selection = Some(os2.fs_selection().bits() & SOURCE_FS_SELECTION_BITS);
+    // all of it: a binary's ITALIC, BOLD and REGULAR need not follow its style
+    // name (Bradley Hand Bold is not BOLD)
+    ot.os2_fs_selection = Some(os2.fs_selection().bits());
+    ot.os2_unicode_range1 = Some(os2.ul_unicode_range_1());
+    ot.os2_unicode_range2 = Some(os2.ul_unicode_range_2());
+    ot.os2_unicode_range3 = Some(os2.ul_unicode_range_3());
+    ot.os2_unicode_range4 = Some(os2.ul_unicode_range_4());
+    // OS/2 version 0 has no code page ranges
+    ot.os2_code_page_range1 = os2.ul_code_page_range_1();
+    ot.os2_code_page_range2 = os2.ul_code_page_range_2();
     ot.head_lowest_rec_ppem = Some(fontref.head()?.lowest_rec_ppem());
-    // A variable font's weight and width classes describe its default instance only
-    if font.axes.is_empty() {
+    ot.post_is_fixed_pitch = Some(post.is_fixed_pitch() != 0);
+    ot.post_italic_angle = Some(shortest(post.italic_angle().to_f64(), |angle| {
+        skrifa::raw::types::Fixed::from_f64(angle)
+    }));
+    // A compiler derives a variable font's weight and width classes from its
+    // wght and wdth axes' defaults; without the axis, it needs to be told
+    let has_axis = |tag: &[u8; 4]| font.axes.iter().any(|axis| axis.tag == Tag::new(tag));
+    if !has_axis(b"wght") {
         ot.os2_us_weight_class = Some(os2.us_weight_class());
+    }
+    if !has_axis(b"wdth") {
         ot.os2_us_width_class = Some(os2.us_width_class());
+    }
+    // a symbol font's Windows character map is symbol-encoded, not Unicode (see
+    // `fontir::symbol_cmap::KEY_SYMBOL_ENCODING`)
+    let windows_encodings: Vec<u16> = fontref
+        .cmap()
+        .map(|cmap| {
+            cmap.encoding_records()
+                .iter()
+                .filter(|record| {
+                    record.platform_id() == skrifa::raw::tables::cmap::PlatformId::Windows
+                })
+                .map(|record| record.encoding_id())
+                .collect()
+        })
+        .unwrap_or_default();
+    if windows_encodings.contains(&0) && !windows_encodings.iter().any(|e| [1, 10].contains(e)) {
+        font.format_specific.insert(
+            "com.counterpunch.cmap.symbolEncoding".into(),
+            serde_json::Value::Bool(true),
+        );
     }
     Ok(())
 }
@@ -1210,7 +1258,7 @@ fn load_metrics(
     // Glyphs convention, the opposite sign.
     metrics.insert(
         MetricType::ItalicAngle,
-        -fontref.post()?.italic_angle().to_f32() as i32,
+        -fontref.post()?.italic_angle().to_f64().round() as i32,
     );
     Ok(metrics)
 }
@@ -1868,6 +1916,7 @@ mod tests {
     const ANCHORS: &str = "resources/ttf/Anchors.ttf";
     const AVAR2: &str = "resources/ttf/Avar2.ttf";
     const AVAR2_NO_MAP: &str = "resources/ttf/Avar2NoMap.ttf";
+    const METADATA: &str = "resources/ttf/Metadata.ttf";
     const RTL_KERNING: &str = "resources/ttf/RtlKerning.ttf";
     const COMPOSITES: &str = "resources/ttf/Composites.ttf";
     const REDDIT_SANS: &str = "resources/ttf/RedditSans-Subset.ttf";
@@ -2038,40 +2087,145 @@ mod tests {
         assert_eq!(ot.os2_us_width_class, Some(6));
         assert_eq!(ot.os2_fs_type, Some(0));
         assert_eq!(ot.os2_panose, Some([2, 0, 6, 3, 0, 0, 0, 0, 0, 0]));
-        // USE_TYPO_METRICS; REGULAR is left to the compiler
-        assert_eq!(ot.os2_fs_selection, Some(1 << 7));
+        // REGULAR | USE_TYPO_METRICS
+        assert_eq!(ot.os2_fs_selection, Some(1 << 6 | 1 << 7));
         assert_eq!(ot.head_lowest_rec_ppem, Some(9));
     }
+
     #[test]
-    fn test_font_revision() {
-        // head.fontRevision 2.005 (0x00020148)
-        assert_eq!(load(STATIC_LEGACY).unwrap().version, (2, 5));
+    fn test_metadata() {
+        let font = load(METADATA).unwrap();
+        let ot = &font.custom_ot_values;
+        assert_eq!(ot.os2_us_weight_class, Some(700));
+        assert_eq!(ot.os2_us_width_class, Some(3));
+        assert_eq!(ot.os2_fs_type, Some(8));
+        assert_eq!(ot.os2_family_class, Some(0x0805));
+        assert_eq!(ot.os2_fs_selection, Some(1 << 5 | 1 << 7 | 1 << 8));
+        assert_eq!(ot.os2_unicode_range2, Some(1 << 28));
+        assert_eq!(ot.os2_code_page_range1, Some(1 << 31));
+        assert_eq!(ot.post_is_fixed_pitch, Some(true));
+        // as the source said it, not as 16.16 stores it (-16.332993)
+        assert_eq!(ot.post_italic_angle, Some(-16.333));
+        assert_eq!(
+            font.masters[0].metrics.get(&MetricType::ItalicAngle),
+            Some(&16)
+        );
+        assert_eq!(
+            font.format_specific
+                .get("com.counterpunch.cmap.symbolEncoding"),
+            Some(&serde_json::Value::Bool(true))
+        );
+        let names = &font.names;
+        assert_eq!(
+            names.family_name.0.get("DEU").map(String::as_str),
+            Some("Fixture Metadaten")
+        );
+        assert_eq!(
+            names.copyright.0.get("JPN").map(String::as_str),
+            Some("\u{8ab0}\u{3082}")
+        );
     }
+
     #[test]
-    fn test_heights_without_os2_v2() {
-        let font = load(STATIC_LEGACY).unwrap();
-        let metrics = &font.masters[0].metrics;
-        assert_eq!(metrics.get(&MetricType::XHeight), Some(&480));
-        assert_eq!(metrics.get(&MetricType::CapHeight), Some(&700));
+    fn test_metadata_without_an_axis_for_it() {
+        // Variable.ttf has wght, not wdth: a compiler derives the weight class
+        // from wght's default, but must be told the width class
+        let ot = load(VARIABLE).unwrap().custom_ot_values;
+        assert_eq!(ot.os2_us_weight_class, None);
+        assert_eq!(ot.os2_us_width_class, Some(5));
     }
+
+    /// The tables' values a font designer sets, by name
+    #[cfg(feature = "fontir")]
+    fn designer_metadata(binary: &[u8]) -> Vec<(String, String)> {
+        let fontref = skrifa::FontRef::new(binary).unwrap();
+        let os2 = fontref.os2().unwrap();
+        let post = fontref.post().unwrap();
+        let head = fontref.head().unwrap();
+        let mut values: Vec<(String, String)> = vec![
+            ("usWeightClass".into(), os2.us_weight_class().to_string()),
+            ("usWidthClass".into(), os2.us_width_class().to_string()),
+            ("fsType".into(), os2.fs_type().to_string()),
+            ("fsSelection".into(), os2.fs_selection().bits().to_string()),
+            ("sFamilyClass".into(), os2.s_family_class().to_string()),
+            ("panose".into(), format!("{:?}", os2.panose_10())),
+            (
+                "ulUnicodeRange".into(),
+                format!(
+                    "{:?}",
+                    [
+                        os2.ul_unicode_range_1(),
+                        os2.ul_unicode_range_2(),
+                        os2.ul_unicode_range_3(),
+                        os2.ul_unicode_range_4()
+                    ]
+                ),
+            ),
+            (
+                "ulCodePageRange".into(),
+                format!(
+                    "{:?}",
+                    [os2.ul_code_page_range_1(), os2.ul_code_page_range_2()]
+                ),
+            ),
+            ("macStyle".into(), head.mac_style().bits().to_string()),
+            ("lowestRecPPEM".into(), head.lowest_rec_ppem().to_string()),
+            ("isFixedPitch".into(), post.is_fixed_pitch().to_string()),
+            (
+                "italicAngle".into(),
+                post.italic_angle().to_f64().to_string(),
+            ),
+            (
+                "cmap".into(),
+                format!(
+                    "{:?}",
+                    fontref
+                        .cmap()
+                        .unwrap()
+                        .encoding_records()
+                        .iter()
+                        .filter(
+                            |r| r.platform_id() == skrifa::raw::tables::cmap::PlatformId::Windows
+                        )
+                        .map(|r| r.encoding_id())
+                        .collect::<Vec<_>>()
+                ),
+            ),
+        ];
+        // the Windows names, but those a compiler writes where a source has none
+        let name = fontref.name().unwrap();
+        let mut names: Vec<(String, String)> = name
+            .name_record()
+            .iter()
+            .filter(|r| r.platform_id() == 3 && ![3, 4, 5, 6].contains(&r.name_id().to_u16()))
+            .map(|r| {
+                (
+                    format!("name {} 0x{:04X}", r.name_id().to_u16(), r.language_id()),
+                    r.string(name.string_data()).unwrap().to_string(),
+                )
+            })
+            .collect();
+        names.sort();
+        values.extend(names);
+        values
+    }
+
+    #[cfg(feature = "fontir")]
     #[test]
-    fn test_hhea_line_gap() {
-        let font = load(STATIC_LEGACY).unwrap();
-        let metrics = &font.masters[0].metrics;
-        assert_eq!(metrics.get(&MetricType::HheaLineGap), Some(&25));
+    fn test_metadata_round_trips() {
+        use crate::convertors::fontir::{BabelfontIrSource, CompilationOptions};
+        for path in [METADATA, STATIC_LEGACY] {
+            let original = std::fs::read(path).unwrap();
+            let compiled = BabelfontIrSource::compile(
+                load_bytes(&original).unwrap(),
+                CompilationOptions::default(),
+            )
+            .unwrap();
+            let (a, b) = (designer_metadata(&original), designer_metadata(&compiled));
+            assert_eq!(b, a, "{path}");
+        }
     }
-    #[test]
-    fn test_vertical_metrics() {
-        // vhea 900/-100/0; a: advance height 1000, tsb 100, yMax 500
-        let font = load(GDEF_CLASSES).unwrap();
-        let metrics = &font.masters[0].metrics;
-        assert_eq!(metrics.get(&MetricType::VheaAscender), Some(&900));
-        assert_eq!(metrics.get(&MetricType::VheaDescender), Some(&-100));
-        assert_eq!(metrics.get(&MetricType::VheaLineGap), Some(&0));
-        let layer = &font.glyphs.get("a").unwrap().layers[0];
-        assert_eq!(layer.vertical_advance, Some(1000.0));
-        assert_eq!(layer.vertical_origin, Some(600.0));
-    }
+
     #[cfg(feature = "fontir")]
     #[test]
     fn test_stat_names_keep_their_languages() {
@@ -2126,6 +2280,36 @@ mod tests {
             )
         };
         assert_eq!(vertical(&compiled), vertical(&original));
+    }
+    #[test]
+    fn test_font_revision() {
+        // head.fontRevision 2.005 (0x00020148)
+        assert_eq!(load(STATIC_LEGACY).unwrap().version, (2, 5));
+    }
+    #[test]
+    fn test_heights_without_os2_v2() {
+        let font = load(STATIC_LEGACY).unwrap();
+        let metrics = &font.masters[0].metrics;
+        assert_eq!(metrics.get(&MetricType::XHeight), Some(&480));
+        assert_eq!(metrics.get(&MetricType::CapHeight), Some(&700));
+    }
+    #[test]
+    fn test_hhea_line_gap() {
+        let font = load(STATIC_LEGACY).unwrap();
+        let metrics = &font.masters[0].metrics;
+        assert_eq!(metrics.get(&MetricType::HheaLineGap), Some(&25));
+    }
+    #[test]
+    fn test_vertical_metrics() {
+        // vhea 900/-100/0; a: advance height 1000, tsb 100, yMax 500
+        let font = load(GDEF_CLASSES).unwrap();
+        let metrics = &font.masters[0].metrics;
+        assert_eq!(metrics.get(&MetricType::VheaAscender), Some(&900));
+        assert_eq!(metrics.get(&MetricType::VheaDescender), Some(&-100));
+        assert_eq!(metrics.get(&MetricType::VheaLineGap), Some(&0));
+        let layer = &font.glyphs.get("a").unwrap().layers[0];
+        assert_eq!(layer.vertical_advance, Some(1000.0));
+        assert_eq!(layer.vertical_origin, Some(600.0));
     }
     #[test]
     fn test_name_record_languages_are_keyed_as_sfd_names() {
