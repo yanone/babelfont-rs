@@ -36,10 +36,15 @@ use crate::{
 
 /// Load a TTF font from a file path
 pub fn load<T: AsRef<std::path::Path>>(path: T) -> Result<Font, BabelfontError> {
-    let mut font = Font::new();
     let binary = std::fs::read(path.as_ref()).map_err(|e| BabelfontError::IO(e.to_string()))?;
+    load_bytes(&binary)
+}
+
+/// Load a TTF font from its bytes
+pub fn load_bytes(binary: &[u8]) -> Result<Font, BabelfontError> {
+    let mut font = Font::new();
     let fontref =
-        skrifa::FontRef::new(&binary).map_err(|e| BabelfontError::BinaryFontRead(e.to_string()))?;
+        skrifa::FontRef::new(binary).map_err(|e| BabelfontError::BinaryFontRead(e.to_string()))?;
     font.upm = fontref.head()?.units_per_em();
     font.version = font_version(&fontref)?;
 
@@ -53,6 +58,11 @@ pub fn load<T: AsRef<std::path::Path>>(path: T) -> Result<Font, BabelfontError> 
     load_features(&fontref, &mut font)?;
     load_legacy_kerning(&fontref, &mut font)?;
     name_unnamed_glyphs(&fontref, &mut font)?;
+    {
+        use crate::filters::FontFilter;
+        crate::filters::DropImpliedOnCurves.apply(&mut font)?;
+        crate::filters::MoveKerningFromFeatures.apply(&mut font)?;
+    }
     Ok(font)
 }
 
@@ -310,17 +320,30 @@ fn load_masters(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babelf
             }
         }
     }
+    // in a stable order, as the axes run
+    let mut master_locations: Vec<DesignLocation> = master_locations.into_iter().collect();
+    master_locations.sort_by(|a, b| {
+        let key = |loc: &DesignLocation| {
+            font.axes
+                .iter()
+                .map(|axis| OrderedFloat(loc.get(axis.tag).map_or(0.0, |c| c.to_f64())))
+                .collect::<Vec<_>>()
+        };
+        key(a).cmp(&key(b))
+    });
     for loc in master_locations {
-        let name = loc
-            .iter()
-            .map(|(tag, coord)| format!("{}={}", tag, coord.to_f64()))
-            .collect::<Vec<String>>()
-            .join(", ");
+        let name = instance_name_at(font, &loc).unwrap_or_else(|| {
+            loc.iter()
+                .map(|(tag, coord)| format!("{}={}", tag, coord.to_f64()))
+                .collect::<Vec<String>>()
+                .join(", ")
+                .into()
+        });
 
         let metrics = load_metrics(fontref, font, &loc)?;
         // More here, check use_typo_metrics
         font.masters.push(crate::Master {
-            name: name.into(),
+            name,
             id: uuid::Uuid::new_v4().to_string(),
             location: loc,
             metrics,
@@ -343,7 +366,7 @@ fn load_masters(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babelf
         name: if font.axes.is_empty() {
             style_name(fontref)
         } else {
-            "Default".into()
+            instance_name_at(font, &default_location).unwrap_or_else(|| "Default".into())
         },
         id: uuid::Uuid::new_v4().to_string(),
         location: default_location,
@@ -351,6 +374,62 @@ fn load_masters(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babelf
         ..Default::default()
     });
     Ok(())
+}
+
+/// The name of the named instance at a location, if there is one
+fn instance_name_at(font: &Font, location: &DesignLocation) -> Option<crate::I18NDictionary> {
+    font.instances
+        .iter()
+        .find(|instance| {
+            font.axes.iter().all(|axis| {
+                let at = |loc: &DesignLocation| loc.get(axis.tag).map(|c| c.to_f64());
+                match (at(&instance.location), at(location)) {
+                    (Some(a), Some(b)) => (a - b).abs() < 0.01,
+                    _ => false,
+                }
+            })
+        })
+        .map(|instance| instance.name.clone())
+}
+
+/// The peaks of a glyph's own gvar tuples that no master stands at: the glyph's
+/// intermediate masters
+fn intermediate_locations(
+    fontref: &skrifa::FontRef,
+    axes: &[crate::Axis],
+    masters: &[crate::Master],
+    gid: GlyphId,
+) -> Result<Vec<DesignLocation>, BabelfontError> {
+    let Ok(gvar) = fontref.gvar() else {
+        return Ok(vec![]);
+    };
+    let Some(data) = gvar.glyph_variation_data(gid)? else {
+        return Ok(vec![]);
+    };
+    let at_master = |coords: &[F2Dot14]| {
+        masters.iter().any(|master| {
+            fontdrasil_location_to_skrifa_location(master.location.clone(), axes)
+                .is_ok_and(|master_coords| master_coords == coords)
+        })
+    };
+    let mut seen: Vec<Vec<F2Dot14>> = vec![];
+    let mut locations = vec![];
+    for tuple in data.tuples() {
+        let peak: Vec<F2Dot14> = tuple.peak().values().iter().map(|v| v.get()).collect();
+        if at_master(&peak) || seen.contains(&peak) {
+            continue;
+        }
+        seen.push(peak.clone());
+        let mut location = DesignLocation::new();
+        for (axis, coord) in axes.iter().zip(&peak) {
+            location.insert(
+                axis.tag,
+                NormalizedCoord::new(coord.to_f32() as f64).to_design(&axis._converter()?),
+            );
+        }
+        locations.push(location);
+    }
+    Ok(locations)
 }
 
 fn load_metrics(
@@ -445,15 +524,38 @@ fn load_glyphs(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babelfo
     }
 
     // Now do it again and load layers
+    let default_master_id = font.masters.last().map(|m| m.id.clone());
     for (gid, glyph) in font.glyphs.iter_mut().enumerate() {
+        let gid = GlyphId::new(gid as u32);
         for master in &font.masters {
             glyph.layers.push(load_layer(
                 &font.axes,
                 fontref,
-                GlyphId::new(gid as u32),
-                master,
+                gid,
+                &master.location,
+                crate::LayerType::DefaultForMaster(master.id.clone()),
                 &names,
             )?);
+        }
+        let Some(default_master_id) = &default_master_id else {
+            continue;
+        };
+        for location in intermediate_locations(fontref, &font.axes, &font.masters, gid)? {
+            let mut layer = load_layer(
+                &font.axes,
+                fontref,
+                gid,
+                &location,
+                crate::LayerType::AssociatedWithMaster(default_master_id.clone()),
+                &names,
+            )?;
+            layer.name = Some(format!(
+                "{{{}}}",
+                location.iter().map(|(_, c)| c.to_f64()).join(", ")
+            ));
+            layer.id = Some(uuid::Uuid::new_v4().to_string());
+            layer.location = Some(location);
+            glyph.layers.push(layer);
         }
     }
     //cmap
@@ -559,18 +661,9 @@ fn load_features(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babel
         for (glyph_name, anchor) in anchors {
             if let Some(glyph) = font.glyphs.get_mut(&glyph_name) {
                 for layer in glyph.layers.iter_mut() {
-                    let LayerType::DefaultForMaster(mid) = &layer.master else {
+                    let Some(location) = layer_location(layer, &master_ids) else {
                         continue;
                     };
-                    let Some(master) = master_ids.get(mid) else {
-                        log::warn!(
-                            "Master ID {} from anchor {} does not exist in the font",
-                            mid,
-                            anchor_name
-                        );
-                        continue;
-                    };
-                    let location = master.location.clone();
                     let (x, y) = get_x_y_location_for_anchor(location, &anchor, &axes)?;
                     layer.anchors.push(Anchor {
                         id: None,
@@ -607,18 +700,9 @@ fn load_features(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babel
             for glyph_name in glyphset {
                 if let Some(glyph) = font.glyphs.get_mut(&glyph_name) {
                     for layer in glyph.layers.iter_mut() {
-                        let LayerType::DefaultForMaster(mid) = &layer.master else {
+                        let Some(location) = layer_location(layer, &master_ids) else {
                             continue;
                         };
-                        let Some(master) = master_ids.get(mid) else {
-                            log::warn!(
-                                "Master ID {} from anchor {} does not exist in the font",
-                                mid,
-                                anchor_name
-                            );
-                            continue;
-                        };
-                        let location = master.location.clone();
                         let (x, y) = get_x_y_location_for_anchor(location, anchor, &axes)?;
                         layer.anchors.push(Anchor {
                             id: None,
@@ -744,64 +828,29 @@ fn load_legacy_kerning(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(),
     Ok(())
 }
 
+/// Where a layer stands: its own location, else its master's
+fn layer_location(
+    layer: &Layer,
+    masters: &HashMap<String, &crate::Master>,
+) -> Option<DesignLocation> {
+    if let Some(location) = &layer.location {
+        return Some(location.clone());
+    }
+    match &layer.master {
+        LayerType::DefaultForMaster(id) => masters.get(id).map(|m| m.location.clone()),
+        _ => None,
+    }
+}
+
 fn get_x_y_location_for_anchor(
     location: DesignLocation,
     anchor: &sr_aef::fea_rs_ast::Anchor,
     axes: &Axes,
 ) -> Result<(f64, f64), BabelfontError> {
-    // sr-aef rounds user coordinates to as few digits as normalize to the same values, so
-    // compare the locations normalized
-    let normalized_loc = location.to_normalized(axes)?;
-    let is_location = |loc: &IndexMap<SmolStr, OrderedFloat<f64>>| {
-        normalized_loc.iter().all(|(tag, coord)| {
-            axes.get(tag).is_some_and(|axis| {
-                loc.get(tag.to_string().as_str()).is_some_and(|user_coord| {
-                    UserCoord::new(user_coord.0)
-                        .to_normalized(&axis.converter)
-                        .to_f2dot14()
-                        == coord.to_f2dot14()
-                })
-            })
-        })
-    };
-
-    let x = match &anchor.x {
-        fea_rs_ast::Metric::Scalar(x_scalar) => *x_scalar as f64,
-        fea_rs_ast::Metric::Variable(items) => {
-            // Anchor must exist at this location, so find the first item that matches the location
-            items
-                .iter()
-                .find_map(|(loc, item)| {
-                    if is_location(loc) {
-                        Some(*item as f64)
-                    } else {
-                        None
-                    }
-                })
-                .unwrap_or_default()
-        }
-        fea_rs_ast::Metric::GlyphsAppNumber(_) => unreachable!(),
-    };
-
-    let y = match &anchor.y {
-        fea_rs_ast::Metric::Scalar(y_scalar) => *y_scalar as f64,
-        fea_rs_ast::Metric::Variable(items) => {
-            // Anchor must exist at this location, so find the first item that matches the location
-            items
-                .iter()
-                .find_map(|(loc, item)| {
-                    if is_location(loc) {
-                        Some(*item as f64)
-                    } else {
-                        None
-                    }
-                })
-                .unwrap_or_default()
-        }
-        fea_rs_ast::Metric::GlyphsAppNumber(_) => unreachable!(),
-    };
-
-    Ok((x, y))
+    Ok((
+        crate::features::metric_at(&anchor.x, &location, axes)?,
+        crate::features::metric_at(&anchor.y, &location, axes)?,
+    ))
 }
 
 fn fontdrasil_location_to_skrifa_location<Space: ConvertSpace<NormalizedSpace>>(
@@ -894,18 +943,100 @@ fn read_shift(
 
 const COMPOSITE_RECURSION_LIMIT: usize = 32;
 
+/// A contour and the point it starts at
+type ContourWithStart = (crate::Path, (f64, f64));
+
+/// A pen that notes where each contour starts
+struct StartsPen {
+    builder: PathBuilder,
+    starts: Vec<(f64, f64)>,
+}
+
+impl skrifa::outline::OutlinePen for StartsPen {
+    fn move_to(&mut self, x: f32, y: f32) {
+        self.starts.push((x as f64, y as f64));
+        skrifa::outline::OutlinePen::move_to(&mut self.builder, x, y);
+    }
+    fn line_to(&mut self, x: f32, y: f32) {
+        skrifa::outline::OutlinePen::line_to(&mut self.builder, x, y);
+    }
+    fn quad_to(&mut self, cx0: f32, cy0: f32, x: f32, y: f32) {
+        skrifa::outline::OutlinePen::quad_to(&mut self.builder, cx0, cy0, x, y);
+    }
+    fn curve_to(&mut self, cx0: f32, cy0: f32, cx1: f32, cy1: f32, x: f32, y: f32) {
+        skrifa::outline::OutlinePen::curve_to(&mut self.builder, cx0, cy0, cx1, cy1, x, y);
+    }
+    fn close(&mut self) {
+        skrifa::outline::OutlinePen::close(&mut self.builder);
+    }
+}
+
+/// A glyph's contours as skrifa draws them, in glyf order and direction, with
+/// the point each one starts at
+fn draw_contours_with_starts(
+    fontref: &skrifa::FontRef<'_>,
+    gid: skrifa::GlyphId,
+    location: LocationRef,
+) -> Result<Vec<ContourWithStart>, BabelfontError> {
+    let Some(outline) = fontref.outline_glyphs().get(gid) else {
+        return Ok(vec![]);
+    };
+    let mut pen = StartsPen {
+        builder: PathBuilder::new(),
+        starts: vec![],
+    };
+    outline
+        .draw(DrawSettings::unhinted(Size::unscaled(), location), &mut pen)
+        .map_err(|e| BabelfontError::BinaryFontRead(e.to_string()))?;
+    Ok(pen.builder.build().into_iter().zip(pen.starts).collect())
+}
+
+fn draw_contours(
+    fontref: &skrifa::FontRef<'_>,
+    gid: skrifa::GlyphId,
+    location: LocationRef,
+) -> Result<Vec<crate::Path>, BabelfontError> {
+    Ok(draw_contours_with_starts(fontref, gid, location)?
+        .into_iter()
+        .map(|(path, _)| path)
+        .collect())
+}
+
+/// Reverses a contour drawn from a glyf, keeping the point it starts at as its
+/// start (the last node), as a compiler that reverses it back keeps it
+fn reverse_keeping_start(path: &mut crate::Path, start: (f64, f64)) {
+    path.reverse();
+    if let Some(index) = path
+        .nodes
+        .iter()
+        .position(|n| n.nodetype != crate::NodeType::OffCurve && (n.x, n.y) == start)
+    {
+        path.nodes.rotate_left(index + 1);
+    }
+}
+
+/// A coordinate skrifa computed in f32, rounded to the integer it stands for
+fn snap(value: f64) -> f64 {
+    if (value - value.round()).abs() < 1e-3 {
+        value.round()
+    } else {
+        value
+    }
+}
+
 fn load_layer(
     axes: &[crate::Axis],
     fontref: &skrifa::FontRef<'_>,
     gid: skrifa::GlyphId,
-    master: &crate::Master,
+    location: &DesignLocation,
+    layer_type: crate::LayerType,
     names: &[SmolStr],
 ) -> Result<crate::Layer, BabelfontError> {
-    let loc = fontdrasil_location_to_skrifa_location(master.location.clone(), axes)?;
+    let loc = fontdrasil_location_to_skrifa_location(location.clone(), axes)?;
     let locationref = LocationRef::new(&loc);
     let width = fontref.glyph_metrics(Size::unscaled(), locationref);
     let mut layer = Layer::new(width.advance_width(gid).unwrap_or_default());
-    layer.master = crate::LayerType::DefaultForMaster(master.id.clone());
+    layer.master = layer_type;
     load_vertical_metrics(fontref, gid, &mut layer)?;
 
     // Skrifa pens don't support components. Parse component glyphs manually.
@@ -917,24 +1048,14 @@ fn load_layer(
 
     match glyph {
         glyf::Glyph::Simple(_) => {
-            if let Some(outline) = fontref.outline_glyphs().get(gid) {
-                let mut pen = PathBuilder::new();
-                outline
-                    .draw(
-                        DrawSettings::unhinted(Size::unscaled(), locationref),
-                        &mut pen,
-                    )
-                    .map_err(|e| BabelfontError::BinaryFontRead(e.to_string()))?;
-                // glyf contours run clockwise, a source's counter-clockwise
-                layer.shapes = pen
-                    .build()
-                    .into_iter()
-                    .map(|mut path| {
-                        path.reverse();
-                        crate::Shape::Path(path)
-                    })
-                    .collect();
-            }
+            // glyf contours run clockwise, a source's counter-clockwise
+            layer.shapes = draw_contours_with_starts(fontref, gid, locationref)?
+                .into_iter()
+                .map(|(mut path, start)| {
+                    reverse_keeping_start(&mut path, start);
+                    crate::Shape::Path(path)
+                })
+                .collect();
         }
         glyf::Glyph::Composite(c) => {
             // This gets complex. :-/
@@ -944,8 +1065,15 @@ fn load_layer(
             // each offset gains the composite's shift and loses the one its
             // component was read with, transformed as the component is.
             let shift = drawn_shift(fontref, &glyf, gid, 0)?;
+            // Where skrifa draws each component's contours, with offset deltas
+            // and point matching applied
+            let drawn = draw_contours(fontref, gid, locationref)?;
+            let mut contour_index = 0;
             for component in c.components() {
                 let gid = component.glyph;
+                let own = draw_contours(fontref, gid.into(), locationref)?;
+                let placed = drawn.get(contour_index);
+                contour_index += own.len();
                 let anchor = match component.anchor {
                     glyf::Anchor::Offset { x, y } => (x as f64, y as f64),
                     glyf::Anchor::Point {
@@ -958,17 +1086,27 @@ fn load_layer(
                 let yx = component.transform.yx.to_f32() as f64;
                 let xy = component.transform.xy.to_f32() as f64;
                 let yy = component.transform.yy.to_f32() as f64;
-                let component_shift = read_shift(fontref, &glyf, gid.into())?;
-                // XXX apply deltas
+                let (dx, dy) = match (
+                    own.first().and_then(|p| p.nodes.first()),
+                    placed.and_then(|p| p.nodes.first()),
+                ) {
+                    // the offset that puts the component's first point where
+                    // it is drawn
+                    (Some(p), Some(q)) => (
+                        snap(q.x - (xx * p.x + xy * p.y)),
+                        snap(q.y - (yx * p.x + yy * p.y)),
+                    ),
+                    // an empty component: its stored offset
+                    _ => {
+                        let component_shift = read_shift(fontref, &glyf, gid.into())?;
+                        (
+                            anchor.0 + shift - xx * component_shift,
+                            anchor.1 - yx * component_shift,
+                        )
+                    }
+                };
                 // kurbo::Affine::new expects [xx, yx, xy, yy, dx, dy]
-                let our_affine = kurbo::Affine::new([
-                    xx,
-                    yx,
-                    xy,
-                    yy,
-                    anchor.0 + shift - xx * component_shift,
-                    anchor.1 - yx * component_shift,
-                ]);
+                let our_affine = kurbo::Affine::new([xx, yx, xy, yy, dx, dy]);
 
                 layer.shapes.push(crate::Shape::Component(crate::Component {
                     id: None,
@@ -1001,6 +1139,54 @@ mod tests {
     const DUPLICATE_NAMES: &str = "resources/ttf/DuplicateNames.ttf";
     const MARK_NO_GDEF: &str = "resources/ttf/MarkNoGdef.ttf";
     const UNNAMED: &str = "resources/ttf/Unnamed.ttf";
+    const QUADRATIC: &str = "resources/ttf/Quadratic.ttf";
+    const VARIABLE: &str = "resources/ttf/Variable.ttf";
+    const VARIABLE_NO_HVAR: &str = "resources/ttf/VariableNoHvar.ttf";
+
+    fn master<'a>(font: &'a Font, name: &str) -> &'a crate::Master {
+        font.masters
+            .iter()
+            .find(|m| m.name.get_default().map(String::as_str) == Some(name))
+            .unwrap_or_else(|| panic!("no master {name}"))
+    }
+
+    fn layer<'a>(font: &'a Font, glyph: &str, master_name: &str) -> &'a Layer {
+        let id = &master(font, master_name).id;
+        font.glyphs
+            .get(glyph)
+            .unwrap()
+            .layers
+            .iter()
+            .find(|l| l.master == LayerType::DefaultForMaster(id.clone()))
+            .unwrap()
+    }
+
+    fn node_types(layer: &Layer) -> Vec<Vec<crate::NodeType>> {
+        layer
+            .paths()
+            .map(|p| p.nodes.iter().map(|n| n.nodetype).collect())
+            .collect()
+    }
+
+    /// The kerning a shaper applies between two glyphs at a master
+    fn kern_value(font: &Font, master: &crate::Master, left: &str, right: &str) -> i16 {
+        let group = |groups: &IndexMap<SmolStr, Vec<SmolStr>>, glyph: &str| {
+            groups
+                .iter()
+                .find(|(_, members)| members.iter().any(|g| g == glyph))
+                .map(|(name, _)| SmolStr::from(format!("@{name}")))
+        };
+        let lefts = [Some(left.into()), group(&font.first_kern_groups, left)];
+        let rights = [Some(right.into()), group(&font.second_kern_groups, right)];
+        for l in lefts.iter().flatten() {
+            for r in rights.iter().flatten() {
+                if let Some(value) = master.kerning.get(&(l.clone(), r.clone())) {
+                    return *value;
+                }
+            }
+        }
+        0
+    }
 
     fn assert_category(
         font: &Font,
@@ -1274,9 +1460,12 @@ mod tests {
         assert_eq!(kerning.get(&("x".into(), "x".into())), Some(&10));
         // a shaper skips marks applying the table
         assert_eq!(kerning.get(&("x".into(), "gravecomb".into())), None);
-        // and ignores it when GPOS has a kern feature
+        // and ignores it when GPOS has a kern feature: the GPOS kerning is the
+        // font's kerning
         let font = load(GDEF_CLASSES).unwrap();
-        assert!(font.masters[0].kerning.is_empty());
+        let kerning = &font.masters[0].kerning;
+        assert_eq!(kerning.get(&("a".into(), "f_f".into())), None);
+        assert_eq!(kerning.get(&("a".into(), "a".into())), Some(&-10));
     }
     #[test]
     fn test_unnamed_glyphs() {
@@ -1299,5 +1488,202 @@ mod tests {
             .features
             .to_fea()
             .contains("sub uni0041 by glyph00003;"));
+    }
+
+    #[test]
+    fn test_load_bytes() {
+        let font = load_bytes(&std::fs::read(QUADRATIC).unwrap()).unwrap();
+        assert_eq!(font.glyphs.len(), 5);
+    }
+    #[test]
+    fn test_off_curve_only_contour() {
+        use crate::NodeType::OffCurve;
+        let font = load(QUADRATIC).unwrap();
+        let layer = &font.glyphs.get("o").unwrap().layers[0];
+        assert_eq!(node_types(layer), vec![vec![OffCurve; 4]]);
+        let bbox = layer.paths().next().unwrap().to_kurbo().unwrap();
+        let bbox = kurbo::Shape::bounding_box(&bbox);
+        // the curves pass a quarter of the way from the implied on-curves to
+        // the off-curves
+        assert_close(
+            &[bbox.x0, bbox.y0, bbox.x1, bbox.y1],
+            &[62.5, 62.5, 437.5, 437.5],
+        );
+    }
+    #[test]
+    fn test_implied_on_curves_stay_implied() {
+        use crate::NodeType::QCurve as Q;
+        // glyf: 9 points, 4 explicit on-curves; (250, 700) and (0, 350) are
+        // midpoints, and so is the one between (450, 0) and (500, 200)
+        let font = load(QUADRATIC).unwrap();
+        let layer = &font.glyphs.get("O").unwrap().layers[0];
+        // the glyf contour's start, (250, 0), stays its start
+        let last = layer.paths().next().unwrap().nodes.last().unwrap();
+        assert_eq!((last.x, last.y), (250.0, 0.0));
+        assert_eq!(
+            node_types(layer)[0].iter().filter(|t| **t == Q).count(),
+            2,
+            "{:?}",
+            layer.paths().next().unwrap().nodes
+        );
+    }
+    #[test]
+    fn test_point_matched_component() {
+        // the dot's point 0 (0, 0) sits on O's point 2 (500, 200)
+        let font = load(QUADRATIC).unwrap();
+        assert_close(&component_coeffs(&font, "dotO")[1][4..], &[500.0, 200.0]);
+    }
+    #[test]
+    fn test_master_names_from_instances() {
+        let font = load(VARIABLE).unwrap();
+        let names: Vec<&str> = font
+            .masters
+            .iter()
+            .map(|m| m.name.get_default().unwrap().as_str())
+            .collect();
+        assert_eq!(names, ["Thin", "Black", "Regular"]);
+    }
+    #[test]
+    fn test_master_locations_through_avar() {
+        // avar maps user 600 to the design location the sparse master sits at
+        let font = load(VARIABLE).unwrap();
+        let axis = &font.axes[0];
+        let converter = axis._converter().unwrap();
+        for (name, user) in [("Thin", 100.0), ("Regular", 400.0), ("Black", 900.0)] {
+            let design = master(&font, name).location.get(axis.tag).unwrap();
+            assert_close(&[design.to_user(&converter).to_f64()], &[user]);
+        }
+    }
+    #[test]
+    fn test_component_offsets_vary() {
+        let font = load(VARIABLE).unwrap();
+        for (name, x) in [("Thin", 150.0), ("Regular", 200.0), ("Black", 300.0)] {
+            let dot = layer(&font, "Adot", name).components().nth(1).unwrap();
+            assert_close(&dot.transform.as_affine().as_coeffs()[4..], &[x, 750.0]);
+        }
+    }
+    #[test]
+    fn test_advances_with_and_without_hvar() {
+        for path in [VARIABLE, VARIABLE_NO_HVAR] {
+            let font = load(path).unwrap();
+            for (name, width) in [("Thin", 450.0), ("Regular", 550.0), ("Black", 700.0)] {
+                assert_eq!(layer(&font, "A", name).width, width, "{path} {name}");
+            }
+        }
+    }
+    #[test]
+    fn test_glyph_intermediate_master() {
+        let font = load(VARIABLE).unwrap();
+        let brace = font.glyphs.get("brace").unwrap();
+        let intermediate: Vec<&Layer> = brace
+            .layers
+            .iter()
+            .filter(|l| l.location.is_some())
+            .collect();
+        assert_eq!(intermediate.len(), 1);
+        let layer = intermediate[0];
+        let axis = &font.axes[0];
+        let user = layer.location.as_ref().unwrap().get(axis.tag).unwrap();
+        // as near 600 as F2Dot14 gets
+        let user = user.to_user(&axis._converter().unwrap()).to_f64();
+        assert!((user - 600.0).abs() < 0.05, "{user}");
+        assert_eq!(
+            layer.master,
+            LayerType::AssociatedWithMaster(master(&font, "Regular").id.clone())
+        );
+        assert_eq!(layer.width, 550.0);
+        let bbox = kurbo::Shape::bounding_box(&layer.paths().next().unwrap().to_kurbo().unwrap());
+        assert_close(&[bbox.x1], &[450.0]);
+        // no other glyph has one
+        assert!(font
+            .glyphs
+            .iter()
+            .filter(|g| g.name != "brace")
+            .all(|g| g.layers.iter().all(|l| l.location.is_none())));
+    }
+    #[test]
+    fn test_implied_only_where_every_master_implies_it() {
+        // Q's top on-curve is a midpoint in Thin and Regular, not in Black
+        let font = load(VARIABLE).unwrap();
+        for name in ["Thin", "Regular", "Black"] {
+            let o: usize = node_types(layer(&font, "O", name))
+                .iter()
+                .map(Vec::len)
+                .sum();
+            let q: usize = node_types(layer(&font, "Q", name))
+                .iter()
+                .map(Vec::len)
+                .sum();
+            assert_eq!((o, q), (7, 8), "{name}");
+        }
+    }
+    #[test]
+    fn test_gpos_kerning_is_kerning() {
+        let font = load(VARIABLE).unwrap();
+        for (name, pair, class) in [
+            ("Thin", -10, -40),
+            ("Regular", -20, -50),
+            ("Black", -30, -80),
+        ] {
+            let m = master(&font, name);
+            assert_eq!(kern_value(&font, m, "A", "Adot"), pair, "{name}");
+            assert_eq!(kern_value(&font, m, "A", "O"), class, "{name}");
+            assert_eq!(kern_value(&font, m, "Adot", "Q"), class, "{name}");
+        }
+        let groups: Vec<&Vec<SmolStr>> = font.first_kern_groups.values().collect();
+        assert_eq!(groups, [&vec![SmolStr::from("A"), "Adot".into()]]);
+        // the contextual rule stays, with the lookup it calls
+        let fea = font.features.to_fea();
+        assert!(fea.contains("pos Q' lookup"), "{fea}");
+        assert!(!fea.contains("pos A Adot"), "{fea}");
+    }
+    #[cfg(feature = "fontir")]
+    #[test]
+    fn test_variable_font_round_trips() {
+        use crate::convertors::fontir::{BabelfontIrSource, CompilationOptions};
+        let font = load(VARIABLE).unwrap();
+        let bytes =
+            BabelfontIrSource::compile(font.clone(), CompilationOptions::default()).unwrap();
+        let again = load_bytes(&bytes).unwrap();
+        assert_eq!(again.masters.len(), font.masters.len());
+        for m in &font.masters {
+            let name = m.name.get_default().unwrap();
+            let other = master(&again, name);
+            assert_eq!(other.location, m.location, "{name}");
+            for glyph in font.glyphs.iter() {
+                let (a, b) = (
+                    layer(&font, &glyph.name, name),
+                    layer(&again, &glyph.name, name),
+                );
+                assert_eq!(a.width, b.width, "{} {name}", glyph.name);
+                assert_eq!(
+                    a.paths().collect::<Vec<_>>(),
+                    b.paths().collect::<Vec<_>>(),
+                    "{} {name}",
+                    glyph.name
+                );
+                let components = |l: &Layer| {
+                    l.components()
+                        .map(|c| (c.reference.clone(), c.transform.as_affine().as_coeffs()))
+                        .collect::<Vec<_>>()
+                };
+                assert_eq!(components(a), components(b), "{} {name}", glyph.name);
+            }
+            for (l, r) in [("A", "Adot"), ("A", "O"), ("Adot", "Q"), ("O", "A")] {
+                assert_eq!(
+                    kern_value(&again, other, l, r),
+                    kern_value(&font, m, l, r),
+                    "{l} {r} {name}"
+                );
+            }
+        }
+        assert_eq!(again.first_kern_groups, font.first_kern_groups);
+        assert_eq!(again.second_kern_groups, font.second_kern_groups);
+        let brace = again.glyphs.get("brace").unwrap();
+        assert_eq!(
+            brace.layers.iter().filter(|l| l.location.is_some()).count(),
+            1
+        );
+        assert!(again.features.to_fea().contains("pos Q' lookup"));
     }
 }

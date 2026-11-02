@@ -29,12 +29,30 @@ component of glyph 3.
 
 MarkNoGdef.ttf: no GDEF; a mark feature attaching gravecomb (U+0300) to a;
 commaaccent unencoded; uni034F (U+034F) a default-ignorable nonspacing mark.
+
+Quadratic.ttf: o, a closed contour of four off-curves only; O, runs of two
+off-curves (an implied on-curve between them) and explicit on-curves, one at the
+midpoint of its off-curves; dotO, O and a dot placed by point matching (the dot's
+point 0 on O's point 2).
+
+Variable.ttf, built by varLib from three masters (wght 100, 400 default, 900;
+design 20, 80, 200 through avar) and a sparse one (wght 600, design 130, brace
+only); named instances Thin, Regular and Black. A and dot change width; Adot puts
+dot at a different offset in each master; O's on-curves are midpoints in every
+master; Q's top on-curve is one only in Thin and Regular; brace has an
+intermediate master. Kerning: @L [A Adot] against @R [O Q] -40/-50/-80 in a
+class subtable, and A Adot -10/-20/-30 in a glyph pair subtable before it; a
+contextual kern rule that stays feature code.
+VariableNoHvar.ttf: the same without HVAR, its advances in gvar phantom points.
 """
 from fontTools.feaLib.builder import addOpenTypeFeaturesFromString
 from fontTools.fontBuilder import FontBuilder
 from fontTools.ttLib.tables.O_S_2f_2 import Panose
 from fontTools.pens.ttGlyphPen import TTGlyphPen
-from fontTools.ttLib import newTable
+from fontTools.ttLib import newTable, TTFont
+from fontTools.designspaceLib import DesignSpaceDocument
+from fontTools import varLib
+import io
 from fontTools.ttLib.tables._g_l_y_f import Glyph, GlyphComponent
 from fontTools.ttLib.tables._k_e_r_n import KernTable_format_0
 
@@ -219,3 +237,113 @@ feature mark {
 """)
 del fb.font["GDEF"]
 save(fb, "MarkNoGdef.ttf")
+
+
+def quadratic(*contours):
+    """Contours of TTGlyphPen calls: ("m", pt) moveTo, ("q", *pts) qCurveTo,
+    ("o", *pts) a closed contour of off-curves only"""
+    pen = TTGlyphPen(None)
+    for contour in contours:
+        for op, *pts in contour:
+            if op == "m":
+                pen.moveTo(pts[0])
+            elif op == "q":
+                pen.qCurveTo(*pts)
+            elif op == "o":
+                pen.qCurveTo(*pts, None)
+        pen.closePath()
+    return pen.glyph()
+
+
+def o_contour(sx):
+    # explicit on-curves; (250, 700) is the midpoint of its off-curves, and the
+    # first run has two off-curves with an implied on-curve between them
+    x = lambda v: round(v * sx)
+    return [("m", (x(250), 0)), ("q", (x(450), 0), (x(500), 200), (x(500), 350)),
+            ("q", (x(500), 700), (x(250), 700)), ("q", (x(0), 700), (x(0), 350)),
+            ("q", (x(0), 0), (x(250), 0))]
+
+
+order = [".notdef", "o", "O", "dot", "dotO"]
+fb = FontBuilder(1000, isTTF=True)
+fb.setupGlyphOrder(order)
+fb.setupCharacterMap({ord("o"): "o", ord("O"): "O", ord("."): "dot"})
+dotO = composite(("O", 0, 0, None), ("dot", 0, 0, None))
+dotO.components[1].firstPt, dotO.components[1].secondPt = 2, 0
+del dotO.components[1].x, dotO.components[1].y
+fb.setupGlyf({".notdef": Glyph(), "o": quadratic([("o", (0, 250), (250, 500), (500, 250), (250, 0))]),
+              "O": quadratic(o_contour(1)), "dot": rect(0, 0, 100, 100), "dotO": dotO})
+fb.setupHorizontalMetrics({g: (600, fb.font["glyf"][g].xMin if g != ".notdef" else 0) for g in order})
+fb.setupHorizontalHeader(ascent=800, descent=-200)
+fb.setupNameTable({"familyName": "Fixture Quadratic", "styleName": "Regular"})
+fb.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWinAscent=800, usWinDescent=200)
+fb.setupPost()
+save(fb, "Quadratic.ttf")
+
+
+def variable_master(weight, sx, dot, dot_x, brace_right, kern, sparse=False):
+    order = [".notdef", "A", "dot", "Adot", "O", "Q", "brace"]
+    a_right = {100: 400, 400: 500, 900: 650}.get(weight, 500)
+    q = o_contour(sx)
+    if weight == 900:
+        q[2] = ("q", (round(550 * sx), 700), (round(300 * sx), 700))
+    glyphs = {
+        ".notdef": Glyph(),
+        "A": rect(50, 0, a_right, 700),
+        "dot": rect(0, 0, dot, dot),
+        "Adot": composite(("A", 0, 0, None), ("dot", dot_x, 750, None)),
+        "O": quadratic(o_contour(sx)),
+        "Q": quadratic(q),
+        "brace": rect(100, 0, brace_right, 500),
+    }
+    if sparse:
+        order = [".notdef", "brace"]
+        glyphs = {g: glyphs[g] for g in order}
+    fb = FontBuilder(1000, isTTF=True)
+    fb.setupGlyphOrder(order)
+    fb.setupCharacterMap({ord(c): c for c in "AOQ" if c in order} | ({ord("{"): "brace"}))
+    fb.setupGlyf(glyphs)
+    advance = {".notdef": 500, "A": a_right + 50, "dot": dot + 100, "Adot": a_right + 50,
+               "O": round(500 * sx) + 50, "Q": round(500 * sx) + 50, "brace": brace_right + 100}
+    fb.setupHorizontalMetrics({g: (advance[g], fb.font["glyf"][g].xMin if g != ".notdef" else 0)
+                               for g in order})
+    fb.setupHorizontalHeader(ascent=800, descent=-200)
+    fb.setupNameTable({"familyName": "Fixture Variable", "styleName": "Regular"})
+    fb.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWinAscent=800, usWinDescent=200)
+    fb.setupPost()
+    if not sparse:
+        pair, klass = kern
+        addOpenTypeFeaturesFromString(fb.font, f"""
+@L = [A Adot];
+@R = [O Q];
+lookup ctx {{ pos O 5; }} ctx;
+feature kern {{
+    pos A Adot {pair};
+    pos @L @R {klass};
+    pos Q' lookup ctx A;
+}} kern;
+""")
+    # through a file, so that the font is compiled
+    buf = io.BytesIO()
+    fb.font.save(buf)
+    buf.seek(0)
+    return TTFont(buf)
+
+
+doc = DesignSpaceDocument()
+doc.addAxisDescriptor(name="Weight", tag="wght", minimum=100, default=400, maximum=900,
+                      map=[(100, 20), (400, 80), (600, 130), (900, 200)])
+for weight, design, args in [(100, 20, (0.8, 100, 150, 200, (-10, -40))),
+                             (400, 80, (1.0, 120, 200, 300, (-20, -50))),
+                             (600, 130, (1.0, 120, 200, 450, None)),
+                             (900, 200, (1.3, 160, 300, 400, (-30, -80)))]:
+    source = doc.addSourceDescriptor(name=f"wght{weight}", location={"Weight": design})
+    source.font = variable_master(weight, *args, sparse=weight == 600)
+for name, weight in [("Thin", 100), ("Regular", 400), ("Black", 900)]:
+    doc.addInstanceDescriptor(styleName=name, location={"Weight": {100: 20, 400: 80, 900: 200}[weight]})
+vf, _, _ = varLib.build(doc)
+vf["head"].created = vf["head"].modified = 0
+vf.recalcTimestamp = False
+vf.save("Variable.ttf")
+del vf["HVAR"]
+vf.save("VariableNoHvar.ttf")
