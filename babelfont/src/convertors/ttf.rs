@@ -335,8 +335,9 @@ fn anchor_family(font: &Font, name: &str) -> (HashSet<SmolStr>, HashSet<SmolStr>
     (bases, marks)
 }
 
-/// Whether two anchor families may share a name: no glyph is in both, and
-/// their bases write different scripts, each known
+/// Whether two anchor families may share a name: no glyph is in both, their
+/// bases write different scripts, each known, and each family's marks are of
+/// its bases' script only
 fn may_share_name(
     font: &Font,
     (bases, marks): &(HashSet<SmolStr>, HashSet<SmolStr>),
@@ -358,8 +359,19 @@ fn may_share_name(
                 .map(|name| font.glyphs.get(name).and_then(glyph_script))
                 .collect()
         };
+        // marks of every script (combining accents) attach to bases of any:
+        // a shared name would attach them across scripts
+        let marks_match = |marks: &HashSet<SmolStr>, bases: &HashSet<String>| {
+            scripts(marks).is_some_and(|m| !m.is_empty() && m.is_subset(bases))
+        };
         match (scripts(bases), scripts(other_bases)) {
-            (Some(a), Some(b)) => !a.is_empty() && !b.is_empty() && a.is_disjoint(&b),
+            (Some(a), Some(b)) => {
+                !a.is_empty()
+                    && !b.is_empty()
+                    && a.is_disjoint(&b)
+                    && marks_match(marks, &a)
+                    && marks_match(other_marks, &b)
+            }
             _ => false,
         }
     }
@@ -2829,7 +2841,8 @@ mod tests {
         // nothing says what it is
         font.glyphs
             .push(anchored("blob", vec![], &["_mark_class_0x3"]));
-        // an Arabic top: shares top with the Latin one, the scripts being apart
+        // an Arabic top: does not share top with the Latin one, whose
+        // acutecomb is a mark of every script (it would attach to beh)
         font.glyphs
             .push(anchored("behar", vec![], &["mark_class_0x4"]));
         font.glyphs
@@ -2858,15 +2871,13 @@ mod tests {
         assert_eq!(names("strokelongcomb.case"), ["_center"]);
         assert_eq!(names("gravecomb.alt"), ["_mark_class_0x2"]);
         assert_eq!(names("blob"), ["_mark_class_0x3"]);
-        // behar is beh-ar, loosely
-        assert_eq!(names("behar"), ["top"]);
-        assert_eq!(names("fatha-ar"), ["_top"]);
+        assert_eq!(names("behar"), ["mark_class_0x4"]);
+        assert_eq!(names("fatha-ar"), ["_mark_class_0x4"]);
         let code = &font.features.prefixes.get("Decompiled").unwrap().code;
         assert!(
             code.contains("@center;") && code.contains("@mark_class_0x2;"),
             "{code}"
         );
-        // a shared name leaves the classes apart in the feature code
         assert!(code.contains("@mark_class_0x4;"), "{code}");
     }
 
