@@ -57,6 +57,19 @@ VariableNoHvar.ttf: the same without HVAR, its advances in gvar phantom points.
 Avar2.ttf: wght and wdth, four masters at the corners; an avar2 mapping moves
 wght 900 at wdth 75 to wght 850.
 
+Composites.ttf: wght (100-900, default 400) and wdth (75-100, default 100),
+masters on a grid of three weights by two widths, and a sparse master in the
+middle of the design space (wght 650, wdth 87.5). Acomp is A with acutecomb,
+the accent placed by both axes and with a master of its own at the sparse
+location, off the line; Aring nests Acomp and adds ring; Abar adds bar scaled and
+slanted; Odot puts dot on O's point 2 by point matching; B has a master of its
+own at the sparse location.
+
+RedditSans-Subset.ttf (not written by this script): Reddit Sans (SIL Open Font
+License, see its name table) built by fontmake 3.10 from Google Fonts' sources
+and subset by pyftsubset to 29 glyphs with kern, mark and mkmk: a real variable
+font, with glyph-specific intermediate masters and composites.
+
 RtlKerning.ttf: Arabic alef, beh and teh; kerning as ufo2ft writes it for a
 right-to-left script, <v 0 v 0>: alef beh -50, and @BEHS [beh teh] against alef
 -30.
@@ -523,3 +536,66 @@ feature kern {
 } kern;
 """)
 save(fb, "RtlKerning.ttf")
+
+
+def composites_master(weight, width, sparse=False):
+    """Composites.ttf's master at a location; at the sparse location, Acomp's
+    accent and B are off the line between the masters around it"""
+    a_right = round((250 + 0.4 * (weight - 100)) * width / 100)
+    acute_x = a_right // 2 + 60 + (40 if sparse else 0)
+    sx = (0.8 + (weight - 100) / 1600) * width / 100
+    order = [".notdef", "A", "O", "acutecomb", "dot", "ring", "bar", "Acomp", "Aring", "Abar",
+             "Odot", "B"]
+    odot = composite(("O", 0, 0, None), ("dot", 0, 0, None))
+    odot.components[1].firstPt, odot.components[1].secondPt = 2, 0
+    del odot.components[1].x, odot.components[1].y
+    dot = 60 + weight // 20
+    b_right = 300 + weight // 4 + (120 if sparse else 0)
+    glyphs = {
+        ".notdef": Glyph(),
+        "A": rect(50, 0, a_right, 700),
+        "O": quadratic(o_contour(sx)),
+        "acutecomb": rect(-60, 720, 20 + weight // 20, 820),
+        "dot": rect(0, 0, dot, dot),
+        "ring": quadratic([("o", (0, 40), (40, 80), (80, 40), (40, 0))]),
+        "bar": rect(0, 0, 20 + weight // 40, 300),
+        "Acomp": composite(("A", 0, 0, None), ("acutecomb", acute_x, 0, None)),
+        "Aring": composite(("Acomp", 0, 0, None), ("ring", a_right // 2 - 40, 860, None)),
+        "Abar": composite(("A", 0, 0, None), ("bar", a_right // 3, 100, [[0.8, 0], [0.3, 0.8]])),
+        "Odot": odot,
+        "B": rect(60, 0, b_right, 700),
+    }
+    if sparse:
+        order = [".notdef", "A", "acutecomb", "Acomp", "B"]
+        glyphs = {g: glyphs[g] for g in order}
+    fb = FontBuilder(1000, isTTF=True)
+    fb.setupGlyphOrder(order)
+    fb.setupCharacterMap({ord(c): c for c in "AOB" if c in order})
+    fb.setupGlyf(glyphs)
+    fb.setupHorizontalMetrics({g: (600 if g != ".notdef" else 500,
+                                   fb.font["glyf"][g].xMin if g != ".notdef" else 0)
+                               for g in order})
+    fb.setupHorizontalHeader(ascent=800, descent=-200)
+    fb.setupNameTable({"familyName": "Fixture Composites", "styleName": "Regular"})
+    fb.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWinAscent=800, usWinDescent=200)
+    fb.setupPost()
+    buf = io.BytesIO()
+    fb.font.save(buf)
+    buf.seek(0)
+    return TTFont(buf)
+
+
+doc = DesignSpaceDocument()
+doc.addAxisDescriptor(name="Weight", tag="wght", minimum=100, default=400, maximum=900)
+doc.addAxisDescriptor(name="Width", tag="wdth", minimum=75, default=100, maximum=100)
+for weight in (100, 400, 900):
+    for width in (75, 100):
+        source = doc.addSourceDescriptor(name=f"w{weight}-{width}",
+                                         location={"Weight": weight, "Width": width})
+        source.font = composites_master(weight, width)
+source = doc.addSourceDescriptor(name="sparse", location={"Weight": 650, "Width": 87.5})
+source.font = composites_master(650, 87.5, sparse=True)
+vf, _, _ = varLib.build(doc)
+vf["head"].created = vf["head"].modified = 0
+vf.recalcTimestamp = False
+vf.save("Composites.ttf")
