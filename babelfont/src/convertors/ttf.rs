@@ -530,14 +530,50 @@ fn load_axis_mappings(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), 
             }
             let mut map_vec = vec![];
             for map in segmap.axis_value_maps() {
-                let from = NormalizedCoord::new(map.from_coordinate().to_f32() as f64);
-                let to = NormalizedCoord::new(map.to_coordinate().to_f32() as f64);
-                map_vec.push((from.to_user(&converter), to.to_design(&converter)));
+                map_vec.push((
+                    user_at(map.from_coordinate(), &converter),
+                    design_at(map.to_coordinate(), &converter),
+                ));
             }
             axis.map = Some(map_vec);
         }
     }
     Ok(())
+}
+
+/// The value with the fewest decimals, up to three, that `quantize` stores as
+/// it stores `value`: what a source said before a binary rounded it
+fn shortest<T: PartialEq>(value: f64, quantize: impl Fn(f64) -> T) -> f64 {
+    let stored = quantize(value);
+    (0..4)
+        .map(|digits| {
+            let scale = 10f64.powi(digits);
+            (value * scale).round() / scale
+        })
+        .find(|rounded| quantize(*rounded) == stored)
+        .unwrap_or(value)
+}
+
+/// The user coordinate of a normalized coordinate before avar, as a source states
+/// it: avar stores user 600 as an F2Dot14 that reads back as 600.0122
+fn user_at(coord: F2Dot14, converter: &fontdrasil::coords::CoordConverter) -> UserCoord {
+    let user = NormalizedCoord::new(coord.to_f32() as f64)
+        .to_user(converter)
+        .to_f64();
+    UserCoord::new(shortest(user, |u| {
+        UserCoord::new(u).to_normalized(converter).to_f2dot14()
+    }))
+}
+
+/// The design coordinate of a normalized coordinate (after avar), as a source
+/// states it
+fn design_at(coord: F2Dot14, converter: &fontdrasil::coords::CoordConverter) -> DesignCoord {
+    let design = NormalizedCoord::new(coord.to_f32() as f64)
+        .to_design(converter)
+        .to_f64();
+    DesignCoord::new(shortest(design, |d| {
+        DesignCoord::new(d).to_normalized(converter).to_f2dot14()
+    }))
 }
 
 /// The peaks of a variation store's regions that move anything
@@ -577,8 +613,21 @@ fn load_cross_axis_mappings(
     let Ok(avar) = fontref.avar() else {
         return Ok(());
     };
-    let (Some(Ok(store)), Some(Ok(index_map))) = (avar.var_store(), avar.axis_index_map()) else {
+    let Some(Ok(store)) = avar.var_store() else {
         return Ok(());
+    };
+    // without an axis index map, axis i's deltas are item i of the store's
+    // first item variation data (fontTools leaves out a map that says so)
+    let index_map = match avar.axis_index_map() {
+        Some(Ok(map)) => Some(map),
+        Some(Err(e)) => return Err(BabelfontError::BinaryFontRead(e.to_string())),
+        None => None,
+    };
+    let delta_index = |axis: usize| match &index_map {
+        Some(map) => map.get(axis as u32).ok(),
+        None => u16::try_from(axis)
+            .ok()
+            .map(|inner| skrifa::raw::tables::variations::DeltaSetIndex { outer: 0, inner }),
     };
     let converters = font
         .axes
@@ -592,20 +641,15 @@ fn load_cross_axis_mappings(
         for (index, ((axis, converter), coord)) in
             font.axes.iter().zip(&converters).zip(&peak).enumerate()
         {
-            let delta = match index_map.get(index as u32) {
-                Ok(delta_index) => store.compute_delta(delta_index, &peak).unwrap_or(0),
-                Err(_) => 0,
-            };
+            let delta = delta_index(index)
+                .and_then(|delta_index| store.compute_delta(delta_index, &peak).ok())
+                .unwrap_or(0);
             moved |= delta != 0;
-            let normalized = coord.to_f32() as f64;
-            input.insert(
-                axis.tag,
-                NormalizedCoord::new(normalized).to_design(converter),
-            );
-            output.insert(
-                axis.tag,
-                NormalizedCoord::new(normalized + delta as f64 / 16384.0).to_design(converter),
-            );
+            // avar2 clamps a mapped coordinate to -1..1
+            let mapped =
+                F2Dot14::from_bits((coord.to_bits() as i32 + delta).clamp(-0x4000, 0x4000) as i16);
+            input.insert(axis.tag, design_at(*coord, converter));
+            output.insert(axis.tag, design_at(mapped, converter));
         }
         if moved {
             font.cross_axis_mappings
@@ -642,27 +686,34 @@ fn load_stat(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babelfont
     let Ok(stat) = fontref.stat() else {
         return Ok(());
     };
+    // a name's statements: its default, then its other languages (Windows)
     let name = |id: StringId| -> String {
-        fea_string(
-            name_id_to_i18n(fontref, id)
-                .get_default()
-                .map(String::as_str)
-                .unwrap_or_default(),
-        )
+        let names = name_id_to_i18n(fontref, id);
+        let mut statements = vec![format!(
+            "name \"{}\";",
+            fea_string(names.get_default().map(String::as_str).unwrap_or_default())
+        )];
+        for (language, value) in names.0.iter() {
+            match crate::names::name_language_to_ot_lang_id(language) {
+                Some(0x0409) | None => {}
+                Some(lang_id) => statements.push(format!(
+                    "name 3 1 0x{lang_id:04X} \"{}\";",
+                    fea_string(value)
+                )),
+            }
+        }
+        statements.join(" ")
     };
     let design_axes = stat.design_axes()?;
     let tag_of = |index: u16| design_axes.get(index as usize).map(|a| a.axis_tag());
     let mut lines = vec!["table STAT {".to_string()];
     // by its name: a compiler knows only the names feature code states
     if let Some(id) = stat.elided_fallback_name_id() {
-        lines.push(format!(
-            "    ElidedFallbackName {{ name \"{}\"; }};",
-            name(id)
-        ));
+        lines.push(format!("    ElidedFallbackName {{ {} }};", name(id)));
     }
     for axis in design_axes {
         lines.push(format!(
-            "    DesignAxis {} {} {{ name \"{}\"; }};",
+            "    DesignAxis {} {} {{ {} }};",
             axis.axis_tag(),
             axis.axis_ordering(),
             name(axis.axis_name_id())
@@ -728,7 +779,7 @@ fn load_stat(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babelfont
             for location in locations {
                 lines.push(format!("        location {location};"));
             }
-            lines.push(format!("        name \"{}\";", name(name_id)));
+            lines.push(format!("        {}", name(name_id)));
             let mut flag_names = vec![];
             if flags.bits() & 0x1 != 0 {
                 flag_names.push("OlderSiblingFontAttribute");
@@ -762,12 +813,22 @@ fn load_names(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babelfon
             *record = name_id_to_i18n(fontref, name_id);
         }
     }
+    // IDs 1 and 2 as they are: a compiler that derives them from the family and
+    // style names joins a style other than the four style-linked ones to the
+    // family ("Big Caslon Medium"), and a TTF's need not be those four (Hoefler
+    // Text Ornaments' style is "Ornaments"). As UFO states them (see
+    // `ufo::KEY_STYLE_MAP_FAMILY_NAME`).
+    for (name_id, key) in [
+        (StringId::FAMILY_NAME, "ufo.styleMapFamilyName"),
+        (StringId::SUBFAMILY_NAME, "ufo.styleMapStyleName"),
+    ] {
+        if let Some(name) = name_id_to_i18n(fontref, name_id).get_default() {
+            font.format_specific
+                .insert(key.into(), serde_json::Value::String(name.clone()));
+        }
+    }
     Ok(())
 }
-
-/// The fsSelection bits a source states; a compiler sets ITALIC, BOLD and
-/// REGULAR from the style.
-const SOURCE_FS_SELECTION_BITS: u16 = !(1 << 0 | 1 << 5 | 1 << 6);
 
 fn load_custom_ot_values(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), BabelfontError> {
     let ot = &mut font.custom_ot_values;
@@ -781,11 +842,50 @@ fn load_custom_ot_values(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(
     ot.os2_fs_type = Some(os2.fs_type());
     ot.os2_family_class = Some(os2.s_family_class() as u16);
     ot.os2_panose = os2.panose_10().try_into().ok();
-    ot.os2_fs_selection = Some(os2.fs_selection().bits() & SOURCE_FS_SELECTION_BITS);
-    // A variable font's weight and width classes describe its default instance only
-    if font.axes.is_empty() {
+    // all of it: a binary's ITALIC, BOLD and REGULAR need not follow its style
+    // name (Bradley Hand Bold is not BOLD)
+    ot.os2_fs_selection = Some(os2.fs_selection().bits());
+    ot.os2_unicode_range1 = Some(os2.ul_unicode_range_1());
+    ot.os2_unicode_range2 = Some(os2.ul_unicode_range_2());
+    ot.os2_unicode_range3 = Some(os2.ul_unicode_range_3());
+    ot.os2_unicode_range4 = Some(os2.ul_unicode_range_4());
+    // OS/2 version 0 has no code page ranges
+    ot.os2_code_page_range1 = os2.ul_code_page_range_1();
+    ot.os2_code_page_range2 = os2.ul_code_page_range_2();
+    if let Ok(post) = fontref.post() {
+        ot.post_is_fixed_pitch = Some(post.is_fixed_pitch() != 0);
+        ot.post_italic_angle = Some(shortest(post.italic_angle().to_f64(), |angle| {
+            skrifa::raw::types::Fixed::from_f64(angle)
+        }));
+    }
+    // A compiler derives a variable font's weight and width classes from its
+    // wght and wdth axes' defaults; without the axis, it needs to be told
+    let has_axis = |tag: &[u8; 4]| font.axes.iter().any(|axis| axis.tag == Tag::new(tag));
+    if !has_axis(b"wght") {
         ot.os2_us_weight_class = Some(os2.us_weight_class());
+    }
+    if !has_axis(b"wdth") {
         ot.os2_us_width_class = Some(os2.us_width_class());
+    }
+    // a symbol font's Windows character map is symbol-encoded, not Unicode (see
+    // `fontir::symbol_cmap::KEY_SYMBOL_ENCODING`)
+    let windows_encodings: Vec<u16> = fontref
+        .cmap()
+        .map(|cmap| {
+            cmap.encoding_records()
+                .iter()
+                .filter(|record| {
+                    record.platform_id() == skrifa::raw::tables::cmap::PlatformId::Windows
+                })
+                .map(|record| record.encoding_id())
+                .collect()
+        })
+        .unwrap_or_default();
+    if windows_encodings.contains(&0) && !windows_encodings.iter().any(|e| [1, 10].contains(e)) {
+        font.format_specific.insert(
+            "com.counterpunch.cmap.symbolEncoding".into(),
+            serde_json::Value::Bool(true),
+        );
     }
     Ok(())
 }
@@ -817,14 +917,15 @@ fn load_instances(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babe
     }
     for (id, instance) in fontref.named_instances().iter().enumerate() {
         let name = name_id_to_i18n(fontref, instance.subfamily_name_id());
-        let coordinates = instance.location();
+        // fvar states an instance in user coordinates, as 16.16 fixed; avar and
+        // avar2 move where it is drawn, not where it is
         let location: Vec<(crate::Tag, DesignCoord)> = font
             .axes
             .iter()
-            .zip(coordinates.coords().iter())
-            .flat_map(|(axis, coord)| {
-                let normalized = NormalizedCoord::new(coord.to_f32() as f64);
-                let design_coord = normalized.to_design(&axis._converter().ok()?);
+            .zip(instance.user_coords())
+            .flat_map(|(axis, user)| {
+                let user = shortest(user as f64, skrifa::raw::types::Fixed::from_f64);
+                let design_coord = UserCoord::new(user).to_design(&axis._converter().ok()?);
                 Some((axis.tag, design_coord))
             })
             .collect();
@@ -938,11 +1039,7 @@ fn load_masters(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babelf
         let loc = peak
             .iter()
             .zip(font.axes.iter())
-            .flat_map(|(coord, axis)| {
-                let normalized = NormalizedCoord::new(coord.to_f32() as f64);
-                let design_coord = normalized.to_design(&axis._converter().ok()?);
-                Some((axis.tag, design_coord))
-            })
+            .flat_map(|(coord, axis)| Some((axis.tag, design_at(*coord, &axis._converter().ok()?))))
             .collect::<Vec<(Tag, DesignCoord)>>();
         master_locations.insert(DesignLocation::from(loc));
     }
@@ -1169,6 +1266,21 @@ fn load_metrics(
             MetricType::VheaLineGap,
             vertical(vhea.line_gap().to_i16(), b"vlgp"),
         );
+        for (metric, value, tag) in [
+            (
+                MetricType::VheaCaretSlopeRise,
+                vhea.caret_slope_rise(),
+                b"vcrs",
+            ),
+            (
+                MetricType::VheaCaretSlopeRun,
+                vhea.caret_slope_run(),
+                b"vcrn",
+            ),
+            (MetricType::VheaCaretOffset, vhea.caret_offset(), b"vcof"),
+        ] {
+            metrics.insert(metric, vertical(value, tag));
+        }
     }
 
     // post stores the angle negative for a right lean; babelfont stores the
@@ -1177,7 +1289,7 @@ fn load_metrics(
         MetricType::ItalicAngle,
         -fontref
             .post()
-            .map_or(0.0, |post| post.italic_angle().to_f32()) as i32,
+            .map_or(0.0, |post| post.italic_angle().to_f64().round()) as i32,
     );
     Ok(metrics)
 }
@@ -1927,6 +2039,8 @@ mod tests {
     const VARIABLE_NO_HVAR: &str = "resources/ttf/VariableNoHvar.ttf";
     const ANCHORS: &str = "resources/ttf/Anchors.ttf";
     const AVAR2: &str = "resources/ttf/Avar2.ttf";
+    const AVAR2_NO_MAP: &str = "resources/ttf/Avar2NoMap.ttf";
+    const METADATA: &str = "resources/ttf/Metadata.ttf";
     const RTL_KERNING: &str = "resources/ttf/RtlKerning.ttf";
     const COMPOSITES: &str = "resources/ttf/Composites.ttf";
     const REDDIT_SANS: &str = "resources/ttf/RedditSans-Subset.ttf";
@@ -2101,9 +2215,245 @@ mod tests {
         assert_eq!(ot.os2_us_width_class, Some(6));
         assert_eq!(ot.os2_fs_type, Some(0));
         assert_eq!(ot.os2_panose, Some([2, 0, 6, 3, 0, 0, 0, 0, 0, 0]));
-        // USE_TYPO_METRICS; REGULAR is left to the compiler
-        assert_eq!(ot.os2_fs_selection, Some(1 << 7));
+        // REGULAR | USE_TYPO_METRICS
+        assert_eq!(ot.os2_fs_selection, Some(1 << 6 | 1 << 7));
         assert_eq!(ot.head_lowest_rec_ppem, Some(9));
+    }
+
+    #[test]
+    fn test_metadata() {
+        let font = load(METADATA).unwrap();
+        let ot = &font.custom_ot_values;
+        assert_eq!(ot.os2_us_weight_class, Some(700));
+        assert_eq!(ot.os2_us_width_class, Some(3));
+        assert_eq!(ot.os2_fs_type, Some(8));
+        assert_eq!(ot.os2_family_class, Some(0x0805));
+        assert_eq!(ot.os2_fs_selection, Some(1 << 5 | 1 << 7 | 1 << 8));
+        assert_eq!(ot.os2_unicode_range2, Some(1 << 28));
+        assert_eq!(ot.os2_code_page_range1, Some(1 << 31));
+        assert_eq!(ot.post_is_fixed_pitch, Some(true));
+        // as the source said it, not as 16.16 stores it (-16.332993)
+        assert_eq!(ot.post_italic_angle, Some(-16.333));
+        assert_eq!(
+            font.masters[0].metrics.get(&MetricType::ItalicAngle),
+            Some(&16)
+        );
+        assert_eq!(
+            font.format_specific
+                .get("com.counterpunch.cmap.symbolEncoding"),
+            Some(&serde_json::Value::Bool(true))
+        );
+        let names = &font.names;
+        assert_eq!(
+            names.family_name.0.get("DEU").map(String::as_str),
+            Some("Fixture Metadaten")
+        );
+        assert_eq!(
+            names.copyright.0.get("JPN").map(String::as_str),
+            Some("\u{8ab0}\u{3082}")
+        );
+    }
+
+    #[test]
+    fn test_metadata_without_an_axis_for_it() {
+        // Variable.ttf has wght, not wdth: a compiler derives the weight class
+        // from wght's default, but must be told the width class
+        let ot = load(VARIABLE).unwrap().custom_ot_values;
+        assert_eq!(ot.os2_us_weight_class, None);
+        assert_eq!(ot.os2_us_width_class, Some(5));
+    }
+
+    /// The tables' values a font designer sets, by name
+    #[cfg(feature = "fontir")]
+    fn designer_metadata(binary: &[u8]) -> Vec<(String, String)> {
+        let fontref = skrifa::FontRef::new(binary).unwrap();
+        let os2 = fontref.os2().unwrap();
+        let post = fontref.post().unwrap();
+        let head = fontref.head().unwrap();
+        let mut values: Vec<(String, String)> = vec![
+            ("usWeightClass".into(), os2.us_weight_class().to_string()),
+            ("usWidthClass".into(), os2.us_width_class().to_string()),
+            ("fsType".into(), os2.fs_type().to_string()),
+            ("fsSelection".into(), os2.fs_selection().bits().to_string()),
+            ("sFamilyClass".into(), os2.s_family_class().to_string()),
+            ("panose".into(), format!("{:?}", os2.panose_10())),
+            (
+                "ulUnicodeRange".into(),
+                format!(
+                    "{:?}",
+                    [
+                        os2.ul_unicode_range_1(),
+                        os2.ul_unicode_range_2(),
+                        os2.ul_unicode_range_3(),
+                        os2.ul_unicode_range_4()
+                    ]
+                ),
+            ),
+            (
+                "ulCodePageRange".into(),
+                format!(
+                    "{:?}",
+                    [os2.ul_code_page_range_1(), os2.ul_code_page_range_2()]
+                ),
+            ),
+            ("macStyle".into(), head.mac_style().bits().to_string()),
+            ("lowestRecPPEM".into(), head.lowest_rec_ppem().to_string()),
+            ("isFixedPitch".into(), post.is_fixed_pitch().to_string()),
+            (
+                "italicAngle".into(),
+                post.italic_angle().to_f64().to_string(),
+            ),
+            (
+                "cmap".into(),
+                format!(
+                    "{:?}",
+                    fontref
+                        .cmap()
+                        .unwrap()
+                        .encoding_records()
+                        .iter()
+                        .filter(
+                            |r| r.platform_id() == skrifa::raw::tables::cmap::PlatformId::Windows
+                        )
+                        .map(|r| r.encoding_id())
+                        .collect::<Vec<_>>()
+                ),
+            ),
+        ];
+        // the Windows names, but those a compiler writes where a source has none
+        let name = fontref.name().unwrap();
+        let mut names: Vec<(String, String)> = name
+            .name_record()
+            .iter()
+            .filter(|r| r.platform_id() == 3 && ![3, 4, 5, 6].contains(&r.name_id().to_u16()))
+            .map(|r| {
+                (
+                    format!("name {} 0x{:04X}", r.name_id().to_u16(), r.language_id()),
+                    r.string(name.string_data()).unwrap().to_string(),
+                )
+            })
+            .collect();
+        names.sort();
+        values.extend(names);
+        values
+    }
+
+    #[cfg(feature = "fontir")]
+    #[test]
+    fn test_metadata_round_trips() {
+        use crate::convertors::fontir::{BabelfontIrSource, CompilationOptions};
+        for path in [METADATA, STATIC_LEGACY] {
+            let original = std::fs::read(path).unwrap();
+            let compiled = BabelfontIrSource::compile(
+                load_bytes(&original).unwrap(),
+                CompilationOptions::default(),
+            )
+            .unwrap();
+            let (a, b) = (designer_metadata(&original), designer_metadata(&compiled));
+            assert_eq!(b, a, "{path}");
+        }
+    }
+
+    #[cfg(all(feature = "fontir", feature = "glyphs"))]
+    #[test]
+    fn test_composites_round_trip_through_glyphs() {
+        // Abar's bar is scaled and slanted: Glyphs reads its fields in its own
+        // order, and its slant in degrees
+        use crate::convertors::fontir::{BabelfontIrSource, CompilationOptions};
+        let font = load(COMPOSITES).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("Composites.glyphs");
+        font.save(&path).unwrap();
+        let again = crate::load(&path).unwrap();
+        let compile = |f: &Font| {
+            BabelfontIrSource::compile(f.clone(), CompilationOptions::default()).unwrap()
+        };
+        let (a, b) = (compile(&font), compile(&again));
+        let drawn = |binary: &[u8], glyph: &str, wght: f32, wdth: f32| {
+            let fontref = skrifa::FontRef::new(binary).unwrap();
+            let location = fontref.axes().location([("wght", wght), ("wdth", wdth)]);
+            let coords: Vec<F2Dot14> = location.coords().to_vec();
+            let (gid, _) = fontref
+                .glyph_names()
+                .iter()
+                .find(|(_, name)| name.as_str() == glyph)
+                .unwrap();
+            let mut points: Vec<(f64, f64)> =
+                draw_contours(&fontref, gid, LocationRef::new(&coords))
+                    .unwrap()
+                    .iter()
+                    .flat_map(|p| p.nodes.iter().map(|n| (n.x.round(), n.y.round())))
+                    .collect();
+            points.sort_by(|p, q| p.partial_cmp(q).unwrap());
+            points
+        };
+        let names: Vec<String> = font.glyphs.iter().map(|g| g.name.to_string()).collect();
+        assert!(names.iter().any(|n| n == "Abar"));
+        for glyph in &names {
+            for (wght, wdth) in [(400.0, 100.0), (100.0, 75.0), (900.0, 100.0), (650.0, 87.5)] {
+                assert_eq!(
+                    drawn(&b, glyph, wght, wdth),
+                    drawn(&a, glyph, wght, wdth),
+                    "{glyph} at wght {wght} wdth {wdth}"
+                );
+            }
+        }
+    }
+
+    #[cfg(feature = "fontir")]
+    #[test]
+    fn test_stat_names_keep_their_languages() {
+        use crate::convertors::fontir::{BabelfontIrSource, CompilationOptions};
+        let original = std::fs::read(AVAR2_NO_MAP).unwrap();
+        let compiled = BabelfontIrSource::compile(
+            load_bytes(&original).unwrap(),
+            CompilationOptions::default(),
+        )
+        .unwrap();
+        let fontref = skrifa::FontRef::new(&compiled).unwrap();
+        let stat = fontref.stat().unwrap();
+        let wght = stat.design_axes().unwrap()[0].axis_name_id();
+        let names = name_id_to_i18n(&fontref, wght);
+        assert_eq!(names.get_default().map(String::as_str), Some("Weight"));
+        assert_eq!(names.0.get("DEU").map(String::as_str), Some("Gewicht"));
+    }
+
+    #[cfg(feature = "fontir")]
+    #[test]
+    fn test_vertical_metrics_round_trip() {
+        use crate::convertors::fontir::{BabelfontIrSource, CompilationOptions};
+        let original = std::fs::read(GDEF_CLASSES).unwrap();
+        let compiled = BabelfontIrSource::compile(
+            load_bytes(&original).unwrap(),
+            CompilationOptions::default(),
+        )
+        .unwrap();
+        let vertical = |binary: &[u8]| {
+            let fontref = skrifa::FontRef::new(binary).unwrap();
+            let vhea = fontref.vhea().unwrap();
+            let vmtx = fontref.vmtx().unwrap();
+            let names: Vec<String> = fontref
+                .glyph_names()
+                .iter()
+                .map(|(_, n)| n.to_string())
+                .collect();
+            let mut glyphs: Vec<(String, Option<u16>, Option<i16>)> = names
+                .iter()
+                .enumerate()
+                .map(|(gid, n)| {
+                    let gid = GlyphId::new(gid as u32);
+                    (n.clone(), vmtx.advance(gid), vmtx.side_bearing(gid))
+                })
+                .collect();
+            glyphs.sort();
+            (
+                vhea.ascender().to_i16(),
+                vhea.descender().to_i16(),
+                vhea.line_gap().to_i16(),
+                glyphs,
+            )
+        };
+        assert_eq!(vertical(&compiled), vertical(&original));
     }
     #[test]
     fn test_font_revision() {
@@ -2701,16 +3051,91 @@ mod tests {
         assert_eq!(at(&mapping.output, b"wdth"), Some(75.0));
     }
 
+    #[test]
+    fn test_avar2_without_axis_index_map() {
+        // the implicit map: axis i's deltas are item i of the first data
+        let font = load(AVAR2_NO_MAP).unwrap();
+        assert_eq!(font.cross_axis_mappings.len(), 1);
+        let mapping = &font.cross_axis_mappings[0];
+        let at = |loc: &DesignLocation, tag: &[u8; 4]| loc.get(Tag::new(tag)).map(|c| c.to_f64());
+        assert_eq!(at(&mapping.input, b"wght"), Some(900.0));
+        assert_eq!(at(&mapping.input, b"wdth"), Some(75.0));
+        assert_eq!(at(&mapping.output, b"wght"), Some(850.0));
+        assert_eq!(at(&mapping.output, b"wdth"), Some(75.0));
+    }
+
+    #[test]
+    fn test_avar2_instances_stand_where_fvar_says() {
+        // not where avar2 draws them: wght 900 at wdth 75 is drawn as 850
+        let font = load(AVAR2_NO_MAP).unwrap();
+        let locations: Vec<(String, Vec<f64>)> = font
+            .instances
+            .iter()
+            .map(|i| {
+                (
+                    i.name.get_default().unwrap().clone(),
+                    font.axes
+                        .iter()
+                        .map(|a| i.location.get(a.tag).unwrap().to_f64())
+                        .collect(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            locations,
+            [
+                ("Black Condensed".to_string(), vec![900.0, 75.0]),
+                ("Thin".to_string(), vec![100.0, 100.0])
+            ]
+        );
+    }
+
+    #[test]
+    fn test_coordinates_as_the_source_states_them() {
+        // avar and gvar store F2Dot14s: user 600 reads back as 600.0122; they
+        // are the shortest values stored as they are. (A binary does not know
+        // the source's design coordinates: they are user coordinates mapped.)
+        let font = load(VARIABLE).unwrap();
+        let axis = &font.axes[0];
+        let map: Vec<(f64, f64)> = axis
+            .map
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|(u, d)| (u.to_f64(), d.to_f64()))
+            .collect();
+        assert_eq!(
+            map,
+            [
+                (100.0, 100.0),
+                (400.0, 400.0),
+                (600.0, 608.34),
+                (900.0, 900.0)
+            ]
+        );
+        let mut masters: Vec<f64> = font
+            .masters
+            .iter()
+            .map(|m| m.location.get(axis.tag).unwrap().to_f64())
+            .collect();
+        masters.sort_by(f64::total_cmp);
+        assert_eq!(masters, [100.0, 400.0, 900.0]);
+        // an instance at user 333, which F2Dot14 stores as 333.0017
+        let converter = axis._converter().unwrap();
+        let stored = UserCoord::new(333.0).to_normalized(&converter).to_f2dot14();
+        assert_ne!(
+            NormalizedCoord::new(stored.to_f32() as f64)
+                .to_user(&converter)
+                .to_f64(),
+            333.0
+        );
+        assert_eq!(user_at(stored, &converter).to_f64(), 333.0);
+    }
+
     #[cfg(feature = "fontir")]
     #[test]
     fn test_avar2_round_trips() {
         use crate::convertors::fontir::{BabelfontIrSource, CompilationOptions};
-        let original = std::fs::read(AVAR2).unwrap();
-        let compiled = BabelfontIrSource::compile(
-            load_bytes(&original).unwrap(),
-            CompilationOptions::default(),
-        )
-        .unwrap();
         // drawn at user locations, through avar and avar2
         let drawn = |binary: &[u8], wght: f32, wdth: f32| {
             let fontref = skrifa::FontRef::new(binary).unwrap();
@@ -2723,18 +3148,35 @@ mod tests {
                 .flat_map(|p| p.nodes.iter().map(|n| (n.x.round(), n.y.round())))
                 .collect::<Vec<_>>()
         };
-        for (wght, wdth) in [(900.0, 75.0), (500.0, 75.0), (900.0, 90.0), (300.0, 100.0)] {
-            assert_eq!(
-                drawn(&compiled, wght, wdth),
-                drawn(&original, wght, wdth),
-                "wght {wght} wdth {wdth}"
+        let instances = |binary: &[u8]| {
+            let fontref = skrifa::FontRef::new(binary).unwrap();
+            fontref
+                .named_instances()
+                .iter()
+                .map(|i| i.user_coords().collect::<Vec<_>>())
+                .collect::<Vec<_>>()
+        };
+        for path in [AVAR2, AVAR2_NO_MAP] {
+            let original = std::fs::read(path).unwrap();
+            let compiled = BabelfontIrSource::compile(
+                load_bytes(&original).unwrap(),
+                CompilationOptions::default(),
+            )
+            .unwrap();
+            for (wght, wdth) in [(900.0, 75.0), (500.0, 75.0), (900.0, 90.0), (300.0, 100.0)] {
+                assert_eq!(
+                    drawn(&compiled, wght, wdth),
+                    drawn(&original, wght, wdth),
+                    "{path} wght {wght} wdth {wdth}"
+                );
+            }
+            // the mapping does something: wght 900 draws as 850 there
+            assert_ne!(
+                drawn(&original, 900.0, 75.0),
+                drawn(&original, 900.0, 100.0)
             );
+            assert_eq!(instances(&compiled), instances(&original), "{path}");
         }
-        // the mapping does something: wght 900 draws as 850 there
-        assert_ne!(
-            drawn(&original, 900.0, 75.0),
-            drawn(&original, 900.0, 100.0)
-        );
     }
 
     #[cfg(feature = "fontir")]
