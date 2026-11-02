@@ -45,6 +45,7 @@ pub fn load_bytes(binary: &[u8]) -> Result<Font, BabelfontError> {
     let mut font = Font::new();
     let fontref =
         skrifa::FontRef::new(binary).map_err(|e| BabelfontError::BinaryFontRead(e.to_string()))?;
+    check_outline_format(&fontref)?;
     font.upm = fontref.head()?.units_per_em();
     font.version = font_version(&fontref)?;
     font.date = font_date(&fontref)?;
@@ -71,6 +72,25 @@ pub fn load_bytes(binary: &[u8]) -> Result<Font, BabelfontError> {
         crate::filters::MoveMarksFromFeatures.apply(&mut font)?;
     }
     Ok(font)
+}
+
+/// Only TrueType outlines can be read; any other font is refused up front,
+/// saying what it has instead
+fn check_outline_format(fontref: &skrifa::FontRef) -> Result<(), BabelfontError> {
+    if fontref.glyf().is_ok() && fontref.loca(None).is_ok() {
+        return Ok(());
+    }
+    let has = |tag: &[u8; 4]| fontref.table_data(Tag::new(tag)).is_some();
+    let instead = if has(b"CFF ") || has(b"CFF2") {
+        "this font has CFF outlines"
+    } else if has(b"sbix") || has(b"CBDT") || has(b"EBDT") || has(b"bdat") {
+        "this font has bitmap glyphs only"
+    } else {
+        "this font has no glyf table"
+    };
+    Err(BabelfontError::BinaryFontRead(format!(
+        "Only TrueType-outline (glyf) fonts can be opened; {instead}"
+    )))
 }
 
 /// Names each glyph that the post table leaves unnamed and the cmap encodes for
@@ -794,14 +814,18 @@ fn load_names(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babelfon
 const SOURCE_FS_SELECTION_BITS: u16 = !(1 << 0 | 1 << 5 | 1 << 6);
 
 fn load_custom_ot_values(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), BabelfontError> {
-    let os2 = fontref.os2()?;
     let ot = &mut font.custom_ot_values;
+    ot.head_lowest_rec_ppem = Some(fontref.head()?.lowest_rec_ppem());
+    // Old Apple fonts have no OS/2 table; a compiler writes its defaults
+    let Ok(os2) = fontref.os2() else {
+        log::warn!("The font has no OS/2 table; its values are left to the compiler");
+        return Ok(());
+    };
     ot.os2_vendor_id = Some(os2.ach_vend_id());
     ot.os2_fs_type = Some(os2.fs_type());
     ot.os2_family_class = Some(os2.s_family_class() as u16);
     ot.os2_panose = os2.panose_10().try_into().ok();
     ot.os2_fs_selection = Some(os2.fs_selection().bits() & SOURCE_FS_SELECTION_BITS);
-    ot.head_lowest_rec_ppem = Some(fontref.head()?.lowest_rec_ppem());
     // A variable font's weight and width classes describe its default instance only
     if font.axes.is_empty() {
         ot.os2_us_weight_class = Some(os2.us_weight_class());
@@ -1117,12 +1141,16 @@ fn load_metrics(
             .and_then(|mvar| mvar.metric_delta(Tag::new(tag), &coords).ok())
             .map_or(0.0, |delta| delta.to_f64())
     };
+    // (without OS/2, a compiler's defaults)
+    let os2 = fontref.os2().ok();
     macro_rules! copy_os2_metric {
         ($metric_type:ident, $method:ident, $tag:literal) => {
-            metrics.insert(
-                MetricType::$metric_type,
-                (fontref.os2()?.$method() as f64 + mvar_delta($tag)).round() as i32,
-            );
+            if let Some(os2) = &os2 {
+                metrics.insert(
+                    MetricType::$metric_type,
+                    (os2.$method() as f64 + mvar_delta($tag)).round() as i32,
+                );
+            }
         };
     }
     copy_os2_metric!(SuperscriptXSize, y_superscript_x_size, b"spxs");
@@ -1188,7 +1216,9 @@ fn load_metrics(
     // Glyphs convention, the opposite sign.
     metrics.insert(
         MetricType::ItalicAngle,
-        -fontref.post()?.italic_angle().to_f32() as i32,
+        -fontref
+            .post()
+            .map_or(0.0, |post| post.italic_angle().to_f32()) as i32,
     );
     Ok(metrics)
 }
@@ -1206,28 +1236,45 @@ fn load_glyphs(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babelfo
     let default_master_id = font.masters.last().map(|m| m.id.clone());
     for (gid, glyph) in font.glyphs.iter_mut().enumerate() {
         let gid = GlyphId::new(gid as u32);
-        for master in &font.masters {
-            glyph.layers.push(load_layer(
+        // One glyph that cannot be read is left empty, rather than failing
+        // the font
+        let read_layer = |location: &DesignLocation, layer_type: crate::LayerType| {
+            load_layer(
                 &font.axes,
                 fontref,
                 gid,
+                location,
+                layer_type.clone(),
+                &names,
+            )
+            .unwrap_or_else(|e| {
+                log::warn!(
+                    "Glyph {} cannot be read, so it is left empty: {e}",
+                    glyph.name
+                );
+                unread_layer(&font.axes, fontref, gid, location, layer_type)
+            })
+        };
+        for master in &font.masters {
+            let layer = read_layer(
                 &master.location,
                 crate::LayerType::DefaultForMaster(master.id.clone()),
-                &names,
-            )?);
+            );
+            glyph.layers.push(layer);
         }
         let Some(default_master_id) = &default_master_id else {
             continue;
         };
-        for location in intermediate_locations(fontref, &font.axes, &font.masters, gid)? {
-            let mut layer = load_layer(
-                &font.axes,
-                fontref,
-                gid,
+        let intermediates = intermediate_locations(fontref, &font.axes, &font.masters, gid)
+            .unwrap_or_else(|e| {
+                log::warn!("Glyph {}'s variations cannot be read: {e}", glyph.name);
+                vec![]
+            });
+        for location in intermediates {
+            let mut layer = read_layer(
                 &location,
                 crate::LayerType::AssociatedWithMaster(default_master_id.clone()),
-                &names,
-            )?;
+            );
             layer.name = Some(format!(
                 "{{{}}}",
                 location.iter().map(|(_, c)| c.to_f64()).join(", ")
@@ -1239,16 +1286,34 @@ fn load_glyphs(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babelfo
     }
     //cmap
     for (unicode, glyphid) in fontref.charmap().mappings() {
-        let glyph = font
-            .glyphs
-            .get_by_index_mut(glyphid.to_u32() as usize)
-            .ok_or(BabelfontError::BinaryFontRead(format!(
-                "Glyph ID {} from charmap does not exist in the font",
+        let Some(glyph) = font.glyphs.get_by_index_mut(glyphid.to_u32() as usize) else {
+            log::warn!(
+                "The cmap maps U+{unicode:04X} to glyph ID {}, which the font does not have; left out",
                 glyphid.to_u32()
-            )))?;
+            );
+            continue;
+        };
         glyph.codepoints.push(unicode);
     }
     load_categories(fontref, font)
+}
+
+/// A layer for a glyph that cannot be read: its advance and nothing else
+fn unread_layer(
+    axes: &[crate::Axis],
+    fontref: &skrifa::FontRef<'_>,
+    gid: skrifa::GlyphId,
+    location: &DesignLocation,
+    layer_type: crate::LayerType,
+) -> Layer {
+    let coords = fontdrasil_location_to_skrifa_location(location.clone(), axes).unwrap_or_default();
+    let width = fontref
+        .glyph_metrics(Size::unscaled(), LocationRef::new(&coords))
+        .advance_width(gid)
+        .unwrap_or_default();
+    let mut layer = Layer::new(width);
+    layer.master = layer_type;
+    layer
 }
 
 /// Each glyph's category from GDEF's glyph classes, so that a compiler does not
@@ -1799,14 +1864,34 @@ fn load_layer(
             // drawn from its components' stored outlines and then shifted, so
             // each offset gains the composite's shift and loses the one its
             // component was read with, transformed as the component is.
-            let shift = drawn_shift(fontref, &glyf, gid, 0)?;
+            //
+            // A composite that cannot be drawn (a component cycle, components
+            // nested too deeply, a broken component) keeps its components at
+            // their stored offsets.
+            let shift = drawn_shift(fontref, &glyf, gid, 0).unwrap_or_else(|e| {
+                log::warn!(
+                    "Glyph ID {}, its components keep their stored offsets: {e}",
+                    gid.to_u32()
+                );
+                0.0
+            });
             // Where skrifa draws each component's contours, with offset deltas
             // and point matching applied
-            let drawn = draw_contours(fontref, gid, locationref)?;
+            let drawn = draw_contours(fontref, gid, locationref).unwrap_or_else(|e| {
+                log::warn!(
+                    "Glyph ID {} cannot be drawn, its components keep their stored offsets: {e}",
+                    gid.to_u32()
+                );
+                vec![]
+            });
             let mut contour_index = 0;
             for component in c.components() {
                 let gid = component.glyph;
-                let own = draw_contours(fontref, gid.into(), locationref)?;
+                let own = if drawn.is_empty() {
+                    vec![]
+                } else {
+                    draw_contours(fontref, gid.into(), locationref).unwrap_or_default()
+                };
                 let placed = drawn.get(contour_index);
                 contour_index += own.len();
                 let anchor = match component.anchor {
@@ -1833,7 +1918,8 @@ fn load_layer(
                     ),
                     // an empty component: its stored offset
                     _ => {
-                        let component_shift = read_shift(fontref, &glyf, gid.into())?;
+                        let component_shift =
+                            read_shift(fontref, &glyf, gid.into()).unwrap_or_default();
                         (
                             anchor.0 + shift - xx * component_shift,
                             anchor.1 - yx * component_shift,
@@ -1884,6 +1970,8 @@ mod tests {
     const COMPOSITES: &str = "resources/ttf/Composites.ttf";
     const REDDIT_SANS: &str = "resources/ttf/RedditSans-Subset.ttf";
     const COINCIDENT: &str = "resources/ttf/Coincident.ttf";
+    const MALFORMED: &str = "resources/ttf/Malformed.ttf";
+    const CFF: &str = "resources/ttf/Cff.otf";
 
     fn master<'a>(font: &'a Font, name: &str) -> &'a crate::Master {
         font.masters
@@ -2342,6 +2430,42 @@ mod tests {
         for master in master_nodes(&font, "D") {
             assert_eq!(master.iter().map(|c| c.len()).collect_vec(), vec![4, 1, 1]);
         }
+    }
+    #[test]
+    fn test_malformed_glyphs_and_tables_do_not_fail_the_font() {
+        let font = load(MALFORMED).unwrap();
+        // no OS/2: the compiler's defaults
+        assert_eq!(font.custom_ot_values.os2_vendor_id, None);
+        assert!(!font.masters[0].metrics.contains_key(&MetricType::WinAscent));
+        // a component cycle and too deep a nesting keep their components
+        let references = |name: &str| -> Vec<String> {
+            font.glyphs.get(name).unwrap().layers[0]
+                .components()
+                .map(|c| c.reference.to_string())
+                .collect()
+        };
+        assert_eq!(references("B"), vec!["C"]);
+        assert_eq!(references("C"), vec!["B"]);
+        assert_eq!(references("n39"), vec!["n38"]);
+        assert_eq!(references("D"), vec!["A"]);
+        // the glyphs around them read as usual
+        assert_eq!(font.glyphs.get("A").unwrap().layers[0].paths().count(), 1);
+        // the cmap entry for a glyph the font does not have is left out
+        assert!(font
+            .glyphs
+            .iter()
+            .all(|g| !g.codepoints.contains(&('Z' as u32))));
+        assert_eq!(font.glyphs.get("A").unwrap().codepoints, vec!['A' as u32]);
+    }
+    #[test]
+    fn test_cff_font_is_refused() {
+        let error = load(CFF).unwrap_err().to_string();
+        assert!(
+            error.contains(
+                "Only TrueType-outline (glyf) fonts can be opened; this font has CFF outlines"
+            ),
+            "{error}"
+        );
     }
     #[test]
     fn test_point_matched_component() {

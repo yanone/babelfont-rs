@@ -683,3 +683,50 @@ vf, _, _ = varLib.build(doc)
 vf["head"].created = vf["head"].modified = 0
 vf.recalcTimestamp = False
 vf.save("Coincident.ttf")
+
+
+# Malformed.ttf: no OS/2 table (as old Apple fonts); B and C components of
+# each other; n39 nests components 39 deep (n00 is a rectangle); D a
+# composite of A, as usual; the cmap maps Z to glyph ID 99, which is not there.
+order = [".notdef", "A", "B", "C", "D"] + [f"n{i:02}" for i in range(40)]
+fb = FontBuilder(1000, isTTF=True)
+fb.setupGlyphOrder(order)
+fb.setupCharacterMap({ord("A"): "A", ord("B"): "B", ord("D"): "D", ord("N"): "n39"})
+glyphs = {".notdef": Glyph(), "A": rect(50, 0, 450, 700), "B": rect(0, 0, 10, 10),
+          "C": rect(0, 0, 10, 10), "D": composite(("A", 0, 0, None)), "n00": rect(0, 0, 100, 100)}
+for i in range(1, 40):
+    glyphs[f"n{i:02}"] = composite((f"n{i - 1:02}", 10, 0, None))
+fb.setupGlyf(glyphs)
+fb.setupHorizontalMetrics({g: (500, 0) for g in order})
+fb.setupHorizontalHeader(ascent=800, descent=-200)
+fb.setupNameTable({"familyName": "Fixture Malformed", "styleName": "Regular"})
+fb.setupPost()
+buf = io.BytesIO()
+save(fb, buf)
+buf.seek(0)
+font = TTFont(buf, recalcBBoxes=False)
+font["glyf"]["B"] = composite(("C", 10, 0, None))
+font["glyf"]["C"] = composite(("B", 10, 0, None))
+for g in "BC":
+    font["glyf"][g].xMin = font["glyf"][g].yMin = font["glyf"][g].xMax = font["glyf"][g].yMax = 0
+for table in font["cmap"].tables:
+    table.cmap[ord("Z")] = "glyph00099"
+font.recalcTimestamp = False
+font.save("Malformed.ttf")
+
+
+# Cff.otf: a font with CFF outlines, which the reader refuses
+fb = FontBuilder(1000, isTTF=False)
+fb.setupGlyphOrder([".notdef", "A"])
+fb.setupCharacterMap({ord("A"): "A"})
+from fontTools.pens.t2CharStringPen import T2CharStringPen
+pen = T2CharStringPen(500, None)
+pen.moveTo((50, 0)); pen.lineTo((50, 700)); pen.lineTo((450, 700)); pen.lineTo((450, 0)); pen.closePath()
+fb.setupCFF("FixtureCff-Regular", {"FullName": "Fixture Cff"},
+            {".notdef": T2CharStringPen(500, None).getCharString(), "A": pen.getCharString()}, {})
+fb.setupHorizontalMetrics({".notdef": (500, 0), "A": (500, 50)})
+fb.setupHorizontalHeader(ascent=800, descent=-200)
+fb.setupNameTable({"familyName": "Fixture Cff", "styleName": "Regular"})
+fb.setupOS2()
+fb.setupPost()
+save(fb, "Cff.otf")
