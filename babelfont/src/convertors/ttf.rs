@@ -736,24 +736,23 @@ fn load_features(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babel
             language_systems.push(lss.as_fea(""));
         }
     }
-    let language_systems_block = language_systems.join("\n");
-    if !language_systems_block.is_empty() {
-        features.prefixes.insert(
-            "LanguageSystems".into(),
-            PossiblyAutomaticCode::new(language_systems_block),
-        );
-    }
-    if !mark_class_definitions.is_empty() {
-        features.prefixes.insert(
-            "MarkClasses".into(),
-            PossiblyAutomaticCode::new(mark_class_definitions),
-        );
-    }
-    for (lookup_name, statements) in uncompile_context.lookups.iter() {
-        features.prefixes.insert(
-            lookup_name.clone(),
-            PossiblyAutomaticCode::new(statements.as_fea("")),
-        );
+    // One prefix, in the order FEA needs: language systems, mark classes, then
+    // lookups as they are defined (a lookup after the lookups it calls).
+    // Separate prefixes may lose their order: a JSON object read into a sorted
+    // map, for one.
+    let lookups = uncompile_context
+        .lookups
+        .values()
+        .map(|statements| statements.as_fea(""));
+    let code = std::iter::once(language_systems.join("\n"))
+        .chain(std::iter::once(mark_class_definitions))
+        .chain(lookups)
+        .filter(|block| !block.is_empty())
+        .join("\n");
+    if !code.is_empty() {
+        features
+            .prefixes
+            .insert("Decompiled".into(), PossiblyAutomaticCode::new(code));
     }
     for (feature_name, lookups) in uncompile_context.features.iter() {
         features.features.push((
@@ -1414,6 +1413,18 @@ mod tests {
         for class in used {
             assert!(fea.contains(&format!("> @{class};")), "@{class}: {fea}");
         }
+    }
+    #[test]
+    fn test_feature_code_does_not_depend_on_prefix_order() {
+        // the calt rule calls a lookup and the mark lookup uses a mark class:
+        // everything they need is in the one prefix, before them
+        let font = load(GDEF_CLASSES).unwrap();
+        assert_eq!(font.features.prefixes.len(), 1);
+        let code = &font.features.prefixes.get("Decompiled").unwrap().code;
+        let at = |text: &str| code.find(text).unwrap_or_else(|| panic!("{text}: {code}"));
+        assert!(at("languagesystem") < at("markClass"));
+        assert!(at("markClass") < at("lookup gpos_mark_to_base"));
+        assert!(at("lookup gsub_single") < at("lookup gsub_chain_contextual"));
     }
     #[test]
     fn test_categories_from_gdef() {
