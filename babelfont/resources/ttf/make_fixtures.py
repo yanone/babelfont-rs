@@ -33,7 +33,8 @@ commaaccent unencoded; uni034F (U+034F) a default-ignorable nonspacing mark.
 Quadratic.ttf: o, a closed contour of four off-curves only; O, runs of two
 off-curves (an implied on-curve between them) and explicit on-curves, one at the
 midpoint of its off-curves; dotO, O and a dot placed by point matching (the dot's
-point 0 on O's point 2).
+point 0 on O's point 2); u, lines running into curves along their tangents
+(smooth points); v, two curves meeting at a corner.
 
 Variable.ttf, built by varLib from three masters (wght 100, 400 default, 900;
 design 20, 80, 200 through avar) and a sparse one (wght 600, design 130, brace
@@ -42,8 +43,20 @@ dot at a different offset in each master; O's on-curves are midpoints in every
 master; Q's top on-curve is one only in Thin and Regular; brace has an
 intermediate master. Kerning: @L [A Adot] against @R [O Q] -40/-50/-80 in a
 class subtable, and A Adot -10/-20/-30 in a glyph pair subtable before it; a
-contextual kern rule that stays feature code.
+contextual kern rule that stays feature code. acutecomb attaches to A and O
+by top anchors that move with the masters. parenleft has the same
+intermediate master as brace, which makes its location a shared gvar tuple.
+OS/2 typo ascender, x-height and subscript size, and A's advance height,
+differ between the masters (MVAR, VVAR). STAT labels the weights: Thin,
+Regular (elidable, linked to 700) and Black, Black a range from 800 to 900.
 VariableNoHvar.ttf: the same without HVAR, its advances in gvar phantom points.
+
+Avar2.ttf: wght and wdth, four masters at the corners; an avar2 mapping moves
+wght 900 at wdth 75 to wght 850.
+
+RtlKerning.ttf: Arabic alef, beh and teh; kerning as ufo2ft writes it for a
+right-to-left script, <v 0 v 0>: alef beh -50, and @BEHS [beh teh] against alef
+-30.
 
 Anchors.ttf: marks on a (top: acutecomb, bottom: dotbelowcomb, ogonek at the
 bottom right: uni0328 for U+0328), on the ligature f_f (top on each component),
@@ -268,15 +281,36 @@ def o_contour(sx):
             ("q", (x(0), 0), (x(250), 0))]
 
 
-order = [".notdef", "o", "O", "dot", "dotO"]
+def tangent_u():
+    pen = TTGlyphPen(None)
+    pen.moveTo((0, 700))
+    pen.lineTo((0, 250))
+    pen.qCurveTo((0, 0), (250, 0))
+    pen.qCurveTo((500, 0), (500, 250))
+    pen.lineTo((500, 700))
+    pen.closePath()
+    return pen.glyph()
+
+
+def corner_v():
+    pen = TTGlyphPen(None)
+    pen.moveTo((0, 700))
+    pen.qCurveTo((100, 300), (250, 0))
+    pen.qCurveTo((400, 300), (500, 700))
+    pen.closePath()
+    return pen.glyph()
+
+
+order = [".notdef", "o", "O", "dot", "dotO", "u", "v"]
 fb = FontBuilder(1000, isTTF=True)
 fb.setupGlyphOrder(order)
-fb.setupCharacterMap({ord("o"): "o", ord("O"): "O", ord("."): "dot"})
+fb.setupCharacterMap({ord("o"): "o", ord("O"): "O", ord("."): "dot", ord("u"): "u", ord("v"): "v"})
 dotO = composite(("O", 0, 0, None), ("dot", 0, 0, None))
 dotO.components[1].firstPt, dotO.components[1].secondPt = 2, 0
 del dotO.components[1].x, dotO.components[1].y
 fb.setupGlyf({".notdef": Glyph(), "o": quadratic([("o", (0, 250), (250, 500), (500, 250), (250, 0))]),
-              "O": quadratic(o_contour(1)), "dot": rect(0, 0, 100, 100), "dotO": dotO})
+              "O": quadratic(o_contour(1)), "dot": rect(0, 0, 100, 100), "dotO": dotO,
+              "u": tangent_u(), "v": corner_v()})
 fb.setupHorizontalMetrics({g: (600, fb.font["glyf"][g].xMin if g != ".notdef" else 0) for g in order})
 fb.setupHorizontalHeader(ascent=800, descent=-200)
 fb.setupNameTable({"familyName": "Fixture Quadratic", "styleName": "Regular"})
@@ -286,7 +320,7 @@ save(fb, "Quadratic.ttf")
 
 
 def variable_master(weight, sx, dot, dot_x, brace_right, kern, sparse=False):
-    order = [".notdef", "A", "dot", "Adot", "O", "Q", "brace"]
+    order = [".notdef", "A", "dot", "Adot", "O", "Q", "brace", "parenleft", "acutecomb"]
     a_right = {100: 400, 400: 500, 900: 650}.get(weight, 500)
     q = o_contour(sx)
     if weight == 900:
@@ -299,21 +333,32 @@ def variable_master(weight, sx, dot, dot_x, brace_right, kern, sparse=False):
         "O": quadratic(o_contour(sx)),
         "Q": quadratic(q),
         "brace": rect(100, 0, brace_right, 500),
+        "parenleft": rect(100, 0, brace_right, 600),
+        "acutecomb": rect(-100, 720, -20, 820),
     }
     if sparse:
-        order = [".notdef", "brace"]
+        order = [".notdef", "brace", "parenleft"]
         glyphs = {g: glyphs[g] for g in order}
     fb = FontBuilder(1000, isTTF=True)
     fb.setupGlyphOrder(order)
     fb.setupCharacterMap({ord(c): c for c in "AOQ" if c in order} | ({ord("{"): "brace"}))
     fb.setupGlyf(glyphs)
     advance = {".notdef": 500, "A": a_right + 50, "dot": dot + 100, "Adot": a_right + 50,
-               "O": round(500 * sx) + 50, "Q": round(500 * sx) + 50, "brace": brace_right + 100}
+               "O": round(500 * sx) + 50, "Q": round(500 * sx) + 50, "brace": brace_right + 100,
+               "parenleft": brace_right + 100, "acutecomb": 0}
     fb.setupHorizontalMetrics({g: (advance[g], fb.font["glyf"][g].xMin if g != ".notdef" else 0)
                                for g in order})
     fb.setupHorizontalHeader(ascent=800, descent=-200)
+    fb.setupVerticalHeader(ascent=900, descent=-100)
+    a_height = {100: 1000, 400: 1050, 900: 1100}.get(weight, 1050)
+    fb.setupVerticalMetrics({g: (a_height if g == "A" else 1000,
+                                 900 - fb.font["glyf"][g].yMax if g != ".notdef" else 0)
+                             for g in order})
     fb.setupNameTable({"familyName": "Fixture Variable", "styleName": "Regular"})
-    fb.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWinAscent=800, usWinDescent=200)
+    metric = lambda values: {100: values[0], 400: values[1], 900: values[2]}.get(weight, values[1])
+    fb.setupOS2(version=4, sTypoAscender=metric((780, 800, 840)), sTypoDescender=-200,
+                usWinAscent=800, usWinDescent=200, sxHeight=metric((480, 500, 530)),
+                sCapHeight=700, ySubscriptYSize=metric((600, 650, 700)))
     fb.setupPost()
     if not sparse:
         pair, klass = kern
@@ -326,6 +371,14 @@ feature kern {{
     pos @L @R {klass};
     pos Q' lookup ctx A;
 }} kern;
+markClass acutecomb <anchor -60 720> @TOP;
+feature mark {{
+    pos base A <anchor {a_right // 2 + 25} 720> mark @TOP;
+    pos base O <anchor {round(250 * sx)} 720> mark @TOP;
+}} mark;
+table GDEF {{
+    GlyphClassDef [A dot Adot O Q brace parenleft], , [acutecomb], ;
+}} GDEF;
 """)
     # through a file, so that the font is compiled
     buf = io.BytesIO()
@@ -334,9 +387,16 @@ feature kern {{
     return TTFont(buf)
 
 
+from fontTools.designspaceLib import AxisLabelDescriptor
+
 doc = DesignSpaceDocument()
 doc.addAxisDescriptor(name="Weight", tag="wght", minimum=100, default=400, maximum=900,
-                      map=[(100, 20), (400, 80), (600, 130), (900, 200)])
+                      map=[(100, 20), (400, 80), (600, 130), (900, 200)],
+                      axisLabels=[AxisLabelDescriptor(name="Thin", userValue=100),
+                                  AxisLabelDescriptor(name="Regular", userValue=400, elidable=True),
+                                  AxisLabelDescriptor(name="Black", userValue=900,
+                                                      userMinimum=800, userMaximum=900)])
+doc.elidedFallbackName = "Regular"
 for weight, design, args in [(100, 20, (0.8, 100, 150, 200, (-10, -40))),
                              (400, 80, (1.0, 120, 200, 300, (-20, -50))),
                              (600, 130, (1.0, 120, 200, 450, None)),
@@ -346,6 +406,12 @@ for weight, design, args in [(100, 20, (0.8, 100, 150, 200, (-10, -40))),
 for name, weight in [("Thin", 100), ("Regular", 400), ("Black", 900)]:
     doc.addInstanceDescriptor(styleName=name, location={"Weight": {100: 20, 400: 80, 900: 200}[weight]})
 vf, _, _ = varLib.build(doc)
+from fontTools.otlLib.builder import buildStatTable
+buildStatTable(vf, [{"tag": "wght", "name": "Weight", "values": [
+    {"value": 100, "name": "Thin"},
+    {"value": 400, "name": "Regular", "flags": 0x2, "linkedValue": 700},
+    {"nominalValue": 900, "rangeMinValue": 800, "rangeMaxValue": 900, "name": "Black"},
+]}], elidedFallbackName="Regular")
 vf["head"].created = vf["head"].modified = 0
 vf.recalcTimestamp = False
 vf.save("Variable.ttf")
@@ -382,3 +448,66 @@ table GDEF {
 } GDEF;
 """)
 save(fb, "Anchors.ttf")
+
+
+def corner_master(weight, width):
+    order = [".notdef", "I"]
+    right = {100: 100, 900: 300}[weight] * width // 100
+    fb = FontBuilder(1000, isTTF=True)
+    fb.setupGlyphOrder(order)
+    fb.setupCharacterMap({ord("I"): "I"})
+    fb.setupGlyf({".notdef": Glyph(), "I": rect(50, 0, 50 + right, 700)})
+    fb.setupHorizontalMetrics({".notdef": (500, 0), "I": (right + 100, 50)})
+    fb.setupHorizontalHeader(ascent=800, descent=-200)
+    fb.setupNameTable({"familyName": "Fixture Avar2", "styleName": "Regular"})
+    fb.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWinAscent=800, usWinDescent=200)
+    fb.setupPost()
+    buf = io.BytesIO()
+    fb.font.save(buf)
+    buf.seek(0)
+    return TTFont(buf)
+
+
+from fontTools.designspaceLib import AxisMappingDescriptor
+
+doc = DesignSpaceDocument()
+doc.addAxisDescriptor(name="Weight", tag="wght", minimum=100, default=100, maximum=900)
+doc.addAxisDescriptor(name="Width", tag="wdth", minimum=75, default=100, maximum=100)
+for weight in (100, 900):
+    for width in (75, 100):
+        source = doc.addSourceDescriptor(name=f"w{weight}-{width}",
+                                         location={"Weight": weight, "Width": width})
+        source.font = corner_master(weight, width)
+mapping = AxisMappingDescriptor()
+mapping.inputLocation = {"Weight": 900, "Width": 75}
+mapping.outputLocation = {"Weight": 850, "Width": 75}
+doc.axisMappings = [mapping]
+vf, _, _ = varLib.build(doc)
+vf["head"].created = vf["head"].modified = 0
+vf.recalcTimestamp = False
+vf.save("Avar2.ttf")
+
+
+order = [".notdef", "alef-ar", "beh-ar", "teh-ar"]
+fb = FontBuilder(1000, isTTF=True)
+fb.setupGlyphOrder(order)
+fb.setupCharacterMap({0x0627: "alef-ar", 0x0628: "beh-ar", 0x062A: "teh-ar"})
+fb.setupGlyf({".notdef": Glyph(), "alef-ar": rect(50, 0, 150, 700), "beh-ar": rect(50, 0, 550, 200),
+              "teh-ar": rect(50, 0, 550, 220)})
+fb.setupHorizontalMetrics({".notdef": (500, 0), "alef-ar": (200, 50), "beh-ar": (600, 50),
+                           "teh-ar": (600, 50)})
+fb.setupHorizontalHeader(ascent=800, descent=-200)
+fb.setupNameTable({"familyName": "Fixture RTL Kerning", "styleName": "Regular"})
+fb.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWinAscent=800, usWinDescent=200)
+fb.setupPost()
+addOpenTypeFeaturesFromString(fb.font, """
+languagesystem DFLT dflt;
+languagesystem arab dflt;
+@BEHS = [beh-ar teh-ar];
+@ALEFS = [alef-ar];
+feature kern {
+    pos alef-ar beh-ar <-50 0 -50 0>;
+    pos @BEHS @ALEFS <-30 0 -30 0>;
+} kern;
+""")
+save(fb, "RtlKerning.ttf")

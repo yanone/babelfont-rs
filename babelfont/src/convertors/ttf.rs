@@ -514,24 +514,79 @@ fn load_instances(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babe
     Ok(())
 }
 
-fn load_masters(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), BabelfontError> {
-    let mut master_locations: HashSet<DesignLocation> = HashSet::new();
+/// The peaks the font's masters stand at. A peak of gvar tuples is a master's
+/// when most glyphs that vary have one there; a peak only a few glyphs have is
+/// theirs alone (an intermediate layer), even where fontTools shared the tuple.
+/// A peak of the GDEF variation store (anchors and kerning) that moves anything
+/// is a master's too: kerning has a place only at masters.
+fn master_peaks(fontref: &skrifa::FontRef) -> Result<Vec<Vec<F2Dot14>>, BabelfontError> {
+    let mut peaks: Vec<Vec<F2Dot14>> = vec![];
     if let Ok(gvar) = fontref.gvar() {
-        if let Ok(shared_tuples) = gvar.shared_tuples() {
-            for tuple in shared_tuples.tuples().iter().flatten() {
-                let loc = tuple
-                    .values()
-                    .iter()
-                    .zip(font.axes.iter())
-                    .flat_map(|(coord, axis)| {
-                        let normalized = NormalizedCoord::new(coord.get().to_f32() as f64);
-                        let design_coord = normalized.to_design(&axis._converter().ok()?);
-                        Some((axis.tag, design_coord))
-                    })
-                    .collect::<Vec<(Tag, DesignCoord)>>();
-                master_locations.insert(DesignLocation::from(loc));
+        let mut counts: HashMap<Vec<F2Dot14>, usize> = HashMap::new();
+        let mut varying = 0;
+        for gid in 0..fontref.maxp()?.num_glyphs() {
+            let Some(data) = gvar.glyph_variation_data(GlyphId::new(gid as u32))? else {
+                continue;
+            };
+            varying += 1;
+            let glyph_peaks: HashSet<Vec<F2Dot14>> = data
+                .tuples()
+                .map(|tuple| tuple.peak().values().iter().map(|v| v.get()).collect())
+                .collect();
+            for peak in glyph_peaks {
+                *counts.entry(peak).or_default() += 1;
             }
         }
+        let mut glyph_peaks: Vec<Vec<F2Dot14>> = counts
+            .into_iter()
+            .filter(|(_, count)| count * 2 > varying)
+            .map(|(peak, _)| peak)
+            .collect();
+        glyph_peaks.sort();
+        peaks.extend(glyph_peaks);
+    }
+    if let Some(store) = fontref
+        .gdef()
+        .ok()
+        .and_then(|gdef| gdef.item_var_store())
+        .transpose()?
+    {
+        let regions = store.variation_region_list()?.variation_regions();
+        for data in store.item_variation_data().iter().flatten() {
+            let Ok(data) = data else { continue };
+            for (column, region_index) in data.region_indexes().iter().enumerate() {
+                let moves = (0..data.item_count())
+                    .any(|item| data.delta_set(item).nth(column).is_some_and(|d| d != 0));
+                let Ok(region) = regions.get(region_index.get() as usize) else {
+                    continue;
+                };
+                let peak: Vec<F2Dot14> = region
+                    .region_axes()
+                    .iter()
+                    .map(|axis| axis.peak_coord())
+                    .collect();
+                if moves && !peaks.contains(&peak) {
+                    peaks.push(peak);
+                }
+            }
+        }
+    }
+    Ok(peaks)
+}
+
+fn load_masters(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), BabelfontError> {
+    let mut master_locations: HashSet<DesignLocation> = HashSet::new();
+    for peak in master_peaks(fontref)? {
+        let loc = peak
+            .iter()
+            .zip(font.axes.iter())
+            .flat_map(|(coord, axis)| {
+                let normalized = NormalizedCoord::new(coord.to_f32() as f64);
+                let design_coord = normalized.to_design(&axis._converter().ok()?);
+                Some((axis.tag, design_coord))
+            })
+            .collect::<Vec<(Tag, DesignCoord)>>();
+        master_locations.insert(DesignLocation::from(loc));
     }
     // in a stable order, as the axes run
     let mut master_locations: Vec<DesignLocation> = master_locations.into_iter().collect();
@@ -680,25 +735,34 @@ fn load_metrics(
         metrics.insert(MetricType::UnderlinePosition, underline.offset as i32);
         metrics.insert(MetricType::UnderlineThickness, underline.thickness as i32);
     }
-    // Some things skrifa doesn't know yet
+    // Some things skrifa doesn't know yet; MVAR varies them
+    let mvar = fontref.mvar().ok();
+    let mvar_delta = |tag: &[u8; 4]| -> f64 {
+        mvar.as_ref()
+            .and_then(|mvar| mvar.metric_delta(Tag::new(tag), &coords).ok())
+            .map_or(0.0, |delta| delta.to_f64())
+    };
     macro_rules! copy_os2_metric {
-        ($metric_type:ident, $method:ident) => {
-            metrics.insert(MetricType::$metric_type, fontref.os2()?.$method() as i32);
+        ($metric_type:ident, $method:ident, $tag:literal) => {
+            metrics.insert(
+                MetricType::$metric_type,
+                (fontref.os2()?.$method() as f64 + mvar_delta($tag)).round() as i32,
+            );
         };
     }
-    copy_os2_metric!(SuperscriptXSize, y_superscript_x_size);
-    copy_os2_metric!(SuperscriptYSize, y_superscript_y_size);
-    copy_os2_metric!(SuperscriptXOffset, y_superscript_x_offset);
-    copy_os2_metric!(SuperscriptYOffset, y_superscript_y_offset);
-    copy_os2_metric!(SubscriptXSize, y_subscript_x_size);
-    copy_os2_metric!(SubscriptYSize, y_subscript_y_size);
-    copy_os2_metric!(SubscriptXOffset, y_subscript_x_offset);
-    copy_os2_metric!(SubscriptYOffset, y_subscript_y_offset);
-    copy_os2_metric!(WinAscent, us_win_ascent);
-    copy_os2_metric!(WinDescent, us_win_descent);
-    copy_os2_metric!(TypoLineGap, s_typo_line_gap);
-    copy_os2_metric!(TypoAscender, s_typo_ascender);
-    copy_os2_metric!(TypoDescender, s_typo_descender);
+    copy_os2_metric!(SuperscriptXSize, y_superscript_x_size, b"spxs");
+    copy_os2_metric!(SuperscriptYSize, y_superscript_y_size, b"spys");
+    copy_os2_metric!(SuperscriptXOffset, y_superscript_x_offset, b"spxo");
+    copy_os2_metric!(SuperscriptYOffset, y_superscript_y_offset, b"spyo");
+    copy_os2_metric!(SubscriptXSize, y_subscript_x_size, b"sbxs");
+    copy_os2_metric!(SubscriptYSize, y_subscript_y_size, b"sbys");
+    copy_os2_metric!(SubscriptXOffset, y_subscript_x_offset, b"sbxo");
+    copy_os2_metric!(SubscriptYOffset, y_subscript_y_offset, b"sbyo");
+    copy_os2_metric!(WinAscent, us_win_ascent, b"hcla");
+    copy_os2_metric!(WinDescent, us_win_descent, b"hcld");
+    copy_os2_metric!(TypoLineGap, s_typo_line_gap, b"hlgp");
+    copy_os2_metric!(TypoAscender, s_typo_ascender, b"hasc");
+    copy_os2_metric!(TypoDescender, s_typo_descender, b"hdsc");
 
     metrics.insert(
         MetricType::HheaAscender,
@@ -713,9 +777,19 @@ fn load_metrics(
         fontref.hhea()?.line_gap().to_i16() as i32,
     );
     if let Ok(vhea) = fontref.vhea() {
-        metrics.insert(MetricType::VheaAscender, vhea.ascender().to_i16() as i32);
-        metrics.insert(MetricType::VheaDescender, vhea.descender().to_i16() as i32);
-        metrics.insert(MetricType::VheaLineGap, vhea.line_gap().to_i16() as i32);
+        let vertical = |value: i16, tag: &[u8; 4]| (value as f64 + mvar_delta(tag)).round() as i32;
+        metrics.insert(
+            MetricType::VheaAscender,
+            vertical(vhea.ascender().to_i16(), b"vasc"),
+        );
+        metrics.insert(
+            MetricType::VheaDescender,
+            vertical(vhea.descender().to_i16(), b"vdsc"),
+        );
+        metrics.insert(
+            MetricType::VheaLineGap,
+            vertical(vhea.line_gap().to_i16(), b"vlgp"),
+        );
     }
 
     // post stores the angle negative for a right lean; babelfont stores the
@@ -1082,10 +1156,12 @@ fn fontdrasil_location_to_skrifa_location<Space: ConvertSpace<NormalizedSpace>>(
 }
 
 /// A glyph's vmtx advance, and its vertical origin: the top of its bounding box
-/// (0 for an empty glyph) plus its top side bearing.
+/// (0 for an empty glyph) plus its top side bearing. At a location, VVAR varies
+/// both; without VVAR, gvar's top and bottom phantom points do.
 fn load_vertical_metrics(
     fontref: &skrifa::FontRef<'_>,
     gid: skrifa::GlyphId,
+    coords: &[F2Dot14],
     layer: &mut Layer,
 ) -> Result<(), BabelfontError> {
     let Ok(vmtx) = fontref.vmtx() else {
@@ -1094,12 +1170,33 @@ fn load_vertical_metrics(
     let (Some(advance), Some(tsb)) = (vmtx.advance(gid), vmtx.side_bearing(gid)) else {
         return Ok(());
     };
-    let y_max = fontref
-        .loca(None)?
-        .get_glyf(gid, &fontref.glyf()?)?
-        .map_or(0, |glyph| glyph.y_max()) as f32;
-    layer.vertical_advance = Some(advance as f32);
-    layer.vertical_origin = Some(y_max + tsb as f32);
+    let glyf = fontref.glyf()?;
+    let loca = fontref.loca(None)?;
+    let y_max = loca.get_glyf(gid, &glyf)?.map_or(0, |glyph| glyph.y_max()) as f64;
+    let (mut advance, mut origin) = (advance as f64, y_max + tsb as f64);
+    if coords.iter().any(|c| *c != F2Dot14::ZERO) {
+        if let Ok(vvar) = fontref.vvar() {
+            advance += vvar
+                .advance_height_delta(gid, coords)
+                .map_or(0.0, |d| d.to_f64());
+            let y_max = fontref
+                .glyph_metrics(Size::unscaled(), LocationRef::new(coords))
+                .bounds(gid)
+                .map_or(y_max, |bounds| bounds.y_max as f64);
+            origin = y_max + tsb as f64 + vvar.tsb_delta(gid, coords).map_or(0.0, |d| d.to_f64());
+        } else if let Ok(gvar) = fontref.gvar() {
+            if let Some([_, _, top, bottom]) = gvar
+                .phantom_point_deltas(&glyf, &loca, coords, gid)
+                .ok()
+                .flatten()
+            {
+                advance += (top.y - bottom.y).to_f64();
+                origin += top.y.to_f64();
+            }
+        }
+    }
+    layer.vertical_advance = Some(advance.round() as f32);
+    layer.vertical_origin = Some(origin.round() as f32);
     Ok(())
 }
 
@@ -1247,7 +1344,7 @@ fn load_layer(
     let width = fontref.glyph_metrics(Size::unscaled(), locationref);
     let mut layer = Layer::new(width.advance_width(gid).unwrap_or_default());
     layer.master = layer_type;
-    load_vertical_metrics(fontref, gid, &mut layer)?;
+    load_vertical_metrics(fontref, gid, &loc, &mut layer)?;
 
     // Skrifa pens don't support components. Parse component glyphs manually.
     let glyf = fontref.glyf()?;
@@ -1715,7 +1812,7 @@ mod tests {
     #[test]
     fn test_load_bytes() {
         let font = load_bytes(&std::fs::read(QUADRATIC).unwrap()).unwrap();
-        assert_eq!(font.glyphs.len(), 5);
+        assert_eq!(font.glyphs.len(), 7);
     }
     #[test]
     fn test_off_curve_only_contour() {
@@ -1958,12 +2055,49 @@ mod tests {
         assert_eq!(layer.width, 550.0);
         let bbox = kurbo::Shape::bounding_box(&layer.paths().next().unwrap().to_kurbo().unwrap());
         assert_close(&[bbox.x1], &[450.0]);
-        // no other glyph has one
-        assert!(font
+        // parenleft has one too: fontTools shared the tuple, but two glyphs do
+        // not make a master
+        let others: Vec<&str> = font
             .glyphs
             .iter()
-            .filter(|g| g.name != "brace")
-            .all(|g| g.layers.iter().all(|l| l.location.is_none())));
+            .filter(|g| g.layers.iter().any(|l| l.location.is_some()))
+            .map(|g| g.name.as_str())
+            .collect();
+        assert_eq!(others, ["brace", "parenleft"]);
+        assert_eq!(font.masters.len(), 3);
+    }
+    #[test]
+    fn test_metrics_vary_with_the_masters() {
+        // MVAR varies the typo ascender, x-height and subscript size
+        let font = load(VARIABLE).unwrap();
+        for (name, ascender, x_height, subscript) in [
+            ("Thin", 780, 480, 600),
+            ("Regular", 800, 500, 650),
+            ("Black", 840, 530, 700),
+        ] {
+            let metrics = &master(&font, name).metrics;
+            assert_eq!(
+                metrics.get(&MetricType::TypoAscender),
+                Some(&ascender),
+                "{name}"
+            );
+            assert_eq!(metrics.get(&MetricType::XHeight), Some(&x_height), "{name}");
+            assert_eq!(
+                metrics.get(&MetricType::SubscriptYSize),
+                Some(&subscript),
+                "{name}"
+            );
+        }
+    }
+    #[test]
+    fn test_vertical_metrics_vary_with_the_masters() {
+        // VVAR varies A's advance height; its origin stays at the ascender
+        let font = load(VARIABLE).unwrap();
+        for (name, height) in [("Thin", 1000.0), ("Regular", 1050.0), ("Black", 1100.0)] {
+            let layer = layer(&font, "A", name);
+            assert_eq!(layer.vertical_advance, Some(height), "{name}");
+            assert_eq!(layer.vertical_origin, Some(900.0), "{name}");
+        }
     }
     #[test]
     fn test_implied_only_where_every_master_implies_it() {
