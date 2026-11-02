@@ -9,6 +9,7 @@ use fea_rs_ast::{
     ValueRecord as FeaValueRecord,
 };
 use indexmap::IndexMap;
+use skrifa::GlyphId16;
 use skrifa::raw::{
     FontData, ReadError,
     tables::{
@@ -309,6 +310,41 @@ impl<'a> UncompileContext<'a> {
             }
         }
         let offset_data = gpos2f2.offset_data();
+        // Class 0 of the second glyphs is every glyph no other class has: a
+        // value against it kerns a first glyph with all of them
+        let has_value = |vr: &ValueRecord| {
+            [vr.x_placement, vr.y_placement, vr.x_advance, vr.y_advance]
+                .iter()
+                .any(|v| v.is_some_and(|v| v.get() != 0))
+                || !vr.x_placement_device.get().is_null()
+                || !vr.y_placement_device.get().is_null()
+                || !vr.x_advance_device.get().is_null()
+                || !vr.y_advance_device.get().is_null()
+        };
+        let class_zero_kerns = gpos2f2.class1_records().iter().any(|record| {
+            record.is_ok_and(|record| {
+                record.class2_records().iter().next().is_some_and(|zero| {
+                    zero.is_ok_and(|zero| {
+                        has_value(zero.value_record1()) || has_value(zero.value_record2())
+                    })
+                })
+            })
+        });
+        if class_zero_kerns {
+            let classed: std::collections::HashSet<u16> = gpos2f2
+                .class_def2()?
+                .iter()
+                .filter(|(_, class)| *class != 0)
+                .map(|(gid, _)| gid.to_u16())
+                .collect();
+            let rest: Vec<GlyphContainer> = (0..self.num_glyphs)
+                .filter(|gid| !classed.contains(gid))
+                .map(|gid| GlyphContainer::GlyphName(self.get_name(GlyphId16::new(gid))))
+                .collect();
+            if !rest.is_empty() {
+                classes2.insert(0, rest);
+            }
+        }
         for (class1, record) in gpos2f2.class1_records().iter().enumerate() {
             let Ok(record) = record else { continue };
             if !classes1.contains_key(&(class1 as u16)) {
@@ -602,6 +638,28 @@ impl<'a> UncompileContext<'a> {
                 ligature_anchor_rows.push((ligature_glyph.name.clone(), anchors));
             }
         }
+        let mut ligature_components: IndexMap<u16, Vec<(SmolStr, usize, FeaAnchor)>> =
+            IndexMap::new();
+        let mut component = 0;
+        let mut previous: Option<SmolStr> = None;
+        for (glyph, anchors) in &ligature_anchor_rows {
+            component = if previous.as_ref() == Some(glyph) {
+                component + 1
+            } else {
+                1
+            };
+            previous = Some(glyph.clone());
+            for (class, anchor) in anchors.iter().enumerate() {
+                if let Some(anchor) = anchor {
+                    ligature_components.entry(class as u16).or_default().push((
+                        glyph.clone(),
+                        component,
+                        anchor.clone(),
+                    ));
+                }
+            }
+        }
+        self.ligature_components = ligature_components;
         let mark_class_to_ligature_glyph_anchor =
             Self::build_class_anchor_map(ligature_anchor_rows);
 
@@ -747,8 +805,13 @@ impl<'a> UncompileContext<'a> {
         for (class_number, base_glyphs_anchors) in mark_class_to_base_glyph_anchor {
             let marks = mark_classes.get(class_number);
             if let Some(name) = marks.and_then(|marks| self.same_mark_class(marks)) {
-                // A ligature's anchors are named per component, never so
-                if ligature || self.anchors_agree(&name, base_glyphs_anchors) {
+                // A ligature's anchors are named per component
+                let agree = if ligature {
+                    self.ligature_anchors_agree(&name, *class_number)
+                } else {
+                    self.anchors_agree(&name, base_glyphs_anchors)
+                };
+                if agree {
                     if !ligature {
                         self.anchors
                             .entry(name.clone())
@@ -830,6 +893,21 @@ impl<'a> UncompileContext<'a> {
             defined.sort();
             (defined == wanted).then(|| name.clone())
         })
+    }
+
+    /// Whether no ligature has an anchor of this name and its component
+    /// somewhere else already, for the anchors of a mark class
+    fn ligature_anchors_agree(&self, name: &str, class_number: u16) -> bool {
+        self.ligature_components
+            .get(&class_number)
+            .into_iter()
+            .flatten()
+            .all(|(glyph, component, anchor)| {
+                self.anchors
+                    .get(format!("{name}_{component}").as_str())
+                    .and_then(|existing| existing.get(glyph))
+                    .is_none_or(|known| known.as_fea("") == anchor.as_fea(""))
+            })
     }
 
     /// Whether no glyph has an anchor of this name somewhere else already
