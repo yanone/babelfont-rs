@@ -3,6 +3,7 @@ use fontdrasil::coords::{DesignCoord, DesignLocation};
 use smol_str::SmolStr;
 
 mod curve_filter_common;
+mod feature_code;
 mod fontforge_standard_height;
 
 /// Parse a comma-separated list of glyph names from a string argument.
@@ -150,6 +151,7 @@ declare_filters! {
         NbspWidth(nbspwidth) => "nbspwidth",
         SubsetLayout(subsetlayout) => "subsetlayout",
         MoveKerningFromFeatures(movekerningfromfeatures) => "movekerningfromfeatures",
+        MoveMarksFromFeatures(movemarksfromfeatures) => "movemarksfromfeatures",
     }
     group "General font filters" {
         DropCopyrightDescription(dropcopyrightdescription) => "dropcopyrightdescription",
