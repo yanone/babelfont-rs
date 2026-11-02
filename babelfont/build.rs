@@ -38,6 +38,8 @@ fn main() {
             ("production", "production"),
             ("unicode", "unicode"),
             ("description", "description"),
+            ("script", "script"),
+            ("altNames", "alt_names"),
         ] {
             if let Some(value) = node.attribute(attribute) {
                 entry.insert(key.into(), value.into());
