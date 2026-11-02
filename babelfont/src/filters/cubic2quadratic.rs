@@ -175,13 +175,53 @@ impl CubicToQuadratic {
 
 impl FontFilter for CubicToQuadratic {
     fn apply(&self, font: &mut crate::Font) -> Result<(), crate::BabelfontError> {
+        // A path with no cubic segment is quadratic already: drawn through
+        // kurbo, its implied on-curves would come back explicit (o's four
+        // off-curves as eight nodes). Keep it as it is.
+        let quadratic: Vec<Vec<Vec<Option<Path>>>> = font
+            .glyphs
+            .iter()
+            .map(|glyph| {
+                glyph
+                    .layers
+                    .iter()
+                    .map(|layer| {
+                        layer
+                            .shapes
+                            .iter()
+                            .map(|shape| {
+                                shape
+                                    .as_path()
+                                    .filter(|path| {
+                                        !path
+                                            .nodes
+                                            .iter()
+                                            .any(|node| node.nodetype == crate::NodeType::Curve)
+                                    })
+                                    .cloned()
+                            })
+                            .collect()
+                    })
+                    .collect()
+            })
+            .collect();
         apply_interpolatable_path_filter(
             font,
             "CubicToQuadratic",
             &self.0,
             convert_bezpath_independently,
             convert_bezpaths_in_parallel,
-        )
+        )?;
+        for (glyph, layers) in font.glyphs.iter_mut().zip(quadratic) {
+            for (layer, shapes) in glyph.layers.iter_mut().zip(layers) {
+                for (shape, original) in layer.shapes.iter_mut().zip(shapes) {
+                    if let Some(original) = original {
+                        *shape = crate::Shape::Path(original);
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     fn from_str(s: &str) -> Result<Self, crate::BabelfontError>
@@ -208,6 +248,44 @@ impl FontFilter for CubicToQuadratic {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_quadratic_paths_are_left_as_they_are() {
+        // o: four off-curves, every on-curve implied; and a cubic beside it
+        let mut font = crate::load("resources/ttf/Quadratic.ttf").unwrap();
+        let before: Vec<Vec<Path>> = font
+            .glyphs
+            .iter()
+            .map(|g| g.layers.iter().flat_map(|l| l.paths().cloned()).collect())
+            .collect();
+        let cubic: Path = serde_json::from_str(
+            r#"{"nodes": [{"x":0,"y":0,"nodetype":"Line"},{"x":0,"y":100,"nodetype":"OffCurve"},{"x":100,"y":100,"nodetype":"OffCurve"},{"x":100,"y":0,"nodetype":"Curve"}], "closed": true}"#,
+        )
+        .unwrap();
+        for layer in font.glyphs.get_mut("o").unwrap().layers.iter_mut() {
+            layer.shapes.push(crate::Shape::Path(cubic.clone()));
+        }
+        CubicToQuadratic::default().apply(&mut font).unwrap();
+        for (glyph, before) in font.glyphs.iter().zip(before) {
+            // all but the cubic added to o
+            let after: Vec<Path> = glyph
+                .layers
+                .iter()
+                .flat_map(|l| l.paths().take(before.len() / glyph.layers.len()).cloned())
+                .collect();
+            assert_eq!(after, before, "{}", glyph.name);
+        }
+        // the cubic beside them is converted
+        let o = font.glyphs.get("o").unwrap();
+        let converted = o.layers[0].paths().last().unwrap();
+        assert!(
+            converted
+                .nodes
+                .iter()
+                .all(|n| n.nodetype != crate::NodeType::Curve)
+        );
+        assert_eq!(o.layers[0].paths().next().unwrap().nodes.len(), 4);
+    }
 
     #[test]
     fn test_final_segment() {
