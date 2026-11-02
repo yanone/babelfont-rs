@@ -56,6 +56,8 @@ VariableNoHvar.ttf: the same without HVAR, its advances in gvar phantom points.
 
 Avar2.ttf: wght and wdth, four masters at the corners; an avar2 mapping moves
 wght 900 at wdth 75 to wght 850.
+Avar2NoMap.ttf: the same without avar's axis index map, and with named
+instances Black Condensed (wght 900, wdth 75) and Thin.
 
 Composites.ttf: wght (100-900, default 400) and wdth (75-100, default 100),
 masters on a grid of three weights by two widths, and a sparse master in the
@@ -83,6 +85,7 @@ from fontTools.fontBuilder import FontBuilder
 from fontTools.ttLib.tables.O_S_2f_2 import Panose
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import newTable, TTFont
+from fontTools.ttLib.tables._f_v_a_r import NamedInstance
 from fontTools.designspaceLib import DesignSpaceDocument
 from fontTools import varLib
 import io
@@ -511,6 +514,23 @@ vf, _, _ = varLib.build(doc)
 vf["head"].created = vf["head"].modified = 0
 vf.recalcTimestamp = False
 vf.save("Avar2.ttf")
+
+# the same without avar's axis index map, which fontTools leaves out when it is
+# the identity: axis i's deltas are item i of the store's first data
+store = vf["avar"].table.VarStore
+data = store.VarData[0]
+mapped = vf["avar"].table.VarIdxMap.mapping
+data.Item = [data.Item[mapped[i] & 0xFFFF] if mapped[i] != 0xFFFFFFFF else [0] * data.VarRegionCount
+             for i in range(len(mapped))]
+data.ItemCount = len(data.Item)
+data.calculateNumShorts()
+vf["avar"].table.VarIdxMap = None
+for label, coords in [("Black Condensed", {"wght": 900, "wdth": 75}), ("Thin", {"wght": 100, "wdth": 100})]:
+    instance = NamedInstance()
+    instance.coordinates = coords
+    instance.subfamilyNameID = vf["name"].addName(label)
+    vf["fvar"].instances.append(instance)
+vf.save("Avar2NoMap.ttf")
 
 
 order = [".notdef", "alef-ar", "beh-ar", "teh-ar"]

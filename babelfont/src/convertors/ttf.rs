@@ -510,14 +510,50 @@ fn load_axis_mappings(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), 
             }
             let mut map_vec = vec![];
             for map in segmap.axis_value_maps() {
-                let from = NormalizedCoord::new(map.from_coordinate().to_f32() as f64);
-                let to = NormalizedCoord::new(map.to_coordinate().to_f32() as f64);
-                map_vec.push((from.to_user(&converter), to.to_design(&converter)));
+                map_vec.push((
+                    user_at(map.from_coordinate(), &converter),
+                    design_at(map.to_coordinate(), &converter),
+                ));
             }
             axis.map = Some(map_vec);
         }
     }
     Ok(())
+}
+
+/// The value with the fewest decimals, up to three, that `quantize` stores as
+/// it stores `value`: what a source said before a binary rounded it
+fn shortest<T: PartialEq>(value: f64, quantize: impl Fn(f64) -> T) -> f64 {
+    let stored = quantize(value);
+    (0..4)
+        .map(|digits| {
+            let scale = 10f64.powi(digits);
+            (value * scale).round() / scale
+        })
+        .find(|rounded| quantize(*rounded) == stored)
+        .unwrap_or(value)
+}
+
+/// The user coordinate of a normalized coordinate before avar, as a source states
+/// it: avar stores user 600 as an F2Dot14 that reads back as 600.0122
+fn user_at(coord: F2Dot14, converter: &fontdrasil::coords::CoordConverter) -> UserCoord {
+    let user = NormalizedCoord::new(coord.to_f32() as f64)
+        .to_user(converter)
+        .to_f64();
+    UserCoord::new(shortest(user, |u| {
+        UserCoord::new(u).to_normalized(converter).to_f2dot14()
+    }))
+}
+
+/// The design coordinate of a normalized coordinate (after avar), as a source
+/// states it
+fn design_at(coord: F2Dot14, converter: &fontdrasil::coords::CoordConverter) -> DesignCoord {
+    let design = NormalizedCoord::new(coord.to_f32() as f64)
+        .to_design(converter)
+        .to_f64();
+    DesignCoord::new(shortest(design, |d| {
+        DesignCoord::new(d).to_normalized(converter).to_f2dot14()
+    }))
 }
 
 /// The peaks of a variation store's regions that move anything
@@ -557,8 +593,21 @@ fn load_cross_axis_mappings(
     let Ok(avar) = fontref.avar() else {
         return Ok(());
     };
-    let (Some(Ok(store)), Some(Ok(index_map))) = (avar.var_store(), avar.axis_index_map()) else {
+    let Some(Ok(store)) = avar.var_store() else {
         return Ok(());
+    };
+    // without an axis index map, axis i's deltas are item i of the store's
+    // first item variation data (fontTools leaves out a map that says so)
+    let index_map = match avar.axis_index_map() {
+        Some(Ok(map)) => Some(map),
+        Some(Err(e)) => return Err(BabelfontError::BinaryFontRead(e.to_string())),
+        None => None,
+    };
+    let delta_index = |axis: usize| match &index_map {
+        Some(map) => map.get(axis as u32).ok(),
+        None => u16::try_from(axis)
+            .ok()
+            .map(|inner| skrifa::raw::tables::variations::DeltaSetIndex { outer: 0, inner }),
     };
     let converters = font
         .axes
@@ -572,20 +621,15 @@ fn load_cross_axis_mappings(
         for (index, ((axis, converter), coord)) in
             font.axes.iter().zip(&converters).zip(&peak).enumerate()
         {
-            let delta = match index_map.get(index as u32) {
-                Ok(delta_index) => store.compute_delta(delta_index, &peak).unwrap_or(0),
-                Err(_) => 0,
-            };
+            let delta = delta_index(index)
+                .and_then(|delta_index| store.compute_delta(delta_index, &peak).ok())
+                .unwrap_or(0);
             moved |= delta != 0;
-            let normalized = coord.to_f32() as f64;
-            input.insert(
-                axis.tag,
-                NormalizedCoord::new(normalized).to_design(converter),
-            );
-            output.insert(
-                axis.tag,
-                NormalizedCoord::new(normalized + delta as f64 / 16384.0).to_design(converter),
-            );
+            // avar2 clamps a mapped coordinate to -1..1
+            let mapped =
+                F2Dot14::from_bits((coord.to_bits() as i32 + delta).clamp(-0x4000, 0x4000) as i16);
+            input.insert(axis.tag, design_at(*coord, converter));
+            output.insert(axis.tag, design_at(mapped, converter));
         }
         if moved {
             font.cross_axis_mappings
@@ -793,14 +837,15 @@ fn load_instances(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babe
     }
     for (id, instance) in fontref.named_instances().iter().enumerate() {
         let name = name_id_to_i18n(fontref, instance.subfamily_name_id());
-        let coordinates = instance.location();
+        // fvar states an instance in user coordinates, as 16.16 fixed; avar and
+        // avar2 move where it is drawn, not where it is
         let location: Vec<(crate::Tag, DesignCoord)> = font
             .axes
             .iter()
-            .zip(coordinates.coords().iter())
-            .flat_map(|(axis, coord)| {
-                let normalized = NormalizedCoord::new(coord.to_f32() as f64);
-                let design_coord = normalized.to_design(&axis._converter().ok()?);
+            .zip(instance.user_coords())
+            .flat_map(|(axis, user)| {
+                let user = shortest(user as f64, skrifa::raw::types::Fixed::from_f64);
+                let design_coord = UserCoord::new(user).to_design(&axis._converter().ok()?);
                 Some((axis.tag, design_coord))
             })
             .collect();
@@ -914,11 +959,7 @@ fn load_masters(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babelf
         let loc = peak
             .iter()
             .zip(font.axes.iter())
-            .flat_map(|(coord, axis)| {
-                let normalized = NormalizedCoord::new(coord.to_f32() as f64);
-                let design_coord = normalized.to_design(&axis._converter().ok()?);
-                Some((axis.tag, design_coord))
-            })
+            .flat_map(|(coord, axis)| Some((axis.tag, design_at(*coord, &axis._converter().ok()?))))
             .collect::<Vec<(Tag, DesignCoord)>>();
         master_locations.insert(DesignLocation::from(loc));
     }
@@ -1804,6 +1845,7 @@ mod tests {
     const VARIABLE_NO_HVAR: &str = "resources/ttf/VariableNoHvar.ttf";
     const ANCHORS: &str = "resources/ttf/Anchors.ttf";
     const AVAR2: &str = "resources/ttf/Avar2.ttf";
+    const AVAR2_NO_MAP: &str = "resources/ttf/Avar2NoMap.ttf";
     const RTL_KERNING: &str = "resources/ttf/RtlKerning.ttf";
     const COMPOSITES: &str = "resources/ttf/Composites.ttf";
     const REDDIT_SANS: &str = "resources/ttf/RedditSans-Subset.ttf";
@@ -2476,16 +2518,91 @@ mod tests {
         assert_eq!(at(&mapping.output, b"wdth"), Some(75.0));
     }
 
+    #[test]
+    fn test_avar2_without_axis_index_map() {
+        // the implicit map: axis i's deltas are item i of the first data
+        let font = load(AVAR2_NO_MAP).unwrap();
+        assert_eq!(font.cross_axis_mappings.len(), 1);
+        let mapping = &font.cross_axis_mappings[0];
+        let at = |loc: &DesignLocation, tag: &[u8; 4]| loc.get(Tag::new(tag)).map(|c| c.to_f64());
+        assert_eq!(at(&mapping.input, b"wght"), Some(900.0));
+        assert_eq!(at(&mapping.input, b"wdth"), Some(75.0));
+        assert_eq!(at(&mapping.output, b"wght"), Some(850.0));
+        assert_eq!(at(&mapping.output, b"wdth"), Some(75.0));
+    }
+
+    #[test]
+    fn test_avar2_instances_stand_where_fvar_says() {
+        // not where avar2 draws them: wght 900 at wdth 75 is drawn as 850
+        let font = load(AVAR2_NO_MAP).unwrap();
+        let locations: Vec<(String, Vec<f64>)> = font
+            .instances
+            .iter()
+            .map(|i| {
+                (
+                    i.name.get_default().unwrap().clone(),
+                    font.axes
+                        .iter()
+                        .map(|a| i.location.get(a.tag).unwrap().to_f64())
+                        .collect(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            locations,
+            [
+                ("Black Condensed".to_string(), vec![900.0, 75.0]),
+                ("Thin".to_string(), vec![100.0, 100.0])
+            ]
+        );
+    }
+
+    #[test]
+    fn test_coordinates_as_the_source_states_them() {
+        // avar and gvar store F2Dot14s: user 600 reads back as 600.0122; they
+        // are the shortest values stored as they are. (A binary does not know
+        // the source's design coordinates: they are user coordinates mapped.)
+        let font = load(VARIABLE).unwrap();
+        let axis = &font.axes[0];
+        let map: Vec<(f64, f64)> = axis
+            .map
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|(u, d)| (u.to_f64(), d.to_f64()))
+            .collect();
+        assert_eq!(
+            map,
+            [
+                (100.0, 100.0),
+                (400.0, 400.0),
+                (600.0, 608.34),
+                (900.0, 900.0)
+            ]
+        );
+        let mut masters: Vec<f64> = font
+            .masters
+            .iter()
+            .map(|m| m.location.get(axis.tag).unwrap().to_f64())
+            .collect();
+        masters.sort_by(f64::total_cmp);
+        assert_eq!(masters, [100.0, 400.0, 900.0]);
+        // an instance at user 333, which F2Dot14 stores as 333.0017
+        let converter = axis._converter().unwrap();
+        let stored = UserCoord::new(333.0).to_normalized(&converter).to_f2dot14();
+        assert_ne!(
+            NormalizedCoord::new(stored.to_f32() as f64)
+                .to_user(&converter)
+                .to_f64(),
+            333.0
+        );
+        assert_eq!(user_at(stored, &converter).to_f64(), 333.0);
+    }
+
     #[cfg(feature = "fontir")]
     #[test]
     fn test_avar2_round_trips() {
         use crate::convertors::fontir::{BabelfontIrSource, CompilationOptions};
-        let original = std::fs::read(AVAR2).unwrap();
-        let compiled = BabelfontIrSource::compile(
-            load_bytes(&original).unwrap(),
-            CompilationOptions::default(),
-        )
-        .unwrap();
         // drawn at user locations, through avar and avar2
         let drawn = |binary: &[u8], wght: f32, wdth: f32| {
             let fontref = skrifa::FontRef::new(binary).unwrap();
@@ -2498,18 +2615,35 @@ mod tests {
                 .flat_map(|p| p.nodes.iter().map(|n| (n.x.round(), n.y.round())))
                 .collect::<Vec<_>>()
         };
-        for (wght, wdth) in [(900.0, 75.0), (500.0, 75.0), (900.0, 90.0), (300.0, 100.0)] {
-            assert_eq!(
-                drawn(&compiled, wght, wdth),
-                drawn(&original, wght, wdth),
-                "wght {wght} wdth {wdth}"
+        let instances = |binary: &[u8]| {
+            let fontref = skrifa::FontRef::new(binary).unwrap();
+            fontref
+                .named_instances()
+                .iter()
+                .map(|i| i.user_coords().collect::<Vec<_>>())
+                .collect::<Vec<_>>()
+        };
+        for path in [AVAR2, AVAR2_NO_MAP] {
+            let original = std::fs::read(path).unwrap();
+            let compiled = BabelfontIrSource::compile(
+                load_bytes(&original).unwrap(),
+                CompilationOptions::default(),
+            )
+            .unwrap();
+            for (wght, wdth) in [(900.0, 75.0), (500.0, 75.0), (900.0, 90.0), (300.0, 100.0)] {
+                assert_eq!(
+                    drawn(&compiled, wght, wdth),
+                    drawn(&original, wght, wdth),
+                    "{path} wght {wght} wdth {wdth}"
+                );
+            }
+            // the mapping does something: wght 900 draws as 850 there
+            assert_ne!(
+                drawn(&original, 900.0, 75.0),
+                drawn(&original, 900.0, 100.0)
             );
+            assert_eq!(instances(&compiled), instances(&original), "{path}");
         }
-        // the mapping does something: wght 900 draws as 850 there
-        assert_ne!(
-            drawn(&original, 900.0, 75.0),
-            drawn(&original, 900.0, 100.0)
-        );
     }
 
     #[cfg(feature = "fontir")]
