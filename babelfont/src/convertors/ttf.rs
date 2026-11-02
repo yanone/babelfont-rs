@@ -1038,7 +1038,8 @@ fn instance_name_at(font: &Font, location: &DesignLocation) -> Option<crate::I18
 fn intermediate_locations(
     fontref: &skrifa::FontRef,
     axes: &[crate::Axis],
-    masters: &[crate::Master],
+    // the masters' normalized coordinates
+    masters: &[Vec<F2Dot14>],
     gid: GlyphId,
 ) -> Result<Vec<DesignLocation>, BabelfontError> {
     let Ok(gvar) = fontref.gvar() else {
@@ -1047,12 +1048,7 @@ fn intermediate_locations(
     let Some(data) = gvar.glyph_variation_data(gid)? else {
         return Ok(vec![]);
     };
-    let at_master = |coords: &[F2Dot14]| {
-        masters.iter().any(|master| {
-            fontdrasil_location_to_skrifa_location(master.location.clone(), axes)
-                .is_ok_and(|master_coords| master_coords == coords)
-        })
-    };
+    let at_master = |coords: &[F2Dot14]| masters.iter().any(|master| master == coords);
     let mut seen: Vec<Vec<F2Dot14>> = vec![];
     let mut locations = vec![];
     for tuple in data.tuples() {
@@ -1202,6 +1198,11 @@ fn load_glyphs(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babelfo
 
     // Now do it again and load layers
     let default_master_id = font.masters.last().map(|m| m.id.clone());
+    let master_coords = font
+        .masters
+        .iter()
+        .map(|m| fontdrasil_location_to_skrifa_location(m.location.clone(), &font.axes))
+        .collect::<Result<Vec<_>, _>>()?;
     for (gid, glyph) in font.glyphs.iter_mut().enumerate() {
         let gid = GlyphId::new(gid as u32);
         for master in &font.masters {
@@ -1217,7 +1218,7 @@ fn load_glyphs(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babelfo
         let Some(default_master_id) = &default_master_id else {
             continue;
         };
-        for location in intermediate_locations(fontref, &font.axes, &font.masters, gid)? {
+        for location in intermediate_locations(fontref, &font.axes, &master_coords, gid)? {
             let mut layer = load_layer(
                 &font.axes,
                 fontref,

@@ -1261,3 +1261,129 @@ impl FontFilter for MoveMarksFromFeatures {
             .action(clap::ArgAction::SetTrue)
     }
 }
+
+#[cfg(all(test, feature = "ttf"))]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
+mod tests {
+    use super::*;
+    use crate::{Anchor, Axis, Features, Glyph, Layer, Master, Tag};
+    use fontdrasil::coords::{DesignCoord, DesignLocation, UserCoord};
+
+    /// A variable font of many bases and marks, attachment written into the
+    /// feature code as a decompiler writes it
+    fn many_marks(bases: usize, marks: usize) -> Font {
+        let mut font = Font::new();
+        let mut axis = Axis::new("Weight", Tag::new(b"wght"));
+        axis.min = Some(UserCoord::new(100.0));
+        axis.default = Some(UserCoord::new(400.0));
+        axis.max = Some(UserCoord::new(900.0));
+        font.axes.push(axis);
+        let weights = [100.0, 400.0, 900.0];
+        for w in weights {
+            let mut location = DesignLocation::new();
+            location.insert(Tag::new(b"wght"), DesignCoord::new(w));
+            font.masters
+                .push(Master::new(format!("w{w}"), format!("m{w}"), location));
+        }
+        let anchor = |name: &str, x: f64, y: f64| Anchor {
+            id: None,
+            name: name.into(),
+            x,
+            y,
+            format_specific: Default::default(),
+        };
+        let metric = |v: f64| {
+            format!(
+                "(wght=100:{} wght=400:{} wght=900:{})",
+                v,
+                v + 10.0,
+                v + 30.0
+            )
+        };
+        let mut fea = String::from("languagesystem DFLT dflt;\nlanguagesystem latn dflt;\n");
+        for m in 0..marks {
+            let mut glyph = Glyph::new(&format!("mark{m}"));
+            glyph.codepoints = vec![0x300 + m as u32];
+            glyph.category = GlyphCategory::Mark;
+            for (i, master) in font.masters.iter().enumerate() {
+                let mut layer = Layer::new(0.0);
+                layer.master = LayerType::DefaultForMaster(master.id.clone());
+                layer
+                    .anchors
+                    .push(anchor("_top", 100.0 + [0.0, 10.0, 30.0][i], 500.0));
+                glyph.layers.push(layer);
+            }
+            font.glyphs.push(glyph);
+            fea.push_str(&format!(
+                "markClass mark{m} <anchor {} 500> @top;\n",
+                metric(100.0)
+            ));
+        }
+        fea.push_str("lookup m {\n");
+        for b in 0..bases {
+            let mut glyph = Glyph::new(&format!("base{b}"));
+            glyph.codepoints = vec![0x4E00 + b as u32];
+            glyph.category = GlyphCategory::Base;
+            let x = (b % 500) as f64;
+            for (i, master) in font.masters.iter().enumerate() {
+                let mut layer = Layer::new(600.0);
+                layer.master = LayerType::DefaultForMaster(master.id.clone());
+                layer
+                    .anchors
+                    .push(anchor("top", x + [0.0, 10.0, 30.0][i], 700.0));
+                glyph.layers.push(layer);
+            }
+            font.glyphs.push(glyph);
+            fea.push_str(&format!(
+                "    pos base base{b} <anchor {} 700> mark @top;\n",
+                metric(x)
+            ));
+        }
+        fea.push_str("} m;\nfeature mark { lookup m; } mark;\n");
+        font.features = Features::from_fea(&fea);
+        font
+    }
+
+    #[test]
+    fn test_many_marks_move_within_a_budget() {
+        // 2000 bases by 60 marks: 120,000 attachments to compare, at three
+        // masters. Reading each anchor's names at each master per attachment
+        // took minutes on SFNS.
+        let mut font = many_marks(2000, 60);
+        let props = GlyphProps::new(&font, None);
+        let start = std::time::Instant::now();
+        MoveMarksFromFeatures::with_glyph_props(props)
+            .apply(&mut font)
+            .unwrap();
+        let elapsed = start.elapsed();
+        assert!(
+            !font.features.to_fea().contains("pos base"),
+            "{}",
+            font.features.to_fea()
+        );
+        assert!(
+            elapsed < std::time::Duration::from_secs(20),
+            "took {elapsed:?}"
+        );
+    }
+
+    #[test]
+    fn test_an_anchor_off_its_attachment_keeps_it() {
+        let mut font = many_marks(20, 3);
+        let layer = &mut font.glyphs.get_mut("base7").unwrap().layers[2];
+        layer.anchors[0].x += 1.0;
+        let mut marked = many_marks(20, 3);
+        let layer = &mut marked.glyphs.get_mut("mark1").unwrap().layers[2];
+        layer.anchors[0].x += 1.0;
+        let props = GlyphProps::new(&marked, None);
+        MoveMarksFromFeatures::with_glyph_props(props)
+            .apply(&mut marked)
+            .unwrap();
+        assert!(marked.features.to_fea().contains("pos base base7"));
+        let props = GlyphProps::new(&font, None);
+        MoveMarksFromFeatures::with_glyph_props(props)
+            .apply(&mut font)
+            .unwrap();
+        assert!(font.features.to_fea().contains("pos base base7"));
+    }
+}

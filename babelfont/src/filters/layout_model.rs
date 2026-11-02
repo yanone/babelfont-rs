@@ -6,7 +6,9 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
-use fea_rs_ast::{FeatureFile, GlyphContainer, LookupBlock, Metric, Statement, ToplevelItem};
+use fea_rs_ast::{
+    AsFea, FeatureFile, GlyphContainer, LookupBlock, Metric, Statement, ToplevelItem,
+};
 use smol_str::SmolStr;
 
 use crate::{Font, GlyphCategory, layout::expand::expand_glyph_container};
@@ -249,6 +251,7 @@ fn describe(
             .flat_map(|name| mark_classes.get(name).into_iter().flatten().cloned())
             .collect()
     };
+    let mut seen: HashSet<String> = HashSet::new();
     for statement in statements {
         if let Statement::LookupFlag(flag) = statement {
             info.flags = Flags {
@@ -274,17 +277,31 @@ fn describe(
         };
         info.gpos |= gpos;
         info.kinds.insert(kind_key(kind));
+        // a class in many rules is expanded once
+        let mut touch = |container: &GlyphContainer, info: &mut LookupInfo| {
+            let key = match container {
+                GlyphContainer::GlyphName(name) => {
+                    info.touched.insert(name.name.clone());
+                    return;
+                }
+                GlyphContainer::GlyphClassName(name) => name.to_string(),
+                other => other.as_fea(""),
+            };
+            if seen.insert(key) {
+                info.touched.extend(expander.expand(container));
+            }
+        };
         match statement {
             Statement::SinglePos(pos) => {
                 for (glyphs, _) in &pos.pos {
-                    info.touched.extend(expander.expand(glyphs));
+                    touch(glyphs, &mut info);
                 }
             }
             Statement::PairPos(pos) => {
-                info.touched.extend(expander.expand(&pos.glyphs_1));
-                info.touched.extend(expander.expand(&pos.glyphs_2));
+                touch(&pos.glyphs_1, &mut info);
+                touch(&pos.glyphs_2, &mut info);
             }
-            Statement::CursivePos(pos) => info.touched.extend(expander.expand(&pos.glyphclass)),
+            Statement::CursivePos(pos) => touch(&pos.glyphclass, &mut info),
             Statement::MarkBasePos(pos) => {
                 info.touched
                     .extend(marks_of(&mut pos.marks.iter().map(|(_, c)| &c.name)));

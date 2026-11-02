@@ -110,16 +110,19 @@ impl FontFilter for DropImpliedOnCurves {
             }
             let path_count = layers[0].paths().count();
             for path_index in 0..path_count {
-                let paths = |layer: &Layer| layer.paths().nth(path_index).cloned();
-                let Some(first) = paths(layers[0]) else {
+                // each layer's path once, not once per node
+                let paths: Option<Vec<_>> = layers
+                    .iter()
+                    .map(|layer| layer.paths().nth(path_index).cloned())
+                    .collect();
+                let Some(paths) = paths else {
+                    continue;
+                };
+                let Some(first) = paths.first() else {
                     continue;
                 };
                 let implied: Vec<usize> = (0..first.nodes.len())
-                    .filter(|&i| {
-                        layers
-                            .iter()
-                            .all(|layer| paths(layer).is_some_and(|p| is_implied(&p, i)))
-                    })
+                    .filter(|&i| paths.iter().all(|p| is_implied(p, i)))
                     .collect();
                 if implied.is_empty() {
                     continue;

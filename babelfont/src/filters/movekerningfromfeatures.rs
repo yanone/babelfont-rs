@@ -106,10 +106,18 @@ impl Reader<'_> {
     fn side(&self, container: &GlyphContainer, marks: Marks) -> Side {
         match container {
             GlyphContainer::GlyphName(name) => Side::Glyph(name.name.clone()),
-            GlyphContainer::GlyphClassName(name) => Side::Class(
-                Some(name.trim_start_matches('@').into()),
-                self.expand(container, marks),
-            ),
+            // a decompiler's name for a pair class says nothing: name the group
+            // for its first glyph
+            GlyphContainer::GlyphClassName(name)
+                if !name
+                    .trim_start_matches('@')
+                    .starts_with(sr_aef::PAIR_CLASS_PREFIX) =>
+            {
+                Side::Class(
+                    Some(name.trim_start_matches('@').into()),
+                    self.expand(container, marks),
+                )
+            }
             _ => Side::Class(None, self.expand(container, marks)),
         }
     }
@@ -822,6 +830,28 @@ impl FontFilter for MoveKerningFromFeatures {
         let markers = vec![(first, marker_tags.iter().map(|t| t.as_str()).collect())];
         if !remove_lookup_blocks(&mut font.features, &names, &markers) {
             font.features = remove_lookups_from_file(&file, &names, &markers);
+        }
+        // the decompiler's pair classes nothing refers to any more
+        let fea = font.features.to_fea();
+        let used: HashSet<&str> = regex::Regex::new(r"@([A-Za-z0-9_.]+)")
+            .map(|p| {
+                p.captures_iter(&fea)
+                    .filter(|c| !c.get(0).is_some_and(|m| fea[m.end()..].starts_with(" = [")))
+                    .filter_map(|c| c.get(1).map(|m| m.as_str()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let unused: Vec<SmolStr> = font
+            .features
+            .classes
+            .keys()
+            .filter(|name| {
+                name.starts_with(sr_aef::PAIR_CLASS_PREFIX) && !used.contains(name.as_str())
+            })
+            .cloned()
+            .collect();
+        for name in unused {
+            font.features.classes.shift_remove(&name);
         }
         // A class pair that kerns nothing anywhere says nothing
         let keep: Vec<bool> = pairs
