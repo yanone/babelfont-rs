@@ -288,7 +288,7 @@ impl<'a> UncompileContext<'a> {
     }
 
     fn uncompile_gpos2_format2(
-        &self,
+        &mut self,
         lookupblock: &mut LookupBlock,
         gpos2f2: PairPosFormat2,
     ) -> Result<(), ReadError> {
@@ -345,28 +345,58 @@ impl<'a> UncompileContext<'a> {
                 classes2.insert(0, rest);
             }
         }
+        // each class written once, by name where large
+        let mut containers1: HashMap<u16, GlyphContainer> = HashMap::new();
+        let mut keys1: Vec<u16> = classes1.keys().copied().collect();
+        keys1.sort();
+        for class in keys1 {
+            containers1.insert(class, self.pair_class(classes1.get(&class)));
+        }
+        let mut containers2: HashMap<u16, GlyphContainer> = HashMap::new();
+        let mut keys2: Vec<u16> = classes2.keys().copied().collect();
+        keys2.sort();
+        for class in keys2 {
+            containers2.insert(class, self.pair_class(classes2.get(&class)));
+        }
         for (class1, record) in gpos2f2.class1_records().iter().enumerate() {
             let Ok(record) = record else { continue };
             if !classes1.contains_key(&(class1 as u16)) {
                 continue;
             }
-            for (class2, subrecord) in record.class2_records().iter().enumerate() {
+            // pairs that adjust nothing say nothing a missing pair does not,
+            // but one keeps the row's first glyphs covered (later subtables
+            // never see them); a dense class matrix is mostly zeros
+            let mut row_written = false;
+            let records: Vec<_> = record.class2_records().iter().enumerate().collect();
+            let any_value = records.iter().any(|(class2, subrecord)| {
+                classes2.contains_key(&(*class2 as u16))
+                    && subrecord
+                        .as_ref()
+                        .is_ok_and(|r| has_value(r.value_record1()) || has_value(r.value_record2()))
+            });
+            for (class2, subrecord) in records {
                 if !classes2.contains_key(&(class2 as u16)) {
                     continue;
                 }
                 let Ok(subrecord) = subrecord else { continue };
+                let zero =
+                    !has_value(subrecord.value_record1()) && !has_value(subrecord.value_record2());
+                if zero && (any_value || row_written) {
+                    continue;
+                }
+                row_written = true;
 
                 let vr1 = self.resolve_value_record(subrecord.value_record1(), offset_data)?;
                 let vr2 = self.resolve_value_record(subrecord.value_record2(), offset_data)?;
+                let (Some(first), Some(second)) = (
+                    containers1.get(&(class1 as u16)).cloned(),
+                    containers2.get(&(class2 as u16)).cloned(),
+                ) else {
+                    continue;
+                };
                 let statement = Statement::PairPos(PairPosStatement::new(
-                    GlyphContainer::GlyphClass(GlyphClass::new(
-                        classes1.get(&(class1 as u16)).cloned().unwrap_or_default(),
-                        0..0,
-                    )),
-                    GlyphContainer::GlyphClass(GlyphClass::new(
-                        classes2.get(&(class2 as u16)).cloned().unwrap_or_default(),
-                        0..0,
-                    )),
+                    first,
+                    second,
                     vr1.clone(),
                     if vr2.is_some() {
                         Some(vr2.clone())
@@ -893,6 +923,34 @@ impl<'a> UncompileContext<'a> {
             defined.sort();
             (defined == wanted).then(|| name.clone())
         })
+    }
+
+    /// A class of a pair positioning class definition: by name where it is
+    /// large, so that every pair it is in does not write it out again (class
+    /// kerning of hundreds of classes otherwise writes gigabytes)
+    fn pair_class(&mut self, glyphs: Option<&Vec<GlyphContainer>>) -> GlyphContainer {
+        let glyphs = glyphs.cloned().unwrap_or_default();
+        if glyphs.len() < crate::PROMOTE_TO_NAMED_CLASS_THRESHOLD {
+            return GlyphContainer::GlyphClass(GlyphClass::new(glyphs, 0..0));
+        }
+        let key = glyphs
+            .iter()
+            .map(|g| g.as_fea(""))
+            .collect::<Vec<_>>()
+            .join(" ");
+        if let Some(name) = self.pair_class_names.get(&key) {
+            return GlyphContainer::GlyphClassName(format!("@{name}").into());
+        }
+        let name: SmolStr = format!(
+            "{}{}",
+            crate::PAIR_CLASS_PREFIX,
+            self.pair_class_names.len() + 1
+        )
+        .into();
+        self.pair_class_names.insert(key, name.clone());
+        self.named_classes
+            .insert(name.clone(), GlyphClass::new(glyphs, 0..0));
+        GlyphContainer::GlyphClassName(format!("@{name}").into())
     }
 
     /// Whether no ligature has an anchor of this name and its component
