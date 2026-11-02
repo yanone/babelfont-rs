@@ -50,12 +50,14 @@ pub fn load_bytes(binary: &[u8]) -> Result<Font, BabelfontError> {
 
     load_axes(&fontref, &mut font)?;
     load_axis_mappings(&fontref, &mut font)?;
+    load_cross_axis_mappings(&fontref, &mut font)?;
     load_names(&fontref, &mut font)?;
     load_custom_ot_values(&fontref, &mut font)?;
     load_instances(&fontref, &mut font)?;
     load_masters(&fontref, &mut font)?;
     load_glyphs(&fontref, &mut font)?;
     load_features(&fontref, &mut font)?;
+    load_stat(&fontref, &mut font)?;
     load_legacy_kerning(&fontref, &mut font)?;
     name_unnamed_glyphs(&fontref, &mut font)?;
     name_placeholder_anchors(&mut font);
@@ -427,6 +429,215 @@ fn load_axis_mappings(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), 
             axis.map = Some(map_vec);
         }
     }
+    Ok(())
+}
+
+/// The peaks of a variation store's regions that move anything
+fn variation_store_peaks(
+    store: &skrifa::raw::tables::variations::ItemVariationStore,
+) -> Result<Vec<Vec<F2Dot14>>, BabelfontError> {
+    let regions = store.variation_region_list()?.variation_regions();
+    let mut peaks: Vec<Vec<F2Dot14>> = vec![];
+    for data in store.item_variation_data().iter().flatten() {
+        let Ok(data) = data else { continue };
+        for (column, region_index) in data.region_indexes().iter().enumerate() {
+            let moves = (0..data.item_count())
+                .any(|item| data.delta_set(item).nth(column).is_some_and(|d| d != 0));
+            let Ok(region) = regions.get(region_index.get() as usize) else {
+                continue;
+            };
+            let peak: Vec<F2Dot14> = region
+                .region_axes()
+                .iter()
+                .map(|axis| axis.peak_coord())
+                .collect();
+            if moves && !peaks.contains(&peak) {
+                peaks.push(peak);
+            }
+        }
+    }
+    Ok(peaks)
+}
+
+/// avar version 2's mappings between locations: each region of its variation
+/// store peaks where a mapping's input is; its output is the input moved by
+/// the store's deltas there
+fn load_cross_axis_mappings(
+    fontref: &skrifa::FontRef,
+    font: &mut Font,
+) -> Result<(), BabelfontError> {
+    let Ok(avar) = fontref.avar() else {
+        return Ok(());
+    };
+    let (Some(Ok(store)), Some(Ok(index_map))) = (avar.var_store(), avar.axis_index_map()) else {
+        return Ok(());
+    };
+    let converters = font
+        .axes
+        .iter()
+        .map(|axis| axis._converter())
+        .collect::<Result<Vec<_>, _>>()?;
+    for peak in variation_store_peaks(&store)? {
+        let mut input = DesignLocation::new();
+        let mut output = DesignLocation::new();
+        let mut moved = false;
+        for (index, ((axis, converter), coord)) in
+            font.axes.iter().zip(&converters).zip(&peak).enumerate()
+        {
+            let delta = match index_map.get(index as u32) {
+                Ok(delta_index) => store.compute_delta(delta_index, &peak).unwrap_or(0),
+                Err(_) => 0,
+            };
+            moved |= delta != 0;
+            let normalized = coord.to_f32() as f64;
+            input.insert(
+                axis.tag,
+                NormalizedCoord::new(normalized).to_design(converter),
+            );
+            output.insert(
+                axis.tag,
+                NormalizedCoord::new(normalized + delta as f64 / 16384.0).to_design(converter),
+            );
+        }
+        if moved {
+            font.cross_axis_mappings
+                .push(crate::axis::CrossAxisMapping {
+                    description: None,
+                    input,
+                    output,
+                    active: true,
+                });
+        }
+    }
+    Ok(())
+}
+
+/// A string as feature code writes it, for Windows: other than printable
+/// ASCII as `\XXXX` escapes
+fn fea_string(text: &str) -> String {
+    let mut out = String::new();
+    for unit in text.encode_utf16() {
+        match char::from_u32(unit as u32) {
+            Some(c) if c.is_ascii() && !c.is_ascii_control() && c != '"' && c != '\\' => {
+                out.push(c)
+            }
+            _ => out.push_str(&format!("\\{unit:04x}")),
+        }
+    }
+    out
+}
+
+/// The STAT table, as feature code: a compiler that finds it there writes it
+/// as it is, rather than the simpler one it builds itself
+fn load_stat(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), BabelfontError> {
+    use skrifa::raw::tables::stat::AxisValue;
+    let Ok(stat) = fontref.stat() else {
+        return Ok(());
+    };
+    let name = |id: StringId| -> String {
+        fea_string(
+            name_id_to_i18n(fontref, id)
+                .get_default()
+                .map(String::as_str)
+                .unwrap_or_default(),
+        )
+    };
+    let design_axes = stat.design_axes()?;
+    let tag_of = |index: u16| design_axes.get(index as usize).map(|a| a.axis_tag());
+    let mut lines = vec!["table STAT {".to_string()];
+    // by its name: a compiler knows only the names feature code states
+    if let Some(id) = stat.elided_fallback_name_id() {
+        lines.push(format!(
+            "    ElidedFallbackName {{ name \"{}\"; }};",
+            name(id)
+        ));
+    }
+    for axis in design_axes {
+        lines.push(format!(
+            "    DesignAxis {} {} {{ name \"{}\"; }};",
+            axis.axis_tag(),
+            axis.axis_ordering(),
+            name(axis.axis_name_id())
+        ));
+    }
+    let number = |value: skrifa::raw::types::Fixed| {
+        let value = value.to_f64();
+        if value.fract() == 0.0 {
+            format!("{value:.0}")
+        } else {
+            format!("{value}")
+        }
+    };
+    if let Some(Ok(values)) = stat.offset_to_axis_values() {
+        for value in values.axis_values().iter().flatten() {
+            let (flags, name_id, locations) = match &value {
+                AxisValue::Format1(v) => (
+                    v.flags(),
+                    v.value_name_id(),
+                    vec![format!(
+                        "{} {}",
+                        tag_of(v.axis_index()).unwrap_or_default(),
+                        number(v.value())
+                    )],
+                ),
+                AxisValue::Format2(v) => (
+                    v.flags(),
+                    v.value_name_id(),
+                    vec![format!(
+                        "{} {} {} {}",
+                        tag_of(v.axis_index()).unwrap_or_default(),
+                        number(v.nominal_value()),
+                        number(v.range_min_value()),
+                        number(v.range_max_value())
+                    )],
+                ),
+                AxisValue::Format3(v) => (
+                    v.flags(),
+                    v.value_name_id(),
+                    vec![format!(
+                        "{} {} {}",
+                        tag_of(v.axis_index()).unwrap_or_default(),
+                        number(v.value()),
+                        number(v.linked_value())
+                    )],
+                ),
+                AxisValue::Format4(v) => (
+                    v.flags(),
+                    v.value_name_id(),
+                    v.axis_values()
+                        .iter()
+                        .map(|record| {
+                            format!(
+                                "{} {}",
+                                tag_of(record.axis_index()).unwrap_or_default(),
+                                number(record.value())
+                            )
+                        })
+                        .collect(),
+                ),
+            };
+            lines.push("    AxisValue {".to_string());
+            for location in locations {
+                lines.push(format!("        location {location};"));
+            }
+            lines.push(format!("        name \"{}\";", name(name_id)));
+            let mut flag_names = vec![];
+            if flags.bits() & 0x1 != 0 {
+                flag_names.push("OlderSiblingFontAttribute");
+            }
+            if flags.bits() & 0x2 != 0 {
+                flag_names.push("ElidableAxisValueName");
+            }
+            if !flag_names.is_empty() {
+                lines.push(format!("        flag {};", flag_names.join(" ")));
+            }
+            lines.push("    };".to_string());
+        }
+    }
+    lines.push("} STAT;".to_string());
+    font.features
+        .prefixes
+        .insert("STAT".into(), PossiblyAutomaticCode::new(lines.join("\n")));
     Ok(())
 }
 
@@ -1450,6 +1661,8 @@ mod tests {
     const VARIABLE: &str = "resources/ttf/Variable.ttf";
     const VARIABLE_NO_HVAR: &str = "resources/ttf/VariableNoHvar.ttf";
     const ANCHORS: &str = "resources/ttf/Anchors.ttf";
+    const AVAR2: &str = "resources/ttf/Avar2.ttf";
+    const RTL_KERNING: &str = "resources/ttf/RtlKerning.ttf";
 
     fn master<'a>(font: &'a Font, name: &str) -> &'a crate::Master {
         font.masters
@@ -2039,6 +2252,119 @@ mod tests {
             .map(|a| a.x);
         assert_eq!(moved, Some(280.0));
     }
+    /// STAT's axis values: format, location, flags and name
+    fn stat_values(binary: &[u8]) -> Vec<String> {
+        use skrifa::raw::tables::stat::AxisValue;
+        let fontref = skrifa::FontRef::new(binary).unwrap();
+        let stat = fontref.stat().unwrap();
+        let name = |id: StringId| {
+            name_id_to_i18n(&fontref, id)
+                .get_default()
+                .cloned()
+                .unwrap_or_default()
+        };
+        stat.offset_to_axis_values()
+            .unwrap()
+            .unwrap()
+            .axis_values()
+            .iter()
+            .flatten()
+            .map(|value| match value {
+                AxisValue::Format1(v) => {
+                    format!(
+                        "1 {} {} {}",
+                        v.value(),
+                        v.flags().bits(),
+                        name(v.value_name_id())
+                    )
+                }
+                AxisValue::Format2(v) => format!(
+                    "2 {} {} {} {} {}",
+                    v.nominal_value(),
+                    v.range_min_value(),
+                    v.range_max_value(),
+                    v.flags().bits(),
+                    name(v.value_name_id())
+                ),
+                AxisValue::Format3(v) => format!(
+                    "3 {} {} {} {}",
+                    v.value(),
+                    v.linked_value(),
+                    v.flags().bits(),
+                    name(v.value_name_id())
+                ),
+                AxisValue::Format4(v) => format!("4 {}", name(v.value_name_id())),
+            })
+            .collect()
+    }
+
+    #[cfg(feature = "fontir")]
+    #[test]
+    fn test_stat_round_trips() {
+        use crate::convertors::fontir::{BabelfontIrSource, CompilationOptions};
+        let original = std::fs::read(VARIABLE).unwrap();
+        let font = load_bytes(&original).unwrap();
+        let code = &font.features.prefixes.get("STAT").unwrap().code;
+        assert!(code.contains("location wght 900 800 900;"), "{code}");
+        assert!(code.contains("location wght 400 700;"), "{code}");
+        assert!(code.contains("flag ElidableAxisValueName;"), "{code}");
+        let compiled = BabelfontIrSource::compile(font, CompilationOptions::default()).unwrap();
+        let values = stat_values(&original);
+        assert_eq!(values.len(), 3);
+        assert_eq!(stat_values(&compiled), values);
+    }
+
+    #[test]
+    fn test_avar2_mappings() {
+        let font = load(AVAR2).unwrap();
+        assert_eq!(font.cross_axis_mappings.len(), 1);
+        let mapping = &font.cross_axis_mappings[0];
+        let at = |loc: &DesignLocation, tag: &[u8; 4]| {
+            loc.get(Tag::new(tag))
+                .map(|c| (c.to_f64() * 10.0).round() / 10.0)
+        };
+        assert_eq!(at(&mapping.input, b"wght"), Some(900.0));
+        assert_eq!(at(&mapping.input, b"wdth"), Some(75.0));
+        assert_eq!(at(&mapping.output, b"wght"), Some(850.0));
+        assert_eq!(at(&mapping.output, b"wdth"), Some(75.0));
+    }
+
+    #[cfg(feature = "fontir")]
+    #[test]
+    fn test_avar2_round_trips() {
+        use crate::convertors::fontir::{BabelfontIrSource, CompilationOptions};
+        let original = std::fs::read(AVAR2).unwrap();
+        let compiled = BabelfontIrSource::compile(
+            load_bytes(&original).unwrap(),
+            CompilationOptions::default(),
+        )
+        .unwrap();
+        // drawn at user locations, through avar and avar2
+        let drawn = |binary: &[u8], wght: f32, wdth: f32| {
+            let fontref = skrifa::FontRef::new(binary).unwrap();
+            let location = fontref.axes().location([("wght", wght), ("wdth", wdth)]);
+            let coords: Vec<F2Dot14> = location.coords().to_vec();
+            let gid = fontref.charmap().map('I').unwrap();
+            draw_contours(&fontref, gid, LocationRef::new(&coords))
+                .unwrap()
+                .iter()
+                .flat_map(|p| p.nodes.iter().map(|n| (n.x.round(), n.y.round())))
+                .collect::<Vec<_>>()
+        };
+        for (wght, wdth) in [(900.0, 75.0), (500.0, 75.0), (900.0, 90.0), (300.0, 100.0)] {
+            assert_eq!(
+                drawn(&compiled, wght, wdth),
+                drawn(&original, wght, wdth),
+                "wght {wght} wdth {wdth}"
+            );
+        }
+        // the mapping does something: wght 900 draws as 850 there
+        assert_ne!(
+            drawn(&original, 900.0, 75.0),
+            drawn(&original, 900.0, 100.0)
+        );
+    }
+
     #[test]
     fn test_master_names_from_instances() {
         let font = load(VARIABLE).unwrap();
