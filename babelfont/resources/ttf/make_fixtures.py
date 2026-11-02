@@ -57,7 +57,8 @@ VariableNoHvar.ttf: the same without HVAR, its advances in gvar phantom points.
 Avar2.ttf: wght and wdth, four masters at the corners; an avar2 mapping moves
 wght 900 at wdth 75 to wght 850.
 Avar2NoMap.ttf: the same without avar's axis index map, and with named
-instances Black Condensed (wght 900, wdth 75) and Thin.
+instances Black Condensed (wght 900, wdth 75) and Thin; wght is "Gewicht" in
+German.
 
 Composites.ttf: wght (100-900, default 400) and wdth (75-100, default 100),
 masters on a grid of three weights by two widths, and a sparse master in the
@@ -548,6 +549,8 @@ for label, coords in [("Black Condensed", {"wght": 900, "wdth": 75}), ("Thin", {
     instance.coordinates = coords
     instance.subfamilyNameID = vf["name"].addName(label)
     vf["fvar"].instances.append(instance)
+# a German name for wght, which STAT and fvar share
+vf["name"].setName("Gewicht", vf["STAT"].table.DesignAxisRecord.Axis[0].AxisNameID, 3, 1, 0x407)
 vf.save("Avar2NoMap.ttf")
 
 
