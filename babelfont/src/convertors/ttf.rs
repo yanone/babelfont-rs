@@ -2135,6 +2135,53 @@ mod tests {
         assert!(fea.contains("pos Q' lookup"), "{fea}");
         assert!(!fea.contains("pos A Adot"), "{fea}");
     }
+    /// Outlines and advances of two fonts, drawn by skrifa at a location
+    fn drawn_at(binary: &[u8], glyph: &str, coords: &[F2Dot14]) -> (Vec<(f64, f64)>, f32) {
+        let fontref = skrifa::FontRef::new(binary).unwrap();
+        let names = sr_aef::unique_glyph_names(&fontref);
+        let gid = GlyphId::new(names.iter().position(|n| n == glyph).unwrap() as u32);
+        let location = LocationRef::new(coords);
+        let points = draw_contours(&fontref, gid, location)
+            .unwrap()
+            .iter()
+            .flat_map(|p| p.nodes.iter().map(|n| (n.x, n.y)))
+            .collect();
+        let advance = fontref
+            .glyph_metrics(Size::unscaled(), location)
+            .advance_width(gid)
+            .unwrap();
+        (points, advance)
+    }
+
+    #[cfg(feature = "fontir")]
+    #[test]
+    fn test_variable_font_round_trips_between_masters() {
+        // the recompiled font interpolates as the original does everywhere,
+        // not only at its masters
+        use crate::convertors::fontir::{BabelfontIrSource, CompilationOptions};
+        let original = std::fs::read(VARIABLE).unwrap();
+        let font = load_bytes(&original).unwrap();
+        let compiled = BabelfontIrSource::compile(font, CompilationOptions::default()).unwrap();
+        for step in -20..=20 {
+            let coords = [F2Dot14::from_f32(step as f32 / 20.0)];
+            for glyph in ["A", "Adot", "O", "Q", "brace", "parenleft", "acutecomb"] {
+                let (points, advance) = drawn_at(&original, glyph, &coords);
+                let (again, again_advance) = drawn_at(&compiled, glyph, &coords);
+                assert_eq!(advance, again_advance, "{glyph} advance at {step}/20");
+                assert_eq!(points.len(), again.len(), "{glyph} at {step}/20");
+                // A rasterizer rounds an interpolated point; an on-curve point
+                // that stays implied is the midpoint of rounded off-curves, so
+                // it may be half a unit off where the source stored it.
+                for (a, b) in points.iter().zip(&again) {
+                    assert!(
+                        (a.0 - b.0).abs() <= 0.5 && (a.1 - b.1).abs() <= 0.5,
+                        "{glyph} at {step}/20: {a:?} != {b:?}"
+                    );
+                }
+            }
+        }
+    }
+
     #[cfg(feature = "fontir")]
     #[test]
     fn test_variable_font_round_trips() {
