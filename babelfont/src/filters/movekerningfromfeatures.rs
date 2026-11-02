@@ -83,7 +83,8 @@ impl Reader<'_> {
         }
     }
 
-    /// The x advance a pair adjusts by, if that is all it does
+    /// The kerning a pair states: an x advance, or, as kerning is written for a
+    /// right-to-left script, an x placement and an x advance of one value
     fn advance(statement: &PairPosStatement) -> Option<Metric> {
         if statement.value_record_2.is_some() {
             return None;
@@ -94,7 +95,10 @@ impl Reader<'_> {
             Some(Metric::Scalar(v)) => *v == 0,
             Some(_) => false,
         };
-        if !unset(&record.x_placement)
+        let right_to_left = record.x_placement.is_some()
+            && record.x_placement == record.x_advance
+            && !unset(&record.x_placement);
+        if (!unset(&record.x_placement) && !right_to_left)
             || !unset(&record.y_placement)
             || !unset(&record.y_advance)
             || record.x_placement_device.is_some()

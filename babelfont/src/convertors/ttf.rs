@@ -2371,6 +2371,50 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "fontir")]
+    #[test]
+    fn test_right_to_left_kerning() {
+        use crate::convertors::fontir::{BabelfontIrSource, CompilationOptions};
+        // <v 0 v 0>, as kerning is written for Arabic, is kerning
+        let font = load(RTL_KERNING).unwrap();
+        let kerning = |font: &Font| font.masters[0].kerning.clone();
+        let expected = kerning(&font);
+        assert_eq!(
+            expected.get(&("alef-ar".into(), "beh-ar".into())),
+            Some(&-50)
+        );
+        assert_eq!(
+            expected.get(&("@beh-ar".into(), "alef-ar".into())),
+            Some(&-30)
+        );
+        assert!(
+            !font.features.to_fea().contains("pos "),
+            "{}",
+            font.features.to_fea()
+        );
+        // and a compiler writes it so again
+        let options = CompilationOptions {
+            dont_use_production_names: true,
+            ..Default::default()
+        };
+        let compiled = BabelfontIrSource::compile(font.clone(), options).unwrap();
+        let again = load_bytes(&compiled).unwrap();
+        for (left, right) in [
+            ("alef-ar", "beh-ar"),
+            ("beh-ar", "alef-ar"),
+            ("teh-ar", "alef-ar"),
+        ] {
+            assert_eq!(
+                kern_value(&again, &again.masters[0], left, right),
+                kern_value(&font, &font.masters[0], left, right),
+                "{left} {right}"
+            );
+        }
+        let fontref = skrifa::FontRef::new(&compiled).unwrap();
+        let fea = sr_aef::uncompile(&fontref, true).unwrap().as_fea("");
+        assert!(fea.contains("<-50 0 -50 0>"), "{fea}");
+    }
+
     #[test]
     fn test_master_names_from_instances() {
         let font = load(VARIABLE).unwrap();
