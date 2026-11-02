@@ -74,6 +74,24 @@ RtlKerning.ttf: Arabic alef, beh and teh; kerning as ufo2ft writes it for a
 right-to-left script, <v 0 v 0>: alef beh -50, and @BEHS [beh teh] against alef
 -30.
 
+Inter-Subset.ttf (not written by this script): Inter 4.001 (SIL Open Font
+License, see its name table), the variable font with opsz and wght as macOS
+users install it, subset by fontTools' pyftsubset:
+
+    pyftsubset Inter-VariableFont_opsz,wght.ttf --text="AHOTVWYaenostvƬÁáéöÅå.,1" \
+        --glyphs=uni01AC,uni01AC.base --layout-features=kern,mark,mkmk \
+        --glyph-names --notdef-outline --output-file=Inter-Subset.ttf
+
+uni01AC's points 0 and 7 coincide only in the opsz 32 / wght 900 master; its
+kerning is in an extension lookup with variable values.
+
+Coincident.ttf: wght 400 (default) to 900. A's last point lies on its first at
+400 only; B's start is passed again at 400 only; C has an on-curve on its start
+at 400 only and closes with a curve back to it; D marks its box with two
+single-point contours.
+
+Malformed.ttf and Cff.otf: see where they are written.
+
 Anchors.ttf: marks on a (top: acutecomb, bottom: dotbelowcomb, ogonek at the
 bottom right: uni0328 for U+0328), on the ligature f_f (top on each component),
 and acutecomb on acutecomb (mark-to-mark, the same mark class as on bases).
@@ -599,3 +617,114 @@ vf, _, _ = varLib.build(doc)
 vf["head"].created = vf["head"].modified = 0
 vf.recalcTimestamp = False
 vf.save("Composites.ttf")
+
+
+def points_glyph(*contours):
+    """A simple glyph of exactly these points, (x, y, on_curve): nothing is
+    merged, so a contour may end on its start or pass it again"""
+    from array import array
+    from fontTools.ttLib.tables._g_l_y_f import GlyphCoordinates
+    from fontTools.ttLib.tables import ttProgram
+    g = Glyph()
+    g.numberOfContours = len(contours)
+    g.coordinates = GlyphCoordinates([(x, y) for c in contours for x, y, _ in c])
+    g.flags = array("B", [int(on) for c in contours for _, _, on in c])
+    g.endPtsOfContours, end = [], -1
+    for c in contours:
+        end += len(c)
+        g.endPtsOfContours.append(end)
+    g.program = ttProgram.Program()
+    g.program.fromBytecode(b"")
+    return g
+
+
+def coincident_master(weight):
+    """Coincident.ttf's master at a weight: points that coincide at 400 only"""
+    bold = weight == 900
+    x = 40 if bold else 0
+    order = [".notdef", "A", "B", "C", "D"]
+    glyphs = {
+        ".notdef": Glyph(),
+        # the last point is the first at 400
+        "A": points_glyph([(0, 0, 1), (0, 500, 1), (500, 500, 1), (500, 0, 1), (x, 0, 1)]),
+        # the start is passed again at 400
+        "B": points_glyph([(250 + x, 250, 1), (0, 500, 1), (0, 0, 1), (250, 250, 1),
+                           (500, 0, 1), (500, 500, 1)]),
+        # an on-curve on the start at 400, and a closing curve back to it
+        "C": points_glyph([(0, 0, 1), (0, 500, 1), (500, 500, 1), (10 * x, 0, 1),
+                           (250, -100, 0)]),
+        # single-point contours, as a font marks a glyph's box with
+        "D": points_glyph([(100, 100, 1), (100, 400, 1), (400, 400, 1), (400, 100, 1)],
+                          [(0, -50 - x, 1)], [(500 + x, 700, 1)]),
+    }
+    fb = FontBuilder(1000, isTTF=True)
+    fb.setupGlyphOrder(order)
+    fb.setupCharacterMap({ord(c): c for c in "ABCD"})
+    fb.setupGlyf(glyphs)
+    fb.setupHorizontalMetrics({g: (600, 0) for g in order})
+    fb.setupHorizontalHeader(ascent=800, descent=-200)
+    fb.setupNameTable({"familyName": "Fixture Coincident", "styleName": "Regular"})
+    fb.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWinAscent=800, usWinDescent=200)
+    fb.setupPost()
+    buf = io.BytesIO()
+    fb.font.save(buf)
+    buf.seek(0)
+    return TTFont(buf)
+
+
+doc = DesignSpaceDocument()
+doc.addAxisDescriptor(name="Weight", tag="wght", minimum=400, default=400, maximum=900)
+for weight in (400, 900):
+    source = doc.addSourceDescriptor(name=f"w{weight}", location={"Weight": weight})
+    source.font = coincident_master(weight)
+vf, _, _ = varLib.build(doc)
+vf["head"].created = vf["head"].modified = 0
+vf.recalcTimestamp = False
+vf.save("Coincident.ttf")
+
+
+# Malformed.ttf: no OS/2 table (as old Apple fonts); B and C components of
+# each other; n39 nests components 39 deep (n00 is a rectangle); D a
+# composite of A, as usual; the cmap maps Z to glyph ID 99, which is not there.
+order = [".notdef", "A", "B", "C", "D"] + [f"n{i:02}" for i in range(40)]
+fb = FontBuilder(1000, isTTF=True)
+fb.setupGlyphOrder(order)
+fb.setupCharacterMap({ord("A"): "A", ord("B"): "B", ord("D"): "D", ord("N"): "n39"})
+glyphs = {".notdef": Glyph(), "A": rect(50, 0, 450, 700), "B": rect(0, 0, 10, 10),
+          "C": rect(0, 0, 10, 10), "D": composite(("A", 0, 0, None)), "n00": rect(0, 0, 100, 100)}
+for i in range(1, 40):
+    glyphs[f"n{i:02}"] = composite((f"n{i - 1:02}", 10, 0, None))
+fb.setupGlyf(glyphs)
+fb.setupHorizontalMetrics({g: (500, 0) for g in order})
+fb.setupHorizontalHeader(ascent=800, descent=-200)
+fb.setupNameTable({"familyName": "Fixture Malformed", "styleName": "Regular"})
+fb.setupPost()
+buf = io.BytesIO()
+save(fb, buf)
+buf.seek(0)
+font = TTFont(buf, recalcBBoxes=False)
+font["glyf"]["B"] = composite(("C", 10, 0, None))
+font["glyf"]["C"] = composite(("B", 10, 0, None))
+for g in "BC":
+    font["glyf"][g].xMin = font["glyf"][g].yMin = font["glyf"][g].xMax = font["glyf"][g].yMax = 0
+for table in font["cmap"].tables:
+    table.cmap[ord("Z")] = "glyph00099"
+font.recalcTimestamp = False
+font.save("Malformed.ttf")
+
+
+# Cff.otf: a font with CFF outlines, which the reader refuses
+fb = FontBuilder(1000, isTTF=False)
+fb.setupGlyphOrder([".notdef", "A"])
+fb.setupCharacterMap({ord("A"): "A"})
+from fontTools.pens.t2CharStringPen import T2CharStringPen
+pen = T2CharStringPen(500, None)
+pen.moveTo((50, 0)); pen.lineTo((50, 700)); pen.lineTo((450, 700)); pen.lineTo((450, 0)); pen.closePath()
+fb.setupCFF("FixtureCff-Regular", {"FullName": "Fixture Cff"},
+            {".notdef": T2CharStringPen(500, None).getCharString(), "A": pen.getCharString()}, {})
+fb.setupHorizontalMetrics({".notdef": (500, 0), "A": (500, 50)})
+fb.setupHorizontalHeader(ascent=800, descent=-200)
+fb.setupNameTable({"familyName": "Fixture Cff", "styleName": "Regular"})
+fb.setupOS2()
+fb.setupPost()
+save(fb, "Cff.otf")
