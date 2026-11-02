@@ -109,6 +109,7 @@ reactive_stores = { version = "0.4.3", optional = true }
 csv = "1.4.0"
 
 [dev-dependencies]
+harfrust = "0.15"
 pretty_assertions = "1.4.1"
 rstest = "0.26.1"
 similar = "2.7.0"

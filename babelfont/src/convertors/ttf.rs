@@ -18,7 +18,7 @@ use skrifa::{
     prelude::{LocationRef, Size},
     raw::{
         TableProvider,
-        tables::{glyf, gpos::PositionSubtables, kern},
+        tables::{glyf, kern},
     },
     string::StringId,
 };
@@ -68,8 +68,10 @@ pub fn load_bytes(binary: &[u8]) -> Result<Font, BabelfontError> {
         use crate::filters::FontFilter;
         crate::filters::DropImpliedOnCurves.apply(&mut font)?;
         mark_smooth_points(&mut font);
-        crate::filters::MoveKerningFromFeatures.apply(&mut font)?;
-        crate::filters::MoveMarksFromFeatures.apply(&mut font)?;
+        let props = glyph_props(binary, &font);
+        crate::filters::MoveKerningFromFeatures::with_glyph_props(props.clone())
+            .apply(&mut font)?;
+        crate::filters::MoveMarksFromFeatures::with_glyph_props(props).apply(&mut font)?;
     }
     Ok(font)
 }
@@ -91,6 +93,31 @@ fn check_outline_format(fontref: &skrifa::FontRef) -> Result<(), BabelfontError>
     Err(BabelfontError::BinaryFontRead(format!(
         "Only TrueType-outline (glyf) fonts can be opened; {instead}"
     )))
+}
+
+/// Glyphs' codepoints, and the substitutions of the font's GSUB to carry their
+/// properties to the glyphs they reach, as a compiler of the same feature code
+/// follows them
+fn glyph_props(binary: &[u8], font: &Font) -> crate::filters::layout_model::GlyphProps {
+    use skrifa::raw::collections::IntSet;
+    let data: std::sync::Arc<[u8]> = binary.into();
+    let closure: crate::filters::layout_model::Closure =
+        std::sync::Arc::new(move |glyphs: &mut std::collections::BTreeSet<usize>| {
+            let Ok(fontref) = skrifa::FontRef::new(&data) else {
+                return;
+            };
+            let Ok(gsub) = fontref.gsub() else {
+                return;
+            };
+            let Ok(lookups) = gsub.collect_lookups(&IntSet::all()) else {
+                return;
+            };
+            let mut set: IntSet<GlyphId> = glyphs.iter().map(|g| GlyphId::new(*g as u32)).collect();
+            if gsub.closure_glyphs(&lookups, &mut set).is_ok() {
+                glyphs.extend(set.iter().map(|g| g.to_u32() as usize));
+            }
+        });
+    crate::filters::layout_model::GlyphProps::new(font, Some(closure))
 }
 
 /// Names each glyph that the post table leaves unnamed and the cmap encodes for
@@ -308,8 +335,9 @@ fn anchor_family(font: &Font, name: &str) -> (HashSet<SmolStr>, HashSet<SmolStr>
     (bases, marks)
 }
 
-/// Whether two anchor families may share a name: no glyph is in both, and
-/// their bases write different scripts, each known
+/// Whether two anchor families may share a name: no glyph is in both, their
+/// bases write different scripts, each known, and each family's marks are of
+/// its bases' script only
 fn may_share_name(
     font: &Font,
     (bases, marks): &(HashSet<SmolStr>, HashSet<SmolStr>),
@@ -331,8 +359,19 @@ fn may_share_name(
                 .map(|name| font.glyphs.get(name).and_then(glyph_script))
                 .collect()
         };
+        // marks of every script (combining accents) attach to bases of any:
+        // a shared name would attach them across scripts
+        let marks_match = |marks: &HashSet<SmolStr>, bases: &HashSet<String>| {
+            scripts(marks).is_some_and(|m| !m.is_empty() && m.is_subset(bases))
+        };
         match (scripts(bases), scripts(other_bases)) {
-            (Some(a), Some(b)) => !a.is_empty() && !b.is_empty() && a.is_disjoint(&b),
+            (Some(a), Some(b)) => {
+                !a.is_empty()
+                    && !b.is_empty()
+                    && a.is_disjoint(&b)
+                    && marks_match(marks, &a)
+                    && marks_match(other_marks, &b)
+            }
             _ => false,
         }
     }
@@ -1120,7 +1159,8 @@ fn instance_name_at(font: &Font, location: &DesignLocation) -> Option<crate::I18
 fn intermediate_locations(
     fontref: &skrifa::FontRef,
     axes: &[crate::Axis],
-    masters: &[crate::Master],
+    // the masters' normalized coordinates
+    masters: &[Vec<F2Dot14>],
     gid: GlyphId,
 ) -> Result<Vec<DesignLocation>, BabelfontError> {
     let Ok(gvar) = fontref.gvar() else {
@@ -1129,12 +1169,7 @@ fn intermediate_locations(
     let Some(data) = gvar.glyph_variation_data(gid)? else {
         return Ok(vec![]);
     };
-    let at_master = |coords: &[F2Dot14]| {
-        masters.iter().any(|master| {
-            fontdrasil_location_to_skrifa_location(master.location.clone(), axes)
-                .is_ok_and(|master_coords| master_coords == coords)
-        })
-    };
+    let at_master = |coords: &[F2Dot14]| masters.iter().any(|master| master == coords);
     let mut seen: Vec<Vec<F2Dot14>> = vec![];
     let mut locations = vec![];
     for tuple in data.tuples() {
@@ -1305,6 +1340,11 @@ fn load_glyphs(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babelfo
 
     // Now do it again and load layers
     let default_master_id = font.masters.last().map(|m| m.id.clone());
+    let master_coords = font
+        .masters
+        .iter()
+        .map(|m| fontdrasil_location_to_skrifa_location(m.location.clone(), &font.axes))
+        .collect::<Result<Vec<_>, _>>()?;
     for (gid, glyph) in font.glyphs.iter_mut().enumerate() {
         let gid = GlyphId::new(gid as u32);
         // One glyph that cannot be read is left empty, rather than failing
@@ -1336,7 +1376,7 @@ fn load_glyphs(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babelfo
         let Some(default_master_id) = &default_master_id else {
             continue;
         };
-        let intermediates = intermediate_locations(fontref, &font.axes, &font.masters, gid)
+        let intermediates = intermediate_locations(fontref, &font.axes, &master_coords, gid)
             .unwrap_or_else(|e| {
                 log::warn!("Glyph {}'s variations cannot be read: {e}", glyph.name);
                 vec![]
@@ -1369,12 +1409,6 @@ fn load_glyphs(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babelfo
     load_categories(fontref, font)
 }
 
-/// Each glyph's category from GDEF's glyph classes, so that a compiler does not
-/// guess one from its name; a mark with an advance is Spacing Combining. Without
-/// glyph classes every glyph is a base, so that the compiled font has none either
-/// and a shaper guesses them as it does for the binary. But a font that attaches
-/// marks gets glyph classes from a compiler anyway, so there a glyph a shaper
-/// takes for a mark is one.
 /// A layer for a glyph that cannot be read: its advance and nothing else
 fn unread_layer(
     axes: &[crate::Axis],
@@ -1393,18 +1427,52 @@ fn unread_layer(
     layer
 }
 
+/// Each glyph's category from GDEF's glyph classes, so that a compiler does not
+/// guess one from its name; a mark with an advance is Spacing Combining.
+/// Without glyph classes a shaper takes a glyph for a mark by its character
+/// (and a glyph substituted for it keeps that), while a compiler writes glyph
+/// classes from the categories: so a glyph a shaper takes for a mark is one,
+/// and so is a glyph substitutions reach from marks only.
 fn load_categories(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), BabelfontError> {
     let class_def = match fontref.gdef() {
         Ok(gdef) => gdef.glyph_class_def().transpose()?,
         Err(_) => None,
     };
-    let marks_by_codepoint = class_def.is_none() && attaches_marks(fontref)?;
+    let shaper_marks: HashSet<usize> = if class_def.is_none() {
+        use skrifa::raw::collections::IntSet;
+        let mut marks: IntSet<GlyphId> = IntSet::empty();
+        let mut bases: IntSet<GlyphId> = IntSet::empty();
+        for (gid, glyph) in font.glyphs.iter().enumerate() {
+            if glyph.codepoints.is_empty() {
+                continue;
+            }
+            let gid = GlyphId::new(gid as u32);
+            if shaper_mark(glyph) {
+                marks.insert(gid);
+            } else {
+                bases.insert(gid);
+            }
+        }
+        if let Ok(gsub) = fontref.gsub() {
+            if let Ok(lookups) = gsub.collect_lookups(&IntSet::all()) {
+                let _ = gsub.closure_glyphs(&lookups, &mut marks);
+                let _ = gsub.closure_glyphs(&lookups, &mut bases);
+            }
+        }
+        marks
+            .iter()
+            .filter(|g| !bases.contains(*g))
+            .map(|g| g.to_u32() as usize)
+            .collect()
+    } else {
+        HashSet::new()
+    };
     let metrics = fontref.glyph_metrics(Size::unscaled(), LocationRef::default());
     for (gid, glyph) in font.glyphs.iter_mut().enumerate() {
         let gid = GlyphId::new(gid as u32);
         let class = match &class_def {
             Some(class_def) => class_def.get(gid),
-            None if marks_by_codepoint && shaper_mark(glyph) => 3,
+            None if shaper_marks.contains(&(gid.to_u32() as usize)) => 3,
             None => 1,
         };
         glyph.category = match class {
@@ -1443,28 +1511,14 @@ fn shaper_mark(glyph: &Glyph) -> bool {
         })
 }
 
-/// Whether the font's GPOS attaches marks (to bases, ligatures or marks).
-fn attaches_marks(fontref: &skrifa::FontRef) -> Result<bool, BabelfontError> {
-    let Ok(gpos) = fontref.gpos() else {
-        return Ok(false);
-    };
-    for lookup in gpos.lookup_list()?.lookups().iter() {
-        if matches!(
-            lookup?.subtables()?,
-            PositionSubtables::MarkToBase(_)
-                | PositionSubtables::MarkToLig(_)
-                | PositionSubtables::MarkToMark(_)
-        ) {
-            return Ok(true);
-        }
-    }
-    Ok(false)
-}
-
 // This is only sound for mark class definitions
 fn load_features(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), BabelfontError> {
     let axes = font.fontdrasil_axes()?;
-    let uncompile_context = sr_aef::uncompile_context(fontref)
+    let mut uncompile_context = sr_aef::uncompile_context(fontref)
+        .map_err(|e| BabelfontError::BinaryFontRead(e.to_string()))?;
+    // ligature carets and attachment points; glyph classes are categories
+    let gdef = uncompile_context
+        .gdef_without_glyph_classes()
         .map_err(|e| BabelfontError::BinaryFontRead(e.to_string()))?;
     let master_ids = font
         .masters
@@ -1472,6 +1526,7 @@ fn load_features(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babel
         .map(|m| (m.id.clone(), m))
         .collect::<HashMap<_, _>>();
     let mut features = Features::default();
+    let gdef = load_ligature_carets(&mut font.glyphs, gdef, &master_ids, &axes)?;
     for (anchor_name, anchors) in uncompile_context.anchors {
         for (glyph_name, anchor) in anchors {
             if let Some(glyph) = font.glyphs.get_mut(&glyph_name) {
@@ -1561,9 +1616,21 @@ fn load_features(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babel
         .lookups
         .values()
         .map(|statements| statements.as_fea(""));
+    // Feature variations: condition sets, then the lookups each feature
+    // takes in their place (Outfit's rvrn swaps a glyph from wght 668 on)
+    let feature_variations =
+        uncompile_context
+            .feature_variations
+            .iter()
+            .flat_map(|(condition_set, variations)| {
+                std::iter::once(condition_set.as_fea(""))
+                    .chain(variations.iter().map(|variation| variation.as_fea("")))
+            });
     let code = std::iter::once(language_systems.join("\n"))
+        .chain(std::iter::once(gdef))
         .chain(std::iter::once(mark_class_definitions))
         .chain(lookups)
+        .chain(feature_variations)
         .filter(|block| !block.is_empty())
         .join("\n");
     if !code.is_empty() {
@@ -1579,6 +1646,60 @@ fn load_features(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babel
     }
     font.features = features;
     Ok(())
+}
+
+/// Ligature carets that vary become `caret_N` anchors, which a compiler
+/// writes the carets from (a feature file states no varying caret); the
+/// other GDEF statements, carets and attachment points, stay feature code.
+fn load_ligature_carets(
+    glyphs: &mut crate::GlyphList,
+    statements: Vec<sr_aef::fea_rs_ast::GdefStatement>,
+    master_ids: &HashMap<String, &crate::Master>,
+    axes: &Axes,
+) -> Result<String, BabelfontError> {
+    use sr_aef::fea_rs_ast::{GdefStatement, GlyphContainer, Metric};
+    let varies = statements.iter().any(|s| {
+        matches!(s, GdefStatement::LigatureCaretByPos(c)
+            if c.carets.iter().any(|m| matches!(m, Metric::Variable(_))))
+    });
+    let mut kept = vec![];
+    for statement in statements {
+        match statement {
+            GdefStatement::LigatureCaretByPos(caret) if varies => {
+                let GlyphContainer::GlyphName(name) = &caret.glyphs else {
+                    continue;
+                };
+                let Some(glyph) = glyphs.get_mut(&name.name) else {
+                    continue;
+                };
+                for layer in glyph.layers.iter_mut() {
+                    let Some(location) = layer_location(layer, master_ids) else {
+                        continue;
+                    };
+                    for (i, metric) in caret.carets.iter().enumerate() {
+                        let x = crate::features::metric_at(metric, &location, axes)?;
+                        layer.anchors.push(Anchor {
+                            id: None,
+                            name: format!("caret_{}", i + 1),
+                            x,
+                            y: 0.0,
+                            format_specific: FormatSpecific::default(),
+                        });
+                    }
+                }
+            }
+            GdefStatement::LigatureCaretByIndex(_) if varies => {
+                // a compiler writes the carets from anchors only where the
+                // feature code states none
+                log::warn!("A ligature caret by contour point is lost beside varying carets");
+            }
+            other => kept.push(other.as_fea("")),
+        }
+    }
+    if kept.is_empty() {
+        return Ok(String::new());
+    }
+    Ok(format!("table GDEF {{\n{}\n}} GDEF;", kept.join("\n")))
 }
 
 /// A kern table's horizontal format 0 pairs as the default master's kerning,
@@ -2048,6 +2169,8 @@ mod tests {
     const INTER: &str = "resources/ttf/Inter-Subset.ttf";
     const MALFORMED: &str = "resources/ttf/Malformed.ttf";
     const CFF: &str = "resources/ttf/Cff.otf";
+    const SHAPING_VARIABLE: &str = "resources/ttf/ShapingVariable.ttf";
+    const SHAPING_MKMK: &str = "resources/ttf/ShapingMkmk.ttf";
 
     fn master<'a>(font: &'a Font, name: &str) -> &'a crate::Master {
         font.masters
@@ -2591,8 +2714,11 @@ mod tests {
 
     #[test]
     fn test_categories_without_gdef() {
+        // a shaper takes gravecomb for a mark by its character: so does the
+        // compiled font's GDEF, and its advance is zeroed alike
         let font = load(STATIC_LEGACY).unwrap();
-        for glyph in ["gravecomb", "commaaccent", "x"] {
+        assert_category(&font, "gravecomb", GlyphCategory::Mark, Some("Nonspacing"));
+        for glyph in ["commaaccent", "x"] {
             assert_category(&font, glyph, GlyphCategory::Base, None);
         }
     }
@@ -2621,7 +2747,8 @@ mod tests {
         let font = load(GDEF_CLASSES).unwrap();
         let kerning = &font.masters[0].kerning;
         assert_eq!(kerning.get(&("a".into(), "f_f".into())), None);
-        assert_eq!(kerning.get(&("a".into(), "a".into())), Some(&-10));
+        // (the GPOS kerning has no IgnoreMarks: it stays feature code)
+        assert!(font.features.to_fea().contains("pos a a -10"));
     }
     #[test]
     fn test_unnamed_glyphs() {
@@ -2852,7 +2979,8 @@ mod tests {
         // nothing says what it is
         font.glyphs
             .push(anchored("blob", vec![], &["_mark_class_0x3"]));
-        // an Arabic top: shares top with the Latin one, the scripts being apart
+        // an Arabic top: does not share top with the Latin one, whose
+        // acutecomb is a mark of every script (it would attach to beh)
         font.glyphs
             .push(anchored("behar", vec![], &["mark_class_0x4"]));
         font.glyphs
@@ -2881,15 +3009,13 @@ mod tests {
         assert_eq!(names("strokelongcomb.case"), ["_center"]);
         assert_eq!(names("gravecomb.alt"), ["_mark_class_0x2"]);
         assert_eq!(names("blob"), ["_mark_class_0x3"]);
-        // behar is beh-ar, loosely
-        assert_eq!(names("behar"), ["top"]);
-        assert_eq!(names("fatha-ar"), ["_top"]);
+        assert_eq!(names("behar"), ["mark_class_0x4"]);
+        assert_eq!(names("fatha-ar"), ["_mark_class_0x4"]);
         let code = &font.features.prefixes.get("Decompiled").unwrap().code;
         assert!(
             code.contains("@center;") && code.contains("@mark_class_0x2;"),
             "{code}"
         );
-        // a shared name leaves the classes apart in the feature code
         assert!(code.contains("@mark_class_0x4;"), "{code}");
     }
 
@@ -2935,7 +3061,7 @@ mod tests {
     #[test]
     fn test_moved_anchor_moves_the_attachment() {
         use crate::convertors::fontir::{BabelfontIrSource, CompilationOptions};
-        let mut font = load(ANCHORS).unwrap();
+        let mut font = load(SHAPING_MKMK).unwrap();
         let fea = font.features.to_fea();
         assert!(!fea.contains("markClass"), "{fea}");
         let anchors = |font: &Font| -> Vec<(String, String, f64, f64)> {
@@ -2960,19 +3086,19 @@ mod tests {
         // the compiler builds the same attachment from the anchors
         assert_eq!(anchors(&compile(&font)), anchors(&font));
         // and a moved anchor moves it
-        let top = font.glyphs.get_mut("a").unwrap().layers[0]
+        let top = font.glyphs.get_mut("A").unwrap().layers[0]
             .anchors
             .iter_mut()
             .find(|a| a.name == "top")
             .unwrap();
         top.x += 30.0;
         let again = compile(&font);
-        let moved = again.glyphs.get("a").unwrap().layers[0]
+        let moved = again.glyphs.get("A").unwrap().layers[0]
             .anchors
             .iter()
             .find(|a| a.name == "top")
             .map(|a| a.x);
-        assert_eq!(moved, Some(280.0));
+        assert_eq!(moved, Some(330.0));
     }
     /// STAT's axis values: format, location, flags and name
     fn stat_values(binary: &[u8]) -> Vec<String> {
@@ -3499,23 +3625,82 @@ mod tests {
     }
     #[test]
     fn test_gpos_kerning_is_kerning() {
-        let font = load(VARIABLE).unwrap();
+        let font = load(SHAPING_VARIABLE).unwrap();
         for (name, pair, class) in [
-            ("Thin", -10, -40),
-            ("Regular", -20, -50),
-            ("Black", -30, -80),
+            ("wght=100", -60, -10),
+            ("Default", -40, -20),
+            ("wght=900", -120, -30),
         ] {
             let m = master(&font, name);
-            assert_eq!(kern_value(&font, m, "A", "Adot"), pair, "{name}");
+            assert_eq!(kern_value(&font, m, "A", "V"), pair, "{name}");
             assert_eq!(kern_value(&font, m, "A", "O"), class, "{name}");
-            assert_eq!(kern_value(&font, m, "Adot", "Q"), class, "{name}");
+            assert_eq!(kern_value(&font, m, "V", "O"), class, "{name}");
         }
-        let groups: Vec<&Vec<SmolStr>> = font.first_kern_groups.values().collect();
-        assert_eq!(groups, [&vec![SmolStr::from("A"), "Adot".into()]]);
-        // the contextual rule stays, with the lookup it calls
         let fea = font.features.to_fea();
+        assert!(!fea.contains("pos A V"), "{fea}");
+    }
+
+    #[test]
+    fn test_ligature_carets_and_attachment_points_round_trip() {
+        use crate::convertors::fontir::{BabelfontIrSource, CompilationOptions};
+        let font = load("resources/ttf/GdefCarets.ttf").unwrap();
+        let fea = font.features.to_fea();
+        assert!(fea.contains("LigatureCaretByPos f_f 400;"), "{fea}");
+        assert!(fea.contains("Attach f 1 2;"), "{fea}");
+        // the glyph classes are the glyphs' categories, not feature code
+        assert!(!fea.contains("GlyphClassDef"), "{fea}");
+        let bytes = BabelfontIrSource::compile(font, CompilationOptions::default()).unwrap();
+        let fontref = skrifa::FontRef::new(&bytes).unwrap();
+        let gdef = fontref.gdef().unwrap();
+        let carets = gdef.lig_caret_list().unwrap().unwrap();
+        assert_eq!(carets.lig_glyph_count(), 1);
+        let attach = gdef.attach_list().unwrap().unwrap();
+        assert_eq!(attach.glyph_count(), 1);
+        let classes = gdef.glyph_class_def().unwrap().unwrap();
+        assert_eq!(classes.get(skrifa::GlyphId16::new(2)), 2);
+    }
+
+    #[test]
+    fn test_varying_ligature_carets_are_anchors() {
+        use crate::convertors::fontir::{BabelfontIrSource, CompilationOptions};
+        // sr-aef's fixture: a caret of a varying at 100, 150 and 200, and one
+        // at 300 (a feature file states no varying caret)
+        let font = load("../sr-aef/resources/varcarets.ttf").unwrap();
+        assert!(!font.features.to_fea().contains("LigatureCaret"));
+        let carets = |font: &Font| -> Vec<Vec<(String, f64)>> {
+            font.glyphs
+                .get("a")
+                .unwrap()
+                .layers
+                .iter()
+                .map(|l| {
+                    l.anchors
+                        .iter()
+                        .filter(|a| a.name.starts_with("caret_"))
+                        .map(|a| (a.name.clone(), a.x))
+                        .collect()
+                })
+                .collect()
+        };
+        let before = carets(&font);
+        assert!(
+            before
+                .iter()
+                .any(|c| c == &[("caret_1".into(), 150.0), ("caret_2".into(), 300.0)])
+        );
+        let bytes = BabelfontIrSource::compile(font, CompilationOptions::default()).unwrap();
+        assert_eq!(carets(&load_bytes(&bytes).unwrap()), before);
+    }
+
+    #[test]
+    fn test_kerning_across_marks_stays_feature_code() {
+        // the lookup has no IgnoreMarks, and the font has marks: a compiler
+        // kerning from the kerning table would kern across them
+        let font = load(VARIABLE).unwrap();
+        assert!(font.masters.iter().all(|m| m.kerning.is_empty()));
+        let fea = font.features.to_fea();
+        assert!(fea.contains("pos A Adot"), "{fea}");
         assert!(fea.contains("pos Q' lookup"), "{fea}");
-        assert!(!fea.contains("pos A Adot"), "{fea}");
     }
     /// Outlines and advances of two fonts, drawn by skrifa at a location
     /// Every point a glyph is drawn with, in order
