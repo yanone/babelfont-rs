@@ -686,6 +686,8 @@ impl<'a> Kerning<'a> {
         // a script record or language system added changes what a shaper
         // chooses for text of that script or language
         let mut changed: BTreeSet<LangSys> = BTreeSet::new();
+        // an added record stands where a shaper chose another before
+        let mut stood_for: HashMap<LangSys, LangSys> = HashMap::new();
         for system in &added {
             let Some(script) = ot_tag_script(&system.0) else {
                 changed.insert(system.clone());
@@ -701,8 +703,13 @@ impl<'a> Kerning<'a> {
             } else {
                 Some((system.0.clone(), super::layout_model::DFLT_LANG.into()))
             };
-            if !before.is_some_and(|before| same_kerning(&script, &before, system)) {
-                changed.insert(system.clone());
+            match before {
+                Some(before) if same_kerning(&script, &before, system) => {
+                    stood_for.insert(system.clone(), before);
+                }
+                _ => {
+                    changed.insert(system.clone());
+                }
             }
         }
         // a language system left with no positioning goes from the table,
@@ -773,7 +780,8 @@ impl<'a> Kerning<'a> {
                 continue;
             }
             for system in after.relevant(&piece.scripts) {
-                let before = self.layout.applies(&piece.lookup, &system);
+                let then = stood_for.get(&system).unwrap_or(&system);
+                let before = self.layout.applies(&piece.lookup, then);
                 let generated = systems.is_some_and(|s| s.contains(&system));
                 if before != generated {
                     log::info!(

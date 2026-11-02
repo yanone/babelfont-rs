@@ -311,3 +311,45 @@ fn test_shaping_existing_fixtures() {
         );
     }
 }
+
+/// The fixtures whose kerning and attachment a compiler regenerates alike
+/// move: the tests above would pass if nothing moved
+#[test]
+fn test_what_moves() {
+    for (file, kept) in [
+        ("ShapingRtlCompiled.ttf", &[][..]),
+        ("ShapingDflt.ttf", &[]),
+        ("ShapingDist.ttf", &["pos khadeva"][..]),
+        ("ShapingCursive.ttf", &[]),
+        ("ShapingKernThenCursive.ttf", &[]),
+        ("ShapingMkmk.ttf", &[]),
+        ("ShapingShare.ttf", &[]),
+        ("ShapingMarksNoBlwm.ttf", &[]),
+        ("ShapingVariable.ttf", &[]),
+        ("ShapingLanguage.ttf", &["pos V A -50"]),
+        ("ShapingIgnoreMarks.ttf", &["pos A V -100"]),
+        ("ShapingRtl.ttf", &["pos "]),
+        ("ShapingSuperset.ttf", &["pos base"]),
+        ("ShapingMkmkNoFilter.ttf", &["pos mark"]),
+    ] {
+        let font = crate::convertors::ttf::load(format!("resources/ttf/{file}")).unwrap();
+        let fea = font.features.to_fea();
+        let rules: Vec<&str> = fea
+            .lines()
+            .map(str::trim)
+            .filter(|l| l.starts_with("pos "))
+            .collect();
+        for rule in &rules {
+            assert!(
+                kept.iter().any(|k| rule.starts_with(k)),
+                "{file}: {rule} stays\n{fea}"
+            );
+        }
+        for k in kept {
+            assert!(
+                rules.iter().any(|r| r.starts_with(k)),
+                "{file}: {k} moved\n{fea}"
+            );
+        }
+    }
+}
