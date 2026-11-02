@@ -156,8 +156,7 @@ fn mark_identity(glyph: &Glyph) -> (Option<u32>, Option<String>) {
     #[cfg(feature = "glyphs")]
     {
         use crate::filters::glyphsdata::glyph_info;
-        let base_name = glyph.name.split('.').next().unwrap_or_default();
-        if let Some(info) = glyph_info(&glyph.name).or_else(|| glyph_info(base_name)) {
+        if let Some(info) = glyph_info(&glyph.name) {
             let data_codepoint = info
                 .unicode
                 .as_deref()
@@ -168,38 +167,98 @@ fn mark_identity(glyph: &Glyph) -> (Option<u32>, Option<String>) {
     (codepoint, None)
 }
 
-/// Names the anchors sr-aef left as placeholders after the marks that attach
-/// by them, where every mark that says what it is agrees on a name no other
-/// anchor has. The mark class in the feature code is renamed with them.
-fn name_placeholder_anchors(font: &mut Font) {
-    let anchor_names: HashSet<String> = font
-        .glyphs
+/// The script a glyph writes, as Glyphs.app's glyph data has it, found by its
+/// codepoint, else its name. None for marks and symbols of every script.
+#[cfg(feature = "glyphs")]
+fn glyph_script(glyph: &Glyph) -> Option<String> {
+    use crate::filters::glyphsdata::{glyph_info, glyph_info_for_codepoint};
+    glyph
+        .codepoints
         .iter()
-        .flat_map(|g| g.layers.iter())
-        .flat_map(|l| l.anchors.iter().map(|a| a.name.to_string()))
-        .collect();
-    let mut placeholders: Vec<&str> = anchor_names
+        .find_map(|&c| glyph_info_for_codepoint(c))
+        .or_else(|| glyph_info(&glyph.name))
+        .and_then(|info| info.script.clone())
+}
+
+/// The glyphs with an anchor of a name, as bases (`name`) and as marks (`_name`)
+fn anchor_family(font: &Font, name: &str) -> (HashSet<SmolStr>, HashSet<SmolStr>) {
+    let mark_name = format!("_{name}");
+    let mut bases = HashSet::new();
+    let mut marks = HashSet::new();
+    for glyph in font.glyphs.iter() {
+        for anchor in glyph.layers.iter().flat_map(|l| l.anchors.iter()) {
+            if anchor.name == name {
+                bases.insert(glyph.name.clone());
+            } else if anchor.name == mark_name {
+                marks.insert(glyph.name.clone());
+            }
+        }
+    }
+    (bases, marks)
+}
+
+/// Whether two anchor families may share a name: no glyph is in both, and
+/// their bases write different scripts, each known
+fn may_share_name(
+    font: &Font,
+    (bases, marks): &(HashSet<SmolStr>, HashSet<SmolStr>),
+    (other_bases, other_marks): &(HashSet<SmolStr>, HashSet<SmolStr>),
+) -> bool {
+    let glyphs: HashSet<&SmolStr> = bases.iter().chain(marks).collect();
+    if other_bases
+        .iter()
+        .chain(other_marks)
+        .any(|g| glyphs.contains(g))
+    {
+        return false;
+    }
+    #[cfg(feature = "glyphs")]
+    {
+        let scripts = |names: &HashSet<SmolStr>| -> Option<HashSet<String>> {
+            names
+                .iter()
+                .map(|name| font.glyphs.get(name).and_then(glyph_script))
+                .collect()
+        };
+        match (scripts(bases), scripts(other_bases)) {
+            (Some(a), Some(b)) => !a.is_empty() && !b.is_empty() && a.is_disjoint(&b),
+            _ => false,
+        }
+    }
+    #[cfg(not(feature = "glyphs"))]
+    {
+        let _ = font;
+        false
+    }
+}
+
+/// Names the anchors sr-aef left as placeholders after the marks that attach
+/// by them, where every mark that says what it is agrees on a name. The name
+/// is the class's own if no other anchor has it, and the mark class in the
+/// feature code is renamed with it. It is shared with another class only where
+/// no glyph has both and their bases write different scripts; the feature code
+/// then keeps its class names apart.
+fn name_placeholder_anchors(font: &mut Font) {
+    let all_anchor_names = |font: &Font| -> HashSet<String> {
+        font.glyphs
+            .iter()
+            .flat_map(|g| g.layers.iter())
+            .flat_map(|l| l.anchors.iter().map(|a| a.name.to_string()))
+            .collect()
+    };
+    let mut placeholders: Vec<String> = all_anchor_names(font)
         .iter()
         .filter_map(|name| name.strip_prefix('_'))
         .filter(|name| name.starts_with(PLACEHOLDER_ANCHOR_PREFIX))
+        .map(str::to_string)
         .collect();
     placeholders.sort();
-    let fea = font.features.to_fea();
-    let mut taken: HashSet<String> = anchor_names
-        .iter()
-        .map(|name| name.trim_start_matches('_').to_string())
-        .collect();
-    let mut renames: Vec<(String, String)> = vec![];
     for placeholder in placeholders {
-        let mark_anchor = format!("_{placeholder}");
-        let names: HashSet<&'static str> = font
-            .glyphs
+        let family = anchor_family(font, &placeholder);
+        let names: HashSet<&'static str> = family
+            .1
             .iter()
-            .filter(|g| {
-                g.layers
-                    .iter()
-                    .any(|l| l.anchors.iter().any(|a| a.name == mark_anchor))
-            })
+            .filter_map(|name| font.glyphs.get(name))
             .filter_map(|g| {
                 let (codepoint, description) = mark_identity(g);
                 anchor_name_for_mark(codepoint, description.as_deref())
@@ -209,38 +268,48 @@ fn name_placeholder_anchors(font: &mut Font) {
         let (Some(name), None) = (names.next(), names.next()) else {
             continue;
         };
-        if taken.contains(name) || fea.contains(&format!("@{name}")) {
+        let taken = all_anchor_names(font)
+            .iter()
+            .any(|existing| existing.trim_start_matches('_') == name);
+        let fea_class_taken = font.features.to_fea().contains(&format!("@{name}"));
+        if taken {
+            if !may_share_name(font, &family, &anchor_family(font, name)) {
+                continue;
+            }
+        } else if fea_class_taken {
             continue;
         }
-        taken.insert(name.to_string());
-        renames.push((placeholder.to_string(), name.to_string()));
+        rename_anchor_family(font, &placeholder, name, !taken);
     }
-    if renames.is_empty() {
-        return;
-    }
+}
+
+/// Renames anchors `from` and `_from` to `to` and `_to`, and with
+/// `rename_class` the mark class `@from` in the feature code
+fn rename_anchor_family(font: &mut Font, from: &str, to: &str, rename_class: bool) {
+    let mark_from = format!("_{from}");
     for layer in font.glyphs.iter_mut().flat_map(|g| g.layers.iter_mut()) {
         for anchor in layer.anchors.iter_mut() {
-            for (placeholder, name) in &renames {
-                if anchor.name == placeholder.as_str() {
-                    anchor.name = name.clone();
-                } else if anchor.name.strip_prefix('_') == Some(placeholder.as_str()) {
-                    anchor.name = format!("_{name}");
-                }
+            if anchor.name == from {
+                anchor.name = to.to_string();
+            } else if anchor.name == mark_from {
+                anchor.name = format!("_{to}");
             }
         }
     }
-    let rename_classes = |code: &mut String| {
-        for (placeholder, name) in &renames {
-            if let Ok(pattern) = regex::Regex::new(&format!(r"@{}\b", regex::escape(placeholder))) {
-                *code = pattern.replace_all(code, format!("@{name}")).into_owned();
-            }
-        }
+    if !rename_class {
+        return;
+    }
+    let Ok(pattern) = regex::Regex::new(&format!(r"@{}\b", regex::escape(from))) else {
+        return;
+    };
+    let rename = |code: &mut String| {
+        *code = pattern.replace_all(code, format!("@{to}")).into_owned();
     };
     for code in font.features.prefixes.values_mut() {
-        rename_classes(&mut code.code);
+        rename(&mut code.code);
     }
     for (_, code) in font.features.features.iter_mut() {
-        rename_classes(&mut code.code);
+        rename(&mut code.code);
     }
 }
 
@@ -1749,11 +1818,17 @@ mod tests {
         // nothing says what it is
         font.glyphs
             .push(anchored("blob", vec![], &["_mark_class_0x3"]));
+        // an Arabic top: shares top with the Latin one, the scripts being apart
+        font.glyphs
+            .push(anchored("behar", vec![], &["mark_class_0x4"]));
+        font.glyphs
+            .push(anchored("fatha-ar", vec![0x064E], &["_mark_class_0x4"]));
         font.features.prefixes.insert(
             "Decompiled".into(),
             PossiblyAutomaticCode::new(
                 "markClass uni0335 <anchor 0 0> @mark_class_0x1;\n\
-                 markClass gravecomb.alt <anchor 0 0> @mark_class_0x2;",
+                 markClass gravecomb.alt <anchor 0 0> @mark_class_0x2;\n\
+                 markClass fatha-ar <anchor 0 0> @mark_class_0x4;",
             ),
         );
         name_placeholder_anchors(&mut font);
@@ -1772,11 +1847,16 @@ mod tests {
         assert_eq!(names("strokelongcomb.case"), ["_center"]);
         assert_eq!(names("gravecomb.alt"), ["_mark_class_0x2"]);
         assert_eq!(names("blob"), ["_mark_class_0x3"]);
+        // behar is beh-ar, loosely
+        assert_eq!(names("behar"), ["top"]);
+        assert_eq!(names("fatha-ar"), ["_top"]);
         let code = &font.features.prefixes.get("Decompiled").unwrap().code;
         assert!(
             code.contains("@center;") && code.contains("@mark_class_0x2;"),
             "{code}"
         );
+        // a shared name leaves the classes apart in the feature code
+        assert!(code.contains("@mark_class_0x4;"), "{code}");
     }
 
     #[test]
