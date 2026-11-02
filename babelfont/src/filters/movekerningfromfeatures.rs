@@ -7,7 +7,7 @@ use fea_rs_ast::{
 use indexmap::IndexMap;
 use smol_str::SmolStr;
 
-use crate::{filters::FontFilter, layout::expand::expand_glyph_container, Font, Features};
+use crate::{Features, Font, filters::FontFilter, layout::expand::expand_glyph_container};
 
 /// A filter that moves explicit FEA-based kerning rules into the kerning table
 ///
@@ -359,9 +359,8 @@ impl FontFilter for MoveKerningFromFeatures {
         for item in file.iter() {
             match item {
                 ToplevelItem::GlyphClassDefinition(definition) => {
-                    let glyphs = reader.expand(&GlyphContainer::GlyphClass(
-                        definition.glyphs.clone(),
-                    ));
+                    let glyphs =
+                        reader.expand(&GlyphContainer::GlyphClass(definition.glyphs.clone()));
                     reader
                         .classes
                         .insert(definition.name.trim_start_matches('@').into(), glyphs);
@@ -511,19 +510,42 @@ impl FontFilter for MoveKerningFromFeatures {
     }
 }
 
+/// A lookup block's text in feature code: `lookup <name> { ... } <name>;`
+fn lookup_block_pattern(name: &str) -> Option<regex::Regex> {
+    let name = regex::escape(name);
+    regex::Regex::new(&format!(
+        r"(?s)[ \t]*\blookup\s+{name}\s*\{{.*?\}}\s*{name}\s*;[ \t]*\n?"
+    ))
+    .ok()
+}
+
 /// Takes the moved lookups out of the feature code, keeping its structure
-/// where each lookup has a prefix of its own, as a decompiled font's has
+/// where each lookup is a block of its own in some prefix and the kern feature
+/// refers to it, as a decompiled font's code is
 fn remove_lookups(features: &mut Features, names: &HashSet<SmolStr>, file: FeatureFile) {
-    let structured = names.iter().all(|name| {
+    let patterns: Vec<regex::Regex> = names
+        .iter()
+        .filter_map(|name| lookup_block_pattern(name))
+        .collect();
+    let structured = patterns.len() == names.len()
+        && patterns.iter().all(|pattern| {
+            features
+                .prefixes
+                .values()
+                .filter(|code| pattern.is_match(&code.code))
+                .count()
+                == 1
+        })
+        && features.features.iter().any(|(n, _)| n == "kern");
+    if structured {
+        for code in features.prefixes.values_mut() {
+            for pattern in &patterns {
+                code.code = pattern.replace(&code.code, "").into_owned();
+            }
+        }
         features
             .prefixes
-            .get(name)
-            .is_some_and(|code| code.code.trim_start().starts_with(&format!("lookup {name}")))
-    }) && features.features.iter().any(|(n, _)| n == "kern");
-    if structured {
-        for name in names {
-            features.prefixes.shift_remove(name);
-        }
+            .retain(|_, code| !code.code.trim().is_empty());
         for (_, code) in features.features.iter_mut().filter(|(n, _)| n == "kern") {
             code.code = remove_lookup_references(&code.code, names);
         }
@@ -582,7 +604,8 @@ mod tests {
         for name in ["A", "Adot", "O", "Q", "V"] {
             font.glyphs.push(Glyph::new(name));
         }
-        font.masters.push(Master::new("Regular", "m", Default::default()));
+        font.masters
+            .push(Master::new("Regular", "m", Default::default()));
         font.features = Features::from_fea(fea);
         font
     }
@@ -605,7 +628,36 @@ mod tests {
         assert_eq!(kern(&font, "@A", "@O"), Some(-50));
         assert_eq!(font.first_kern_groups.get("A").unwrap(), &["A", "Adot"]);
         assert_eq!(font.second_kern_groups.get("O").unwrap(), &["O", "Q"]);
-        assert!(!font.features.to_fea().contains("pos"), "{}", font.features.to_fea());
+        assert!(
+            !font.features.to_fea().contains("pos"),
+            "{}",
+            font.features.to_fea()
+        );
+    }
+
+    #[test]
+    fn test_lookups_in_one_prefix_keep_the_others() {
+        let mut font = font("");
+        font.features = Features::default();
+        font.features.prefixes.insert(
+            "Lookups".into(),
+            crate::features::PossiblyAutomaticCode::new(
+                "lookup single {\n    pos O 5;\n} single;\n\
+                 lookup k {\n    pos A V -10;\n} k;\n\
+                 lookup ctx {\n    pos Q' lookup single A;\n} ctx;",
+            ),
+        );
+        font.features.features.push((
+            "kern".into(),
+            crate::features::PossiblyAutomaticCode::new("lookup k;\nlookup ctx;"),
+        ));
+        MoveKerningFromFeatures.apply(&mut font).unwrap();
+        assert_eq!(kern(&font, "A", "V"), Some(-10));
+        let lookups = &font.features.prefixes.get("Lookups").unwrap().code;
+        assert!(lookups.contains("lookup single {") && lookups.contains("lookup ctx {"));
+        assert!(!lookups.contains("lookup k {"), "{lookups}");
+        let kern_code = &font.features.features[0].1.code;
+        assert_eq!(kern_code, "# Automatic Code\nlookup ctx;");
     }
 
     #[test]
@@ -668,7 +720,10 @@ mod tests {
         assert_eq!(kern(&font, "A", "V"), Some(-10));
         assert_eq!(kern(&font, "V", "A"), None);
         let fea = font.features.to_fea();
-        assert!(fea.contains("lookup latin;") && !fea.contains("lookup all;"), "{fea}");
+        assert!(
+            fea.contains("lookup latin;") && !fea.contains("lookup all;"),
+            "{fea}"
+        );
         // so that a compiler puts the kerning it generates where the lookup was
         assert!(fea.contains("# Automatic Code"), "{fea}");
     }
