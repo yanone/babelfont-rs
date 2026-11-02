@@ -47,6 +47,7 @@ pub fn load_bytes(binary: &[u8]) -> Result<Font, BabelfontError> {
         skrifa::FontRef::new(binary).map_err(|e| BabelfontError::BinaryFontRead(e.to_string()))?;
     font.upm = fontref.head()?.units_per_em();
     font.version = font_version(&fontref)?;
+    font.date = font_date(&fontref)?;
 
     load_axes(&fontref, &mut font)?;
     load_axis_mappings(&fontref, &mut font)?;
@@ -60,6 +61,7 @@ pub fn load_bytes(binary: &[u8]) -> Result<Font, BabelfontError> {
     load_stat(&fontref, &mut font)?;
     load_legacy_kerning(&fontref, &mut font)?;
     name_unnamed_glyphs(&fontref, &mut font)?;
+    load_variation_sequences(&fontref, &mut font);
     name_placeholder_anchors(&mut font);
     {
         use crate::filters::FontFilter;
@@ -802,14 +804,48 @@ fn load_instances(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babe
                 Some((axis.tag, design_coord))
             })
             .collect();
+        let mut custom_names = crate::Names::default();
+        if let Some(id) = instance.postscript_name_id() {
+            custom_names.postscript_name = name_id_to_i18n(fontref, id);
+        }
         font.instances.push(Instance {
             id: id.to_string(),
             name,
             location: location.into(),
+            custom_names,
             ..Default::default()
         })
     }
     Ok(())
+}
+
+/// head.created, counted in seconds from 1904
+fn font_date(fontref: &skrifa::FontRef) -> Result<chrono::DateTime<chrono::Utc>, BabelfontError> {
+    const SECONDS_1904_TO_1970: i64 = 2_082_844_800;
+    let seconds = fontref.head()?.created().as_secs() - SECONDS_1904_TO_1970;
+    Ok(chrono::DateTime::from_timestamp(seconds, 0).unwrap_or_default())
+}
+
+/// cmap format 14's Unicode variation sequences, by selector and codepoint; a
+/// sequence that uses the default glyph names the glyph the codepoint maps to
+fn load_variation_sequences(fontref: &skrifa::FontRef, font: &mut Font) {
+    let charmap = fontref.charmap();
+    let name = |gid: GlyphId| {
+        font.glyphs
+            .get_by_index(gid.to_u32() as usize)
+            .map(|g| g.name.clone())
+    };
+    let sequences: Vec<((u32, u32), SmolStr)> = charmap
+        .variant_mappings()
+        .filter_map(|(codepoint, selector, variant)| {
+            let gid = match variant {
+                skrifa::raw::tables::cmap::MapVariant::UseDefault => charmap.map(codepoint)?,
+                skrifa::raw::tables::cmap::MapVariant::Variant(gid) => gid,
+            };
+            Some(((selector, codepoint), name(gid)?))
+        })
+        .collect();
+    font.variation_sequences.extend(sequences);
 }
 
 /// The peaks the font's masters stand at. A peak of gvar tuples is a master's
@@ -1074,6 +1110,23 @@ fn load_metrics(
         MetricType::HheaLineGap,
         fontref.hhea()?.line_gap().to_i16() as i32,
     );
+    // the caret's slant and offset, which MVAR varies
+    let hhea = fontref.hhea()?;
+    for (metric, value, tag) in [
+        (
+            MetricType::HheaCaretSlopeRise,
+            hhea.caret_slope_rise(),
+            b"hcrs",
+        ),
+        (
+            MetricType::HheaCaretSlopeRun,
+            hhea.caret_slope_run(),
+            b"hcrn",
+        ),
+        (MetricType::HheaCaretOffset, hhea.caret_offset(), b"hcof"),
+    ] {
+        metrics.insert(metric, (value as f64 + mvar_delta(tag)).round() as i32);
+    }
     if let Ok(vhea) = fontref.vhea() {
         let vertical = |value: i16, tag: &[u8; 4]| (value as f64 + mvar_delta(tag)).round() as i32;
         metrics.insert(
@@ -2541,6 +2594,109 @@ mod tests {
         };
         assert_eq!(count("Thin"), count("Black"));
         assert!(count("Thin") > 0);
+    }
+
+    #[cfg(feature = "fontir")]
+    #[test]
+    fn test_font_metadata_round_trips() {
+        use crate::convertors::fontir::{BabelfontIrSource, CompilationOptions};
+        let original = std::fs::read(VARIABLE).unwrap();
+        let font = load_bytes(&original).unwrap();
+
+        // head.created
+        assert_eq!(font.date.to_rfc3339(), "2024-01-01T00:00:00+00:00");
+        // variation sequences: a variant glyph, and the default one
+        let sequences: Vec<_> = font.variation_sequences.iter().collect();
+        assert_eq!(
+            sequences,
+            [
+                (&(0xFE00, 0x41), &SmolStr::from("Adot")),
+                (&(0xFE00, 0x4F), &SmolStr::from("O"))
+            ]
+        );
+        // the named instances' PostScript names
+        let postscript: Vec<&str> = font
+            .instances
+            .iter()
+            .map(|i| {
+                i.custom_names
+                    .postscript_name
+                    .get_default()
+                    .unwrap()
+                    .as_str()
+            })
+            .collect();
+        assert_eq!(
+            postscript,
+            [
+                "FixtureVariable-Thin",
+                "FixtureVariable-Regular",
+                "FixtureVariable-Black"
+            ]
+        );
+        // hhea's caret, varied by MVAR
+        for (name, run, offset) in [
+            ("Thin", 100, -5),
+            ("Regular", 150, -10),
+            ("Black", 200, -15),
+        ] {
+            let metrics = &master(&font, name).metrics;
+            assert_eq!(metrics.get(&MetricType::HheaCaretSlopeRise), Some(&1000));
+            assert_eq!(
+                metrics.get(&MetricType::HheaCaretSlopeRun),
+                Some(&run),
+                "{name}"
+            );
+            assert_eq!(
+                metrics.get(&MetricType::HheaCaretOffset),
+                Some(&offset),
+                "{name}"
+            );
+        }
+
+        // and a compiler writes them again
+        let compiled =
+            BabelfontIrSource::compile(font.clone(), CompilationOptions::default()).unwrap();
+        let (a, b) = (
+            skrifa::FontRef::new(&original).unwrap(),
+            skrifa::FontRef::new(&compiled).unwrap(),
+        );
+        assert_eq!(b.head().unwrap().created(), a.head().unwrap().created());
+        let variants = |f: &skrifa::FontRef| {
+            f.charmap()
+                .variant_mappings()
+                .map(|(c, s, v)| {
+                    let gid = match v {
+                        skrifa::raw::tables::cmap::MapVariant::UseDefault => None,
+                        skrifa::raw::tables::cmap::MapVariant::Variant(gid) => {
+                            f.charmap().map(c).map(|default| default != gid)
+                        }
+                    };
+                    (c, s, gid)
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(variants(&b), variants(&a));
+        let postscript_ids = |f: &skrifa::FontRef| {
+            f.named_instances()
+                .iter()
+                .map(|i| {
+                    i.postscript_name_id()
+                        .map(|id| name_id_to_i18n(f, id).get_default().cloned())
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(postscript_ids(&b), postscript_ids(&a));
+        let again = load_bytes(&compiled).unwrap();
+        for name in ["Thin", "Regular", "Black"] {
+            for metric in [MetricType::HheaCaretSlopeRun, MetricType::HheaCaretOffset] {
+                assert_eq!(
+                    master(&again, name).metrics.get(&metric),
+                    master(&font, name).metrics.get(&metric),
+                    "{name} {metric:?}"
+                );
+            }
+        }
     }
 
     #[test]

@@ -47,7 +47,10 @@ contextual kern rule that stays feature code. acutecomb attaches to A and O
 by top anchors that move with the masters. parenleft has the same
 intermediate master as brace, which makes its location a shared gvar tuple.
 OS/2 typo ascender, x-height and subscript size, and A's advance height,
-differ between the masters (MVAR, VVAR). STAT labels the weights: Thin,
+differ between the masters (MVAR, VVAR), and so do hhea's caret slope run and
+offset (a slant growing with the weight). A with U+FE00 is Adot, O with U+FE00
+is O (the default glyph). The named instances have PostScript names; head was
+created on 2024-01-01. STAT labels the weights: Thin,
 Regular (elidable, linked to 700) and Black, Black a range from 800 to 900.
 VariableNoHvar.ttf: the same without HVAR, its advances in gvar phantom points.
 
@@ -319,6 +322,10 @@ fb.setupPost()
 save(fb, "Quadratic.ttf")
 
 
+def metric_of(weight, values):
+    return {100: values[0], 400: values[1], 900: values[2]}.get(weight, values[1])
+
+
 def variable_master(weight, sx, dot, dot_x, brace_right, kern, sparse=False):
     order = [".notdef", "A", "dot", "Adot", "O", "Q", "brace", "parenleft", "acutecomb"]
     a_right = {100: 400, 400: 500, 900: 650}.get(weight, 500)
@@ -341,14 +348,17 @@ def variable_master(weight, sx, dot, dot_x, brace_right, kern, sparse=False):
         glyphs = {g: glyphs[g] for g in order}
     fb = FontBuilder(1000, isTTF=True)
     fb.setupGlyphOrder(order)
-    fb.setupCharacterMap({ord(c): c for c in "AOQ" if c in order} | ({ord("{"): "brace"}))
+    uvs = [(ord("A"), 0xFE00, "Adot"), (ord("O"), 0xFE00, None)] if not sparse else []
+    fb.setupCharacterMap({ord(c): c for c in "AOQ" if c in order} | ({ord("{"): "brace"}), uvs=uvs)
     fb.setupGlyf(glyphs)
     advance = {".notdef": 500, "A": a_right + 50, "dot": dot + 100, "Adot": a_right + 50,
                "O": round(500 * sx) + 50, "Q": round(500 * sx) + 50, "brace": brace_right + 100,
                "parenleft": brace_right + 100, "acutecomb": 0}
     fb.setupHorizontalMetrics({g: (advance[g], fb.font["glyf"][g].xMin if g != ".notdef" else 0)
                                for g in order})
-    fb.setupHorizontalHeader(ascent=800, descent=-200)
+    fb.setupHorizontalHeader(ascent=800, descent=-200, caretSlopeRise=1000,
+                             caretSlopeRun=metric_of(weight, (100, 150, 200)),
+                             caretOffset=metric_of(weight, (-5, -10, -15)))
     fb.setupVerticalHeader(ascent=900, descent=-100)
     a_height = {100: 1000, 400: 1050, 900: 1100}.get(weight, 1050)
     fb.setupVerticalMetrics({g: (a_height if g == "A" else 1000,
@@ -404,7 +414,8 @@ for weight, design, args in [(100, 20, (0.8, 100, 150, 200, (-10, -40))),
     source = doc.addSourceDescriptor(name=f"wght{weight}", location={"Weight": design})
     source.font = variable_master(weight, *args, sparse=weight == 600)
 for name, weight in [("Thin", 100), ("Regular", 400), ("Black", 900)]:
-    doc.addInstanceDescriptor(styleName=name, location={"Weight": {100: 20, 400: 80, 900: 200}[weight]})
+    doc.addInstanceDescriptor(styleName=name, postScriptFontName=f"FixtureVariable-{name}",
+                              location={"Weight": {100: 20, 400: 80, 900: 200}[weight]})
 vf, _, _ = varLib.build(doc)
 from fontTools.otlLib.builder import buildStatTable
 buildStatTable(vf, [{"tag": "wght", "name": "Weight", "values": [
@@ -412,7 +423,8 @@ buildStatTable(vf, [{"tag": "wght", "name": "Weight", "values": [
     {"value": 400, "name": "Regular", "flags": 0x2, "linkedValue": 700},
     {"nominalValue": 900, "rangeMinValue": 800, "rangeMaxValue": 900, "name": "Black"},
 ]}], elidedFallbackName="Regular")
-vf["head"].created = vf["head"].modified = 0
+vf["head"].created = 3786912000  # 2024-01-01, in seconds since 1904
+vf["head"].modified = 0
 vf.recalcTimestamp = False
 vf.save("Variable.ttf")
 del vf["HVAR"]
