@@ -6,21 +6,21 @@ use fontdrasil::{
     types::Axes,
 };
 use icu_properties::{
-    props::{DefaultIgnorableCodePoint, GeneralCategory},
     CodePointMapData, CodePointSetData,
+    props::{DefaultIgnorableCodePoint, GeneralCategory},
 };
 use indexmap::IndexMap;
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
 use skrifa::{
+    GlyphId, GlyphNames, MetadataProvider,
     outline::DrawSettings,
     prelude::{LocationRef, Size},
     raw::{
-        tables::{glyf, gpos::PositionSubtables, kern},
         TableProvider,
+        tables::{glyf, gpos::PositionSubtables, kern},
     },
     string::StringId,
-    GlyphId, GlyphNames, MetadataProvider,
 };
 use smol_str::SmolStr;
 use sr_aef::fea_rs_ast::AsFea;
@@ -30,8 +30,8 @@ use write_fonts::types::F2Dot14;
 use crate::layout::expand::expand_glyph_container;
 
 use crate::{
-    features::PossiblyAutomaticCode, Anchor, BabelfontError, Features, Font, FormatSpecific, Glyph,
-    GlyphCategory, Instance, Layer, LayerType, MetricType, PathBuilder, Tag,
+    Anchor, BabelfontError, Features, Font, FormatSpecific, Glyph, GlyphCategory, Instance, Layer,
+    LayerType, MetricType, PathBuilder, Tag, features::PossiblyAutomaticCode,
 };
 
 /// Load a TTF font from a file path
@@ -116,7 +116,7 @@ fn font_version(fontref: &skrifa::FontRef) -> Result<(u16, u16), BabelfontError>
 /// their BCP-47 tag. A Macintosh language is keyed as the Windows language it
 /// names, English as the default.
 fn name_record_language(platform_id: u16, language_id: u16) -> Option<String> {
-    use crate::names::{ot_lang_id_to_iso_tag, ot_lang_id_to_name_language, LANGUAGE_ID_TO_BCP47};
+    use crate::names::{LANGUAGE_ID_TO_BCP47, ot_lang_id_to_iso_tag, ot_lang_id_to_name_language};
     match platform_id {
         3 if language_id == 0x0409 => Some(crate::i18ndictionary::DFLT.to_string()),
         3 => ot_lang_id_to_name_language(language_id).map(str::to_string),
@@ -738,24 +738,23 @@ fn load_features(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babel
             language_systems.push(lss.as_fea(""));
         }
     }
-    let language_systems_block = language_systems.join("\n");
-    if !language_systems_block.is_empty() {
-        features.prefixes.insert(
-            "LanguageSystems".into(),
-            PossiblyAutomaticCode::new(language_systems_block),
-        );
-    }
-    if !mark_class_definitions.is_empty() {
-        features.prefixes.insert(
-            "MarkClasses".into(),
-            PossiblyAutomaticCode::new(mark_class_definitions),
-        );
-    }
-    for (lookup_name, statements) in uncompile_context.lookups.iter() {
-        features.prefixes.insert(
-            lookup_name.clone(),
-            PossiblyAutomaticCode::new(statements.as_fea("")),
-        );
+    // One prefix, in the order FEA needs: language systems, mark classes, then
+    // lookups as they are defined (a lookup after the lookups it calls).
+    // Separate prefixes may lose their order: a JSON object read into a sorted
+    // map, for one.
+    let lookups = uncompile_context
+        .lookups
+        .values()
+        .map(|statements| statements.as_fea(""));
+    let code = std::iter::once(language_systems.join("\n"))
+        .chain(std::iter::once(mark_class_definitions))
+        .chain(lookups)
+        .filter(|block| !block.is_empty())
+        .join("\n");
+    if !code.is_empty() {
+        features
+            .prefixes
+            .insert("Decompiled".into(), PossiblyAutomaticCode::new(code));
     }
     for (feature_name, lookups) in uncompile_context.features.iter() {
         features.features.push((
@@ -1395,10 +1394,11 @@ mod tests {
         let font = load(GDEF_CLASSES).unwrap();
         let (_, members) = font.features.classes.first().unwrap();
         assert_eq!(members.code, "a gravecomb acutecomb tildecomb f_f");
-        assert!(font
-            .features
-            .to_fea()
-            .contains("= [a gravecomb acutecomb tildecomb f_f\n];"));
+        assert!(
+            font.features
+                .to_fea()
+                .contains("= [a gravecomb acutecomb tildecomb f_f\n];")
+        );
     }
     #[test]
     fn test_mark_classes_defined() {
@@ -1417,6 +1417,18 @@ mod tests {
         for class in used {
             assert!(fea.contains(&format!("> @{class};")), "@{class}: {fea}");
         }
+    }
+    #[test]
+    fn test_feature_code_does_not_depend_on_prefix_order() {
+        // the calt rule calls a lookup and the mark lookup uses a mark class:
+        // everything they need is in the one prefix, before them
+        let font = load(GDEF_CLASSES).unwrap();
+        assert_eq!(font.features.prefixes.len(), 1);
+        let code = &font.features.prefixes.get("Decompiled").unwrap().code;
+        let at = |text: &str| code.find(text).unwrap_or_else(|| panic!("{text}: {code}"));
+        assert!(at("languagesystem") < at("markClass"));
+        assert!(at("markClass") < at("lookup gpos_mark_to_base"));
+        assert!(at("lookup gsub_single") < at("lookup gsub_chain_contextual"));
     }
     #[test]
     fn test_categories_from_gdef() {
@@ -1484,10 +1496,11 @@ mod tests {
                 .get(&("uni0041".into(), "uni00C5".into())),
             Some(&-50)
         );
-        assert!(font
-            .features
-            .to_fea()
-            .contains("sub uni0041 by glyph00003;"));
+        assert!(
+            font.features
+                .to_fea()
+                .contains("sub uni0041 by glyph00003;")
+        );
     }
 
     #[test]
@@ -1595,11 +1608,12 @@ mod tests {
         let bbox = kurbo::Shape::bounding_box(&layer.paths().next().unwrap().to_kurbo().unwrap());
         assert_close(&[bbox.x1], &[450.0]);
         // no other glyph has one
-        assert!(font
-            .glyphs
-            .iter()
-            .filter(|g| g.name != "brace")
-            .all(|g| g.layers.iter().all(|l| l.location.is_none())));
+        assert!(
+            font.glyphs
+                .iter()
+                .filter(|g| g.name != "brace")
+                .all(|g| g.layers.iter().all(|l| l.location.is_none()))
+        );
     }
     #[test]
     fn test_implied_only_where_every_master_implies_it() {
