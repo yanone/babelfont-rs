@@ -1504,8 +1504,13 @@ fn attaches_marks(fontref: &skrifa::FontRef) -> Result<bool, BabelfontError> {
 // This is only sound for mark class definitions
 fn load_features(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), BabelfontError> {
     let axes = font.fontdrasil_axes()?;
-    let uncompile_context = sr_aef::uncompile_context(fontref)
+    let mut uncompile_context = sr_aef::uncompile_context(fontref)
         .map_err(|e| BabelfontError::BinaryFontRead(e.to_string()))?;
+    // ligature carets and attachment points; glyph classes are categories
+    let gdef = uncompile_context
+        .gdef_without_glyph_classes()
+        .map_err(|e| BabelfontError::BinaryFontRead(e.to_string()))?
+        .unwrap_or_default();
     let master_ids = font
         .masters
         .iter()
@@ -1610,6 +1615,7 @@ fn load_features(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babel
                     .chain(variations.iter().map(|variation| variation.as_fea("")))
             });
     let code = std::iter::once(language_systems.join("\n"))
+        .chain(std::iter::once(gdef))
         .chain(std::iter::once(mark_class_definitions))
         .chain(lookups)
         .chain(feature_variations)
@@ -3558,6 +3564,26 @@ mod tests {
         }
         let fea = font.features.to_fea();
         assert!(!fea.contains("pos A V"), "{fea}");
+    }
+
+    #[test]
+    fn test_ligature_carets_and_attachment_points_round_trip() {
+        use crate::convertors::fontir::{BabelfontIrSource, CompilationOptions};
+        let font = load("resources/ttf/GdefCarets.ttf").unwrap();
+        let fea = font.features.to_fea();
+        assert!(fea.contains("LigatureCaretByPos f_f 400;"), "{fea}");
+        assert!(fea.contains("Attach f 1 2;"), "{fea}");
+        // the glyph classes are the glyphs' categories, not feature code
+        assert!(!fea.contains("GlyphClassDef"), "{fea}");
+        let bytes = BabelfontIrSource::compile(font, CompilationOptions::default()).unwrap();
+        let fontref = skrifa::FontRef::new(&bytes).unwrap();
+        let gdef = fontref.gdef().unwrap();
+        let carets = gdef.lig_caret_list().unwrap().unwrap();
+        assert_eq!(carets.lig_glyph_count(), 1);
+        let attach = gdef.attach_list().unwrap().unwrap();
+        assert_eq!(attach.glyph_count(), 1);
+        let classes = gdef.glyph_class_def().unwrap().unwrap();
+        assert_eq!(classes.get(skrifa::GlyphId16::new(2)), 2);
     }
 
     #[test]
