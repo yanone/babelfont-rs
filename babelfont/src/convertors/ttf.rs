@@ -16,7 +16,7 @@ use skrifa::{
     outline::DrawSettings,
     prelude::{LocationRef, Size},
     raw::{
-        tables::{glyf, gpos::PositionSubtables, kern},
+        tables::{glyf, kern},
         TableProvider,
     },
     string::StringId,
@@ -1428,23 +1428,51 @@ fn unread_layer(
 }
 
 /// Each glyph's category from GDEF's glyph classes, so that a compiler does not
-/// guess one from its name; a mark with an advance is Spacing Combining. Without
-/// glyph classes every glyph is a base, so that the compiled font has none either
-/// and a shaper guesses them as it does for the binary. But a font that attaches
-/// marks gets glyph classes from a compiler anyway, so there a glyph a shaper
-/// takes for a mark is one.
+/// guess one from its name; a mark with an advance is Spacing Combining.
+/// Without glyph classes a shaper takes a glyph for a mark by its character
+/// (and a glyph substituted for it keeps that), while a compiler writes glyph
+/// classes from the categories: so a glyph a shaper takes for a mark is one,
+/// and so is a glyph substitutions reach from marks only.
 fn load_categories(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), BabelfontError> {
     let class_def = match fontref.gdef() {
         Ok(gdef) => gdef.glyph_class_def().transpose()?,
         Err(_) => None,
     };
-    let marks_by_codepoint = class_def.is_none() && attaches_marks(fontref)?;
+    let shaper_marks: HashSet<usize> = if class_def.is_none() {
+        use skrifa::raw::collections::IntSet;
+        let mut marks: IntSet<GlyphId> = IntSet::empty();
+        let mut bases: IntSet<GlyphId> = IntSet::empty();
+        for (gid, glyph) in font.glyphs.iter().enumerate() {
+            if glyph.codepoints.is_empty() {
+                continue;
+            }
+            let gid = GlyphId::new(gid as u32);
+            if shaper_mark(glyph) {
+                marks.insert(gid);
+            } else {
+                bases.insert(gid);
+            }
+        }
+        if let Ok(gsub) = fontref.gsub() {
+            if let Ok(lookups) = gsub.collect_lookups(&IntSet::all()) {
+                let _ = gsub.closure_glyphs(&lookups, &mut marks);
+                let _ = gsub.closure_glyphs(&lookups, &mut bases);
+            }
+        }
+        marks
+            .iter()
+            .filter(|g| !bases.contains(*g))
+            .map(|g| g.to_u32() as usize)
+            .collect()
+    } else {
+        HashSet::new()
+    };
     let metrics = fontref.glyph_metrics(Size::unscaled(), LocationRef::default());
     for (gid, glyph) in font.glyphs.iter_mut().enumerate() {
         let gid = GlyphId::new(gid as u32);
         let class = match &class_def {
             Some(class_def) => class_def.get(gid),
-            None if marks_by_codepoint && shaper_mark(glyph) => 3,
+            None if shaper_marks.contains(&(gid.to_u32() as usize)) => 3,
             None => 1,
         };
         glyph.category = match class {
@@ -1483,24 +1511,6 @@ fn shaper_mark(glyph: &Glyph) -> bool {
         })
 }
 
-/// Whether the font's GPOS attaches marks (to bases, ligatures or marks).
-fn attaches_marks(fontref: &skrifa::FontRef) -> Result<bool, BabelfontError> {
-    let Ok(gpos) = fontref.gpos() else {
-        return Ok(false);
-    };
-    for lookup in gpos.lookup_list()?.lookups().iter() {
-        if matches!(
-            lookup?.subtables()?,
-            PositionSubtables::MarkToBase(_)
-                | PositionSubtables::MarkToLig(_)
-                | PositionSubtables::MarkToMark(_)
-        ) {
-            return Ok(true);
-        }
-    }
-    Ok(false)
-}
-
 // This is only sound for mark class definitions
 fn load_features(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), BabelfontError> {
     let axes = font.fontdrasil_axes()?;
@@ -1509,14 +1519,14 @@ fn load_features(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babel
     // ligature carets and attachment points; glyph classes are categories
     let gdef = uncompile_context
         .gdef_without_glyph_classes()
-        .map_err(|e| BabelfontError::BinaryFontRead(e.to_string()))?
-        .unwrap_or_default();
+        .map_err(|e| BabelfontError::BinaryFontRead(e.to_string()))?;
     let master_ids = font
         .masters
         .iter()
         .map(|m| (m.id.clone(), m))
         .collect::<HashMap<_, _>>();
     let mut features = Features::default();
+    let gdef = load_ligature_carets(&mut font.glyphs, gdef, &master_ids, &axes)?;
     for (anchor_name, anchors) in uncompile_context.anchors {
         for (glyph_name, anchor) in anchors {
             if let Some(glyph) = font.glyphs.get_mut(&glyph_name) {
@@ -1634,6 +1644,59 @@ fn load_features(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babel
     }
     font.features = features;
     Ok(())
+}
+
+/// Ligature carets that vary become `caret_N` anchors, which a compiler
+/// writes the carets from (a feature file states no varying caret); the
+/// other GDEF statements, carets and attachment points, stay feature code.
+fn load_ligature_carets(
+    glyphs: &mut crate::GlyphList,
+    statements: Vec<sr_aef::fea_rs_ast::GdefStatement>,
+    master_ids: &HashMap<String, &crate::Master>,
+    axes: &Axes,
+) -> Result<String, BabelfontError> {
+    use sr_aef::fea_rs_ast::{GdefStatement, GlyphContainer, Metric};
+    let varies = statements.iter().any(|s| {
+        matches!(s, GdefStatement::LigatureCaretByPos(c)
+            if c.carets.iter().any(|m| matches!(m, Metric::Variable(_))))
+    });
+    let mut kept = vec![];
+    for statement in statements {
+        match statement {
+            GdefStatement::LigatureCaretByPos(caret) if varies => {
+                let GlyphContainer::GlyphName(name) = &caret.glyphs else {
+                    continue;
+                };
+                let Some(glyph) = glyphs.get_mut(&name.name) else {
+                    continue;
+                };
+                for layer in glyph.layers.iter_mut() {
+                    let Some(location) = layer_location(layer, master_ids) else {
+                        continue;
+                    };
+                    for (i, metric) in caret.carets.iter().enumerate() {
+                        let x = crate::features::metric_at(metric, &location, axes)?;
+                        layer.anchors.push(Anchor {
+                            name: format!("caret_{}", i + 1),
+                            x,
+                            y: 0.0,
+                            format_specific: FormatSpecific::default(),
+                        });
+                    }
+                }
+            }
+            GdefStatement::LigatureCaretByIndex(_) if varies => {
+                // a compiler writes the carets from anchors only where the
+                // feature code states none
+                log::warn!("A ligature caret by contour point is lost beside varying carets");
+            }
+            other => kept.push(other.as_fea("")),
+        }
+    }
+    if kept.is_empty() {
+        return Ok(String::new());
+    }
+    Ok(format!("table GDEF {{\n{}\n}} GDEF;", kept.join("\n")))
 }
 
 /// A kern table's horizontal format 0 pairs as the default master's kerning,
@@ -2646,8 +2709,11 @@ mod tests {
 
     #[test]
     fn test_categories_without_gdef() {
+        // a shaper takes gravecomb for a mark by its character: so does the
+        // compiled font's GDEF, and its advance is zeroed alike
         let font = load(STATIC_LEGACY).unwrap();
-        for glyph in ["gravecomb", "commaaccent", "x"] {
+        assert_category(&font, "gravecomb", GlyphCategory::Mark, Some("Nonspacing"));
+        for glyph in ["commaaccent", "x"] {
             assert_category(&font, glyph, GlyphCategory::Base, None);
         }
     }
@@ -3584,6 +3650,36 @@ mod tests {
         assert_eq!(attach.glyph_count(), 1);
         let classes = gdef.glyph_class_def().unwrap().unwrap();
         assert_eq!(classes.get(skrifa::GlyphId16::new(2)), 2);
+    }
+
+    #[test]
+    fn test_varying_ligature_carets_are_anchors() {
+        use crate::convertors::fontir::{BabelfontIrSource, CompilationOptions};
+        // sr-aef's fixture: a caret of a varying at 100, 150 and 200, and one
+        // at 300 (a feature file states no varying caret)
+        let font = load("../sr-aef/resources/varcarets.ttf").unwrap();
+        assert!(!font.features.to_fea().contains("LigatureCaret"));
+        let carets = |font: &Font| -> Vec<Vec<(String, f64)>> {
+            font.glyphs
+                .get("a")
+                .unwrap()
+                .layers
+                .iter()
+                .map(|l| {
+                    l.anchors
+                        .iter()
+                        .filter(|a| a.name.starts_with("caret_"))
+                        .map(|a| (a.name.clone(), a.x))
+                        .collect()
+                })
+                .collect()
+        };
+        let before = carets(&font);
+        assert!(before
+            .iter()
+            .any(|c| c == &[("caret_1".into(), 150.0), ("caret_2".into(), 300.0)]));
+        let bytes = BabelfontIrSource::compile(font, CompilationOptions::default()).unwrap();
+        assert_eq!(carets(&load_bytes(&bytes).unwrap()), before);
     }
 
     #[test]
