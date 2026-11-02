@@ -138,8 +138,15 @@ pub(crate) fn shaping_differences(binary: &[u8], samples: &[Sample]) -> Vec<Stri
     let compiled = BabelfontIrSource::compile(font, CompilationOptions::default())
         .unwrap_or_else(|e| panic!("the import compiles: {e:?}"));
     let mut differences = vec![];
+    // text the font has no glyphs for shapes with .notdef, which a font
+    // without GDEF zeroes as a mark and a compiled one does not
+    let charmap = skrifa::FontRef::new(binary).unwrap().charmap();
+    let samples: Vec<&Sample> = samples
+        .iter()
+        .filter(|s| s.text.chars().all(|c| charmap.map(c).is_some()))
+        .collect();
     for location in locations(binary) {
-        for sample in samples {
+        for sample in &samples {
             let original = shape(binary, &location, sample);
             let recompiled = shape(&compiled, &location, sample);
             if !same_shaping(&original, &recompiled) {
@@ -243,6 +250,7 @@ shaping_fixture_tests! {
     test_shaping_mark_to_mark_in_mark: "ShapingMkmkInMark.ttf",
     test_shaping_unencoded_alternate: "ShapingAlternate.ttf",
     test_shaping_variable: "ShapingVariable.ttf",
+    test_shaping_feature_variations: "ShapingFeatureVariations.ttf",
 }
 
 #[test]
