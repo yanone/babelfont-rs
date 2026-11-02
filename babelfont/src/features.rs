@@ -315,3 +315,57 @@ mod fontra {
         }
     }
 }
+
+/// A feature-code value at a design location. A variable value states values at
+/// user locations; elsewhere it is interpolated as a compiler would.
+pub(crate) fn metric_at(
+    metric: &fea_rs_ast::Metric,
+    location: &fontdrasil::coords::DesignLocation,
+    axes: &fontdrasil::types::Axes,
+) -> Result<f64, crate::BabelfontError> {
+    use fontdrasil::{
+        coords::{NormalizedLocation, UserCoord},
+        variations::{RoundingBehaviour, VariationModel},
+    };
+    use std::collections::{HashMap, HashSet};
+    let items = match metric {
+        fea_rs_ast::Metric::Scalar(value) => return Ok(*value as f64),
+        fea_rs_ast::Metric::Variable(items) => items,
+        fea_rs_ast::Metric::GlyphsAppNumber(_) => {
+            return Err(crate::BabelfontError::General(
+                "A Glyphs number value has no value at a location".to_string(),
+            ))
+        }
+    };
+    let target = location.to_normalized(axes)?;
+    let mut values: HashMap<NormalizedLocation, Vec<f64>> = HashMap::new();
+    for (user_location, value) in items {
+        let normalized: NormalizedLocation = axes
+            .iter()
+            .map(|axis| {
+                let user = user_location
+                    .get(axis.tag.to_string().as_str())
+                    .map_or(axis.default, |coord| UserCoord::new(coord.0));
+                (axis.tag, user.to_normalized(&axis.converter))
+            })
+            .collect();
+        let same_place = axes.iter().all(|axis| {
+            normalized.get(axis.tag).unwrap_or_default().to_f2dot14()
+                == target.get(axis.tag).unwrap_or_default().to_f2dot14()
+        });
+        if same_place {
+            return Ok(*value as f64);
+        }
+        values.insert(normalized, vec![*value as f64]);
+    }
+    let model = VariationModel::new(
+        values.keys().cloned().collect::<HashSet<_>>(),
+        axes.axis_order(),
+    );
+    let deltas = model.deltas_with_rounding(&values, RoundingBehaviour::None)?;
+    Ok(model
+        .interpolate_from_deltas(&target, &deltas)
+        .first()
+        .copied()
+        .unwrap_or_default())
+}
