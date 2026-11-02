@@ -6,8 +6,8 @@ use fontdrasil::{
 };
 use indexmap::IndexMap;
 use serde::{
-    ser::{SerializeMap as _, SerializeSeq as _},
     Deserialize as _,
+    ser::{SerializeMap as _, SerializeSeq as _},
 };
 use smol_str::SmolStr;
 
@@ -232,4 +232,42 @@ where
     T: Default + PartialEq,
 {
     *value == T::default()
+}
+
+/// Unicode variation sequences, nested as selector → codepoint → glyph name
+/// (as UFO's `public.unicodeVariationSequences` is); JSON keys are strings
+pub(crate) fn variation_sequences_ser<S>(
+    map: &std::collections::BTreeMap<(u32, u32), SmolStr>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let mut nested: std::collections::BTreeMap<u32, std::collections::BTreeMap<u32, &SmolStr>> =
+        std::collections::BTreeMap::new();
+    for ((selector, codepoint), glyph) in map {
+        nested
+            .entry(*selector)
+            .or_default()
+            .insert(*codepoint, glyph);
+    }
+    serde::Serialize::serialize(&nested, serializer)
+}
+
+pub(crate) fn variation_sequences_de<'de, D>(
+    deserializer: D,
+) -> Result<std::collections::BTreeMap<(u32, u32), SmolStr>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let nested: std::collections::BTreeMap<u32, std::collections::BTreeMap<u32, SmolStr>> =
+        serde::Deserialize::deserialize(deserializer)?;
+    Ok(nested
+        .into_iter()
+        .flat_map(|(selector, codepoints)| {
+            codepoints
+                .into_iter()
+                .map(move |(codepoint, glyph)| ((selector, codepoint), glyph))
+        })
+        .collect())
 }

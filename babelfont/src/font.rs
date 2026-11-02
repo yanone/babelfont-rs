@@ -1,4 +1,5 @@
 use crate::{
+    BabelfontError, Layer, LayerType, MetricType,
     axis::{Axis, CrossAxisMapping, Tag},
     common::{CustomOTValues, FormatSpecific},
     features::Features,
@@ -6,7 +7,6 @@ use crate::{
     instance::Instance,
     master::Master,
     names::Names,
-    BabelfontError, Layer, LayerType, MetricType,
 };
 use fontdrasil::coords::{
     DesignCoord, DesignLocation, DesignSpace, Location, NormalizedLocation, NormalizedSpace,
@@ -73,9 +73,17 @@ pub struct Font {
     #[serde(default, skip_serializing_if = "CustomOTValues::is_empty")]
     pub custom_ot_values: CustomOTValues,
     /// A map of Unicode Variation Sequences to glyph names
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    #[typeshare(python(type = "Dict[Tuple[int, int], str]"))]
-    #[typeshare(typescript(type = "Record<string, string>"))]
+    ///
+    /// Keyed by (selector, codepoint); serialized nested, selector → codepoint
+    /// → glyph name.
+    #[serde(
+        default,
+        skip_serializing_if = "BTreeMap::is_empty",
+        serialize_with = "crate::serde_helpers::variation_sequences_ser",
+        deserialize_with = "crate::serde_helpers::variation_sequences_de"
+    )]
+    #[typeshare(python(type = "Dict[int, Dict[int, str]]"))]
+    #[typeshare(typescript(type = "Record<number, Record<number, string>>"))]
     pub variation_sequences: BTreeMap<(u32, u32), SmolStr>,
     /// A representation of the font's OpenType features
     pub features: Features,
@@ -549,7 +557,7 @@ mod fontra {
     use fontdrasil::coords::DesignLocation;
 
     use super::Font;
-    use crate::{convertors::fontra, BabelfontError};
+    use crate::{BabelfontError, convertors::fontra};
     impl Font {
         /// Return a [fontra::FontInfo] representation of this font's naming and version data
         pub fn as_fontra_info(&self) -> fontra::FontInfo {
