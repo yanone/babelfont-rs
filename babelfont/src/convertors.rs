@@ -29,3 +29,5 @@ pub mod ufo;
 #[cfg(feature = "vfb")]
 /// VFB convertor
 pub mod vfb;
+#[cfg(all(test, feature = "ttf", feature = "fontir"))]
+mod ttf_shaping_tests;

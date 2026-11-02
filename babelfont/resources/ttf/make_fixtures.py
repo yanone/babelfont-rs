@@ -599,3 +599,206 @@ vf, _, _ = varLib.build(doc)
 vf["head"].created = vf["head"].modified = 0
 vf.recalcTimestamp = False
 vf.save("Composites.ttf")
+
+
+# Shaping fixtures: one font per case of feature code that the importer moves
+# into kerning and anchors, where a compiler regenerating it could shape
+# differently. The shaping tests compare each with its recompiled self.
+SHAPING_GLYPHS = {".notdef": None, "A": 0x41, "V": 0x56, "O": 0x4F, "one": 0x31,
+                  "acutecomb": 0x301, "gravecomb": 0x300, "alefar": 0x627, "behar": 0x628,
+                  "fathaar": 0x64E, "kadeva": 0x915, "khadeva": 0x916, "nuktadeva": 0x93C,
+                  "Alpha": 0x391, "hyphen": 0x2D, "alefhe": 0x5D0, "bethe": 0x5D1,
+                  "A.ss01": None}
+SHAPING_MARKS = {"acutecomb", "gravecomb", "fathaar", "nuktadeva"}
+SHAPING_GDEF = ("table GDEF { GlyphClassDef [A V O one alefar behar kadeva khadeva Alpha hyphen "
+                "alefhe bethe A.ss01], , [acutecomb gravecomb fathaar nuktadeva], ; } GDEF;\n")
+SHAPING_LS = ("languagesystem DFLT dflt; languagesystem latn dflt; languagesystem grek dflt; "
+              "languagesystem arab dflt; languagesystem hebr dflt; languagesystem dev2 dflt;\n")
+SHAPING_CASES = {
+    # a kern lookup without IgnoreMarks: kerning does not reach across a mark
+    "IgnoreMarks": """languagesystem DFLT dflt; languagesystem latn dflt;
+lookup k { pos A V -100; } k;
+feature kern { lookup k; } kern;""",
+    # kerning registered for one script only; Common glyph pairs
+    "Scripts": """languagesystem DFLT dflt; languagesystem latn dflt; languagesystem arab dflt;
+languagesystem grek dflt;
+lookup k { lookupflag IgnoreMarks; pos one one -100; pos A V -100; pos hyphen A -77; } k;
+lookup dummy { pos O 0; } dummy;
+feature ss01 { lookup dummy; } ss01;
+feature kern { script latn; language dflt; lookup k; } kern;""",
+    # right-to-left kerning written as an advance, left-to-right as <v 0 v 0>
+    "Rtl": """languagesystem DFLT dflt; languagesystem latn dflt; languagesystem arab dflt;
+languagesystem hebr dflt;
+lookup k { lookupflag IgnoreMarks; pos behar alefar -50; pos A V <-30 0 -30 0>;
+pos bethe alefhe <-40 0 -40 0>; } k;
+feature kern { lookup k; } kern;""",
+    # the same, as a compiler writes it
+    "RtlCompiled": """languagesystem DFLT dflt; languagesystem latn dflt; languagesystem arab dflt;
+languagesystem hebr dflt;
+lookup k { lookupflag IgnoreMarks; pos behar alefar <-50 0 -50 0>; pos A V -30;
+pos bethe alefhe <-40 0 -40 0>; } k;
+feature kern { lookup k; } kern;""",
+    # Indic kerning where the font has a dist feature of its own
+    "Dist": """languagesystem DFLT dflt; languagesystem latn dflt; languagesystem dev2 dflt;
+lookup k { lookupflag IgnoreMarks; pos kadeva khadeva -50; pos A V -30; pos A Alpha -20; } k;
+lookup d { pos khadeva 0; } d;
+feature kern { lookup k; } kern;
+feature dist { script dev2; lookup d; } dist;""",
+    # mark attachment registered per script, and a blwm feature of the font's own
+    "Marks": SHAPING_LS + """markClass acutecomb <anchor 100 500> @TOP;
+markClass nuktadeva <anchor 100 0> @BOT;
+lookup m1 { pos base A <anchor 300 700> mark @TOP; } m1;
+lookup m2 { pos base kadeva <anchor 250 -50> mark @BOT; } m2;
+lookup c1 { lookupflag RightToLeft; pos cursive behar <anchor 0 100> <anchor 600 200>; } c1;
+lookup dummy { pos O 0; } dummy;
+lookup bw { pos khadeva 0; } bw;
+feature ss01 { lookup dummy; } ss01;
+feature mark { script latn; lookup m1; script dev2; lookup m2; } mark;
+feature blwm { script dev2; lookup bw; } blwm;
+feature curs { lookup c1; } curs;""",
+    "MarksEverywhere": SHAPING_LS + """markClass acutecomb <anchor 100 500> @TOP;
+markClass nuktadeva <anchor 100 0> @BOT;
+lookup m1 { pos base A <anchor 300 700> mark @TOP; } m1;
+lookup m2 { pos base kadeva <anchor 250 -50> mark @BOT; } m2;
+lookup bw { pos khadeva 0; } bw;
+feature mark { lookup m1; lookup m2; } mark;
+feature blwm { script dev2; lookup bw; } blwm;""",
+    "MarksNoBlwm": SHAPING_LS + """markClass acutecomb <anchor 100 500> @TOP;
+markClass nuktadeva <anchor 100 0> @BOT;
+lookup m1 { pos base A <anchor 300 700> mark @TOP; } m1;
+lookup m2 { pos base kadeva <anchor 250 -50> mark @BOT; } m2;
+feature mark { lookup m1; lookup m2; } mark;""",
+    # two lookups attach by the same anchors, one for every script, one for Greek
+    "Superset": """languagesystem DFLT dflt; languagesystem latn dflt; languagesystem grek dflt;
+markClass acutecomb <anchor 100 500> @T1;
+lookup m1 { pos base A <anchor 300 700> mark @T1; } m1;
+lookup m2 { pos base V <anchor 300 700> mark @T1; } m2;
+feature mark { lookup m1; script grek; lookup m2; } mark;""",
+    # Latin and Arabic marks attaching at the same place
+    "Share": """languagesystem DFLT dflt; languagesystem latn dflt; languagesystem arab dflt;
+markClass acutecomb <anchor 100 500> @T1;
+markClass fathaar <anchor 100 450> @T2;
+lookup m1 { pos base A <anchor 300 700> mark @T1; pos base V <anchor 300 700> mark @T1; } m1;
+lookup m2 { pos base behar <anchor 280 650> mark @T2; pos base alefar <anchor 280 650> mark @T2; } m2;
+feature mark { lookup m1; lookup m2; } mark;""",
+    # a font with the default language system only
+    "Dflt": """languagesystem DFLT dflt;
+lookup k { lookupflag IgnoreMarks; pos A V -30; pos behar alefar <-50 0 -50 0>;
+pos kadeva khadeva -20; } k;
+feature kern { lookup k; } kern;""",
+    # contextual kerning before pair kerning
+    "Context": """languagesystem DFLT dflt; languagesystem latn dflt;
+lookup k { lookupflag IgnoreMarks; pos A O -20; pos A V -30; pos V A -40; pos O A -10; } k;
+lookup ctx { pos O' 10 A; } ctx;
+feature kern { lookup ctx; lookup k; } kern;""",
+    # a zero glyph pair ahead of a class pair
+    "Zero": """languagesystem DFLT dflt; languagesystem latn dflt;
+@L = [A V]; @R = [O one];
+lookup k { lookupflag IgnoreMarks; pos A O 0; pos @L @R -50; } k;
+feature kern { lookup k; } kern;""",
+    # a language that takes its script's default lookups, and one that does not
+    "Language": """languagesystem DFLT dflt; languagesystem latn dflt; languagesystem latn TRK;
+languagesystem latn ROM;
+lookup k { lookupflag IgnoreMarks; pos A V -100; } k;
+lookup t { lookupflag IgnoreMarks; pos V A -50; } t;
+feature kern { lookup k; script latn; language TRK; lookup t; } kern;""",
+    "ExcludeDflt": """languagesystem DFLT dflt; languagesystem latn dflt; languagesystem latn TRK;
+lookup k { lookupflag IgnoreMarks; pos A V -100; } k;
+lookup t { lookupflag IgnoreMarks; pos V A -50; } t;
+feature kern { lookup k; script latn; language TRK exclude_dflt; lookup t; } kern;""",
+    # cursive attachment as a compiler writes it, and without IgnoreMarks
+    "Cursive": """languagesystem DFLT dflt; languagesystem arab dflt;
+lookup c1 { lookupflag RightToLeft IgnoreMarks;
+pos cursive behar <anchor 0 100> <anchor 600 200>; pos cursive alefar <anchor 500 100> <anchor NULL>; } c1;
+feature curs { lookup c1; } curs;""",
+    # kerning before cursive attachment: the order matters
+    "KernThenCursive": """languagesystem DFLT dflt; languagesystem arab dflt;
+lookup k { lookupflag IgnoreMarks; pos behar behar <-50 0 -50 0>; } k;
+lookup c1 { lookupflag RightToLeft IgnoreMarks;
+pos cursive behar <anchor 0 100> <anchor 600 200>; } c1;
+feature curs { lookup c1; } curs;
+feature kern { lookup k; } kern;""",
+    # mark-to-mark with a mark filtering set as a compiler writes it, and without
+    "Mkmk": """languagesystem DFLT dflt; languagesystem latn dflt;
+markClass [acutecomb gravecomb] <anchor 100 500> @TOP;
+lookup m1 { pos base A <anchor 300 700> mark @TOP; } m1;
+lookup mm { lookupflag UseMarkFilteringSet [acutecomb gravecomb];
+pos mark [acutecomb gravecomb] <anchor 100 800> mark @TOP; } mm;
+feature mark { lookup m1; } mark;
+feature mkmk { lookup mm; } mkmk;""",
+    "MkmkNoFilter": """languagesystem DFLT dflt; languagesystem latn dflt;
+markClass [acutecomb gravecomb] <anchor 100 500> @TOP;
+lookup m1 { pos base A <anchor 300 700> mark @TOP; } m1;
+lookup mm { pos mark [acutecomb gravecomb] <anchor 100 800> mark @TOP; } mm;
+feature mark { lookup m1; } mark;
+feature mkmk { lookup mm; } mkmk;""",
+    # mark-to-mark lookups registered in the mark feature
+    "MkmkInMark": """languagesystem DFLT dflt; languagesystem latn dflt;
+markClass [acutecomb gravecomb] <anchor 100 500> @TOP;
+lookup m1 { pos base A <anchor 300 700> mark @TOP; } m1;
+lookup mm { pos mark [acutecomb gravecomb] <anchor 100 800> mark @TOP; } mm;
+feature mark { lookup m1; lookup mm; } mark;""",
+    # an unencoded alternate reached by a substitution
+    "Alternate": """languagesystem DFLT dflt; languagesystem latn dflt;
+lookup s { sub A by A.ss01; } s;
+lookup k { lookupflag IgnoreMarks; pos A.ss01 V -60; pos A V -30; } k;
+feature ss01 { lookup s; } ss01;
+feature kern { lookup k; } kern;""",
+}
+
+
+def shaping_box(width):
+    pen = TTGlyphPen(None)
+    pen.moveTo((50, 0))
+    pen.lineTo((50, 500))
+    pen.lineTo((max(width, 100) - 50, 500))
+    pen.lineTo((max(width, 100) - 50, 0))
+    pen.closePath()
+    return pen.glyph()
+
+
+for case, fea in SHAPING_CASES.items():
+    order = list(SHAPING_GLYPHS)
+    fb = FontBuilder(1000, isTTF=True)
+    fb.setupGlyphOrder(order)
+    fb.setupCharacterMap({v: k for k, v in SHAPING_GLYPHS.items() if v})
+    advance = {g: 0 if g in SHAPING_MARKS else 600 for g in order}
+    fb.setupGlyf({g: shaping_box(advance[g]) for g in order})
+    fb.setupHorizontalMetrics({g: (advance[g], 50) for g in order})
+    fb.setupHorizontalHeader(ascent=800, descent=-200)
+    fb.setupNameTable({"familyName": f"Fixture Shaping {case}", "styleName": "Regular"})
+    fb.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWinAscent=800, usWinDescent=200)
+    fb.setupPost()
+    addOpenTypeFeaturesFromString(fb.font, SHAPING_GDEF + fea)
+    save(fb, f"Shaping{case}.ttf")
+
+
+# A variable font whose kerning and mark attachment vary with the masters, as a
+# compiler writes them: they move into kerning and anchors.
+order = [".notdef", "A", "V", "O", "acutecomb"]
+fb = FontBuilder(1000, isTTF=True)
+fb.setupGlyphOrder(order)
+fb.setupCharacterMap({0x41: "A", 0x56: "V", 0x4F: "O", 0x301: "acutecomb"})
+fb.setupGlyf({g: shaping_box(0 if g == "acutecomb" else 600) for g in order})
+fb.setupHorizontalMetrics({g: (0 if g == "acutecomb" else 600, 50) for g in order})
+fb.setupHorizontalHeader(ascent=800, descent=-200)
+fb.setupNameTable({"familyName": "Fixture Shaping Variable", "styleName": "Regular"})
+fb.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWinAscent=800, usWinDescent=200)
+fb.setupPost()
+fb.setupFvar([("wght", 100, 400, 900, "Weight")], [])
+from fontTools.ttLib.tables._g_v_a_r import TupleVariation
+fb.setupGvar({g: [TupleVariation({"wght": (-1, -1, 0)}, [(0, 0), (0, -50), (0, -50), (0, 0)] + [(0, 0)] * 4),
+                  TupleVariation({"wght": (0, 1, 1)}, [(0, 0), (0, 100), (0, 100), (0, 0)] + [(0, 0)] * 4)]
+              for g in order})
+addOpenTypeFeaturesFromString(fb.font, """
+table GDEF { GlyphClassDef [A V O], , [acutecomb], ; } GDEF;
+languagesystem DFLT dflt; languagesystem latn dflt;
+@L = [A V];
+lookup k { lookupflag IgnoreMarks; pos A V (wght=100:-60 wght=400:-40 wght=900:-120);
+    pos @L O (wght=100:-10 wght=400:-20 wght=900:-30); } k;
+feature kern { lookup k; } kern;
+markClass acutecomb <anchor (wght=100:100 wght=400:110 wght=900:130) 500> @TOP;
+lookup m { pos base [A V O] <anchor (wght=100:290 wght=400:300 wght=900:330) (wght=100:650 wght=400:700 wght=900:760)> mark @TOP; } m;
+feature mark { lookup m; } mark;
+""")
+save(fb, "ShapingVariable.ttf")
