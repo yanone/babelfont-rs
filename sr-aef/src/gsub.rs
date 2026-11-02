@@ -1,4 +1,5 @@
 use crate::{UncompileContext, add_subtable_break};
+use fea_rs_ast::AsFea;
 use fea_rs_ast::{
     AlternateSubstStatement, ChainedContextStatement, GlyphClass, GlyphContainer, GlyphName,
     IgnoreStatement, LigatureSubstStatement, LookupBlock, MultipleSubstStatement,
@@ -233,6 +234,23 @@ impl<'a> UncompileContext<'a> {
         gsub4: LigatureSubstFormat1,
     ) -> Result<(), ReadError> {
         let inputs = self.resolve_coverage(&gsub4.coverage()?);
+        // a sequence an earlier rule of the lookup ligates never reaches a
+        // later one (a feature file may not state both)
+        let sequence = |components: &[GlyphContainer]| {
+            components
+                .iter()
+                .map(|c| c.as_fea(""))
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
+        let mut seen: std::collections::HashSet<String> = lookupblock
+            .statements
+            .iter()
+            .filter_map(|s| match s {
+                Statement::LigatureSubst(subst) => Some(sequence(&subst.glyphs)),
+                _ => None,
+            })
+            .collect();
         for (input, ligature_set) in inputs.iter().zip(gsub4.ligature_sets().iter().flatten()) {
             for ligature in ligature_set.ligatures().iter().flatten() {
                 let mut components: Vec<GlyphContainer> = ligature
@@ -241,6 +259,16 @@ impl<'a> UncompileContext<'a> {
                     .map(|g| GlyphContainer::GlyphName(self.get_name(g.get())))
                     .collect();
                 components.insert(0, input.clone());
+                if !seen.insert(sequence(&components)) {
+                    lookupblock
+                        .statements
+                        .push(Statement::Comment(fea_rs_ast::Comment::new(format!(
+                            "# sub {} by {}; is shadowed by an earlier rule",
+                            sequence(&components),
+                            self.get_name(ligature.ligature_glyph()).as_fea("")
+                        ))));
+                    continue;
+                }
                 let subst = LigatureSubstStatement::new(
                     components,
                     GlyphContainer::GlyphName(self.get_name(ligature.ligature_glyph())),
