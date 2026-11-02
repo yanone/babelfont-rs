@@ -1805,6 +1805,8 @@ mod tests {
     const ANCHORS: &str = "resources/ttf/Anchors.ttf";
     const AVAR2: &str = "resources/ttf/Avar2.ttf";
     const RTL_KERNING: &str = "resources/ttf/RtlKerning.ttf";
+    const COMPOSITES: &str = "resources/ttf/Composites.ttf";
+    const REDDIT_SANS: &str = "resources/ttf/RedditSans-Subset.ttf";
 
     fn master<'a>(font: &'a Font, name: &str) -> &'a crate::Master {
         font.masters
@@ -2849,16 +2851,47 @@ mod tests {
         assert!(!fea.contains("pos A Adot"), "{fea}");
     }
     /// Outlines and advances of two fonts, drawn by skrifa at a location
+    /// Every point a glyph is drawn with, in order
+    #[derive(Default)]
+    struct PointsPen(Vec<(f64, f64)>);
+
+    impl skrifa::outline::OutlinePen for PointsPen {
+        fn move_to(&mut self, x: f32, y: f32) {
+            self.0.push((x as f64, y as f64));
+        }
+        fn line_to(&mut self, x: f32, y: f32) {
+            self.0.push((x as f64, y as f64));
+        }
+        fn quad_to(&mut self, cx0: f32, cy0: f32, x: f32, y: f32) {
+            self.0
+                .extend([(cx0 as f64, cy0 as f64), (x as f64, y as f64)]);
+        }
+        fn curve_to(&mut self, cx0: f32, cy0: f32, cx1: f32, cy1: f32, x: f32, y: f32) {
+            self.0.extend([
+                (cx0 as f64, cy0 as f64),
+                (cx1 as f64, cy1 as f64),
+                (x as f64, y as f64),
+            ]);
+        }
+        fn close(&mut self) {}
+    }
+
     fn drawn_at(binary: &[u8], glyph: &str, coords: &[F2Dot14]) -> (Vec<(f64, f64)>, f32) {
         let fontref = skrifa::FontRef::new(binary).unwrap();
         let names = sr_aef::unique_glyph_names(&fontref);
         let gid = GlyphId::new(names.iter().position(|n| n == glyph).unwrap() as u32);
         let location = LocationRef::new(coords);
-        let points = draw_contours(&fontref, gid, location)
+        // at the font's own size in pixels, which keeps the fractions an
+        // unscaled draw rounds away at every component
+        let upem = fontref.head().unwrap().units_per_em() as f32;
+        let mut pen = PointsPen::default();
+        fontref
+            .outline_glyphs()
+            .get(gid)
             .unwrap()
-            .iter()
-            .flat_map(|p| p.nodes.iter().map(|n| (n.x, n.y)))
-            .collect();
+            .draw(DrawSettings::unhinted(Size::new(upem), location), &mut pen)
+            .unwrap();
+        let points = pen.0;
         let advance = fontref
             .glyph_metrics(Size::unscaled(), location)
             .advance_width(gid)
@@ -2866,33 +2899,238 @@ mod tests {
         (points, advance)
     }
 
-    #[cfg(feature = "fontir")]
+    /// Each contour's bounding box, sorted
+    fn contour_boxes(paths: &[crate::Path]) -> Vec<[f64; 4]> {
+        let mut boxes: Vec<[f64; 4]> = paths
+            .iter()
+            .map(|p| {
+                let b = kurbo::Shape::bounding_box(&p.to_kurbo().unwrap());
+                [b.x0, b.y0, b.x1, b.y1]
+            })
+            .collect();
+        boxes.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        boxes
+    }
+
+    /// Every layer of every glyph, masters and intermediate layers, its
+    /// components decomposed at the layer's location, is the glyph as skrifa
+    /// draws it there
+    fn assert_layers_read_as_drawn(path: &str) {
+        let binary = std::fs::read(path).unwrap();
+        let fontref = skrifa::FontRef::new(&binary).unwrap();
+        let font = load_bytes(&binary).unwrap();
+        let mut layers_checked = 0;
+        for (gid, glyph) in font.glyphs.iter().enumerate() {
+            for layer in &glyph.layers {
+                let location = match (&layer.location, &layer.master) {
+                    (Some(location), _) => location.clone(),
+                    (None, LayerType::DefaultForMaster(id)) => font
+                        .masters
+                        .iter()
+                        .find(|m| &m.id == id)
+                        .unwrap()
+                        .location
+                        .clone(),
+                    _ => continue,
+                };
+                let coords =
+                    fontdrasil_location_to_skrifa_location(location.clone(), &font.axes).unwrap();
+                let drawn = draw_contours(
+                    &fontref,
+                    GlyphId::new(gid as u32),
+                    LocationRef::new(&coords),
+                )
+                .unwrap();
+                let mut paths: Vec<crate::Path> = layer.paths().cloned().collect();
+                for component in layer.components() {
+                    paths.extend(component.decompose(None, |name, _| {
+                        let layer = font.interpolate_glyph(name, &location).ok()?;
+                        Some(crate::shape::ResolvedShapes {
+                            paths: layer.paths().cloned().collect(),
+                            components: layer.components().cloned().collect(),
+                        })
+                    }));
+                }
+                let (read, drawn) = (contour_boxes(&paths), contour_boxes(&drawn));
+                assert_eq!(read.len(), drawn.len(), "{} at {location:?}", glyph.name);
+                for (a, b) in read.iter().zip(&drawn) {
+                    assert!(
+                        a.iter().zip(b).all(|(x, y)| (x - y).abs() <= 0.5),
+                        "{} at {location:?}: {a:?} != {b:?}",
+                        glyph.name
+                    );
+                }
+                layers_checked += 1;
+            }
+        }
+        assert!(
+            layers_checked > font.glyphs.len(),
+            "{path}: {layers_checked}"
+        );
+    }
+
     #[test]
-    fn test_variable_font_round_trips_between_masters() {
-        // the recompiled font interpolates as the original does everywhere,
-        // not only at its masters
+    fn test_variable_layers_read_as_drawn() {
+        for path in [VARIABLE, VARIABLE_NO_HVAR, AVAR2, COMPOSITES, REDDIT_SANS] {
+            assert_layers_read_as_drawn(path);
+        }
+    }
+
+    /// Points along each axis, and for two axes a grid of them
+    fn locations(axis_count: usize, steps: i32) -> Vec<Vec<F2Dot14>> {
+        let along: Vec<F2Dot14> = (-steps..=steps)
+            .map(|s| F2Dot14::from_f32(s as f32 / steps as f32))
+            .collect();
+        match axis_count {
+            1 => along.into_iter().map(|c| vec![c]).collect(),
+            _ => along
+                .iter()
+                .flat_map(|a| along.iter().map(move |b| vec![*a, *b]))
+                .collect(),
+        }
+    }
+
+    /// The recompiled font draws every glyph, and advances it, as the original
+    /// does: at the masters and everywhere between them
+    #[cfg(feature = "fontir")]
+    fn assert_interpolates_as_original(path: &str, steps: i32) {
         use crate::convertors::fontir::{BabelfontIrSource, CompilationOptions};
-        let original = std::fs::read(VARIABLE).unwrap();
+        let original = std::fs::read(path).unwrap();
         let font = load_bytes(&original).unwrap();
-        let compiled = BabelfontIrSource::compile(font, CompilationOptions::default()).unwrap();
-        for step in -20..=20 {
-            let coords = [F2Dot14::from_f32(step as f32 / 20.0)];
-            for glyph in ["A", "Adot", "O", "Q", "brace", "parenleft", "acutecomb"] {
-                let (points, advance) = drawn_at(&original, glyph, &coords);
-                let (again, again_advance) = drawn_at(&compiled, glyph, &coords);
-                assert_eq!(advance, again_advance, "{glyph} advance at {step}/20");
-                assert_eq!(points.len(), again.len(), "{glyph} at {step}/20");
-                // A rasterizer rounds an interpolated point; an on-curve point
-                // that stays implied is the midpoint of rounded off-curves, so
-                // it may be half a unit off where the source stored it.
+        let options = CompilationOptions {
+            dont_use_production_names: true,
+            ..Default::default()
+        };
+        let compiled = BabelfontIrSource::compile(font.clone(), options).unwrap();
+        for coords in locations(font.axes.len(), steps) {
+            for glyph in font.glyphs.iter().skip(1) {
+                let (points, advance) = drawn_at(&original, &glyph.name, &coords);
+                let (again, again_advance) = drawn_at(&compiled, &glyph.name, &coords);
+                assert!(
+                    (advance - again_advance).abs() <= 1.0,
+                    "{path} {} advance at {coords:?}: {advance} != {again_advance}",
+                    glyph.name
+                );
+                assert_eq!(
+                    points.len(),
+                    again.len(),
+                    "{path} {} at {coords:?}",
+                    glyph.name
+                );
+                // The masters read are rounded to whole units, and a compiler
+                // leaves out deltas it can infer to within half a unit; a
+                // rasterizer also rounds each component's offset, in each
+                // font. So a point may be up to a unit and a half from where
+                // the original draws it; a wrong outline or component is off
+                // by far more.
                 for (a, b) in points.iter().zip(&again) {
                     assert!(
-                        (a.0 - b.0).abs() <= 0.5 && (a.1 - b.1).abs() <= 0.5,
-                        "{glyph} at {step}/20: {a:?} != {b:?}"
+                        (a.0 - b.0).abs() <= 1.5 && (a.1 - b.1).abs() <= 1.5,
+                        "{path} {} at {coords:?}: {a:?} != {b:?}",
+                        glyph.name
                     );
                 }
             }
         }
+    }
+
+    #[cfg(feature = "fontir")]
+    #[test]
+    fn test_variable_fonts_round_trip_between_masters() {
+        assert_interpolates_as_original(VARIABLE, 20);
+        assert_interpolates_as_original(VARIABLE_NO_HVAR, 20);
+        assert_interpolates_as_original(AVAR2, 8);
+        assert_interpolates_as_original(COMPOSITES, 8);
+        assert_interpolates_as_original(REDDIT_SANS, 20);
+    }
+
+    #[test]
+    fn test_composite_intermediate_masters() {
+        let font = load(COMPOSITES).unwrap();
+        let intermediates = |glyph: &str| -> Vec<&Layer> {
+            font.glyphs
+                .get(glyph)
+                .unwrap()
+                .layers
+                .iter()
+                .filter(|l| l.location.is_some())
+                .collect()
+        };
+        // Acomp's own master in the middle of the design space, both axes
+        let acomp = intermediates("Acomp");
+        assert_eq!(acomp.len(), 1);
+        let location = acomp[0].location.as_ref().unwrap();
+        let user = |tag: &[u8; 4]| {
+            let axis = font.axes.iter().find(|a| a.tag == Tag::new(tag)).unwrap();
+            let design = location.get(axis.tag).unwrap();
+            (design.to_user(&axis._converter().unwrap()).to_f64() * 10.0).round() / 10.0
+        };
+        assert_eq!((user(b"wght"), user(b"wdth")), (650.0, 87.5));
+        // the accent there is off the line between the masters around it
+        let accent = acomp[0].components().nth(1).unwrap();
+        let on_the_line = font.interpolate_glyph("Acomp", location);
+        assert_eq!(accent.reference, "acutecomb");
+        let interpolated_without = {
+            let mut without = font.clone();
+            without
+                .glyphs
+                .get_mut("Acomp")
+                .unwrap()
+                .layers
+                .retain(|l| l.location.is_none());
+            without.interpolate_glyph("Acomp", location).unwrap()
+        };
+        let x = |layer: &Layer| {
+            layer
+                .components()
+                .nth(1)
+                .unwrap()
+                .transform
+                .as_affine()
+                .as_coeffs()[4]
+        };
+        assert!((x(acomp[0]) - x(&interpolated_without)).abs() > 30.0);
+        assert!(on_the_line.is_ok());
+        assert_eq!(intermediates("B").len(), 1);
+        // nothing else has a master of its own
+        let others: Vec<&str> = font
+            .glyphs
+            .iter()
+            .filter(|g| g.layers.iter().any(|l| l.location.is_some()))
+            .map(|g| g.name.as_str())
+            .filter(|n| !["Acomp", "B", "A", "acutecomb"].contains(n))
+            .collect();
+        assert!(others.is_empty(), "{others:?}");
+        assert_eq!(font.masters.len(), 6);
+    }
+
+    #[test]
+    fn test_point_matched_component_varies() {
+        // Odot's dot sits on O's point 2, which moves with the masters
+        let font = load(COMPOSITES).unwrap();
+        let offsets: Vec<f64> = font
+            .masters
+            .iter()
+            .map(|m| {
+                let layer = font
+                    .glyphs
+                    .get("Odot")
+                    .unwrap()
+                    .layers
+                    .iter()
+                    .find(|l| l.master == LayerType::DefaultForMaster(m.id.clone()))
+                    .unwrap();
+                layer
+                    .components()
+                    .nth(1)
+                    .unwrap()
+                    .transform
+                    .as_affine()
+                    .as_coeffs()[4]
+            })
+            .collect();
+        let distinct: HashSet<i64> = offsets.iter().map(|x| x.round() as i64).collect();
+        assert!(distinct.len() > 2, "{offsets:?}");
     }
 
     #[cfg(feature = "fontir")]
