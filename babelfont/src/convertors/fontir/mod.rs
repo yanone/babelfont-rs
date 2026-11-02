@@ -24,6 +24,7 @@ use std::sync::Arc;
 mod avar2;
 mod cmap14;
 mod color;
+mod curve_kinds;
 mod features;
 mod global_metrics;
 mod glyphs;
@@ -122,6 +123,9 @@ impl BabelfontIrSource {
         GlyphsData.apply(&mut font)?;
         GlyphsStylisticSetLabel.apply(&mut font)?;
         GlyphsBracketLayers::new(vec![]).apply(&mut font)?;
+        if let Some(message) = curve_kinds::mixed_curve_kinds(&font) {
+            log::warn!("{message}");
+        }
 
         // These really should be errors, not assertions
         // assert!(
