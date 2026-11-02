@@ -251,6 +251,7 @@ shaping_fixture_tests! {
     test_shaping_unencoded_alternate: "ShapingAlternate.ttf",
     test_shaping_variable: "ShapingVariable.ttf",
     test_shaping_feature_variations: "ShapingFeatureVariations.ttf",
+    test_shaping_feature_variations_through_avar: "ShapingFeatureVariationsAvar.ttf",
 }
 
 #[test]
