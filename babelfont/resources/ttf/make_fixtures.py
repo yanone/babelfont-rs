@@ -44,6 +44,10 @@ intermediate master. Kerning: @L [A Adot] against @R [O Q] -40/-50/-80 in a
 class subtable, and A Adot -10/-20/-30 in a glyph pair subtable before it; a
 contextual kern rule that stays feature code.
 VariableNoHvar.ttf: the same without HVAR, its advances in gvar phantom points.
+
+Anchors.ttf: marks on a (top: acutecomb, bottom: dotbelowcomb, ogonek at the
+bottom right: uni0328 for U+0328), on the ligature f_f (top on each component),
+and acutecomb on acutecomb (mark-to-mark, the same mark class as on bases).
 """
 from fontTools.feaLib.builder import addOpenTypeFeaturesFromString
 from fontTools.fontBuilder import FontBuilder
@@ -347,3 +351,34 @@ vf.recalcTimestamp = False
 vf.save("Variable.ttf")
 del vf["HVAR"]
 vf.save("VariableNoHvar.ttf")
+
+
+order = [".notdef", "a", "f_f", "acutecomb", "dotbelowcomb", "uni0328"]
+fb = FontBuilder(1000, isTTF=True)
+fb.setupGlyphOrder(order)
+fb.setupCharacterMap({ord("a"): "a", 0x0301: "acutecomb", 0x0323: "dotbelowcomb", 0x0328: "uni0328"})
+fb.setupGlyf({".notdef": Glyph(), "a": rect(50, 0, 450, 500), "f_f": rect(50, 0, 950, 700),
+              "acutecomb": rect(-150, 550, -50, 700), "dotbelowcomb": rect(-120, -150, -80, -100),
+              "uni0328": rect(-100, -200, 0, 0)})
+fb.setupHorizontalMetrics({g: ({"f_f": 1000, "a": 500}.get(g, 0), fb.font["glyf"][g].xMin if g != ".notdef" else 0)
+                           for g in order})
+fb.setupHorizontalHeader(ascent=800, descent=-200)
+fb.setupNameTable({"familyName": "Fixture Anchors", "styleName": "Regular"})
+fb.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWinAscent=800, usWinDescent=200)
+fb.setupPost()
+addOpenTypeFeaturesFromString(fb.font, """
+markClass acutecomb <anchor -100 500> @TOP;
+markClass dotbelowcomb <anchor -100 0> @BOTTOM;
+markClass uni0328 <anchor -50 0> @OGONEK;
+feature mark {
+    pos base a <anchor 250 500> mark @TOP <anchor 250 0> mark @BOTTOM <anchor 420 0> mark @OGONEK;
+    pos ligature f_f <anchor 250 700> mark @TOP ligComponent <anchor 750 700> mark @TOP;
+} mark;
+feature mkmk {
+    pos mark acutecomb <anchor -100 750> mark @TOP;
+} mkmk;
+table GDEF {
+    GlyphClassDef [a], [f_f], [acutecomb dotbelowcomb uni0328], ;
+} GDEF;
+""")
+save(fb, "Anchors.ttf")

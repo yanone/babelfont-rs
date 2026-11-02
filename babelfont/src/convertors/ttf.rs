@@ -1141,6 +1141,7 @@ mod tests {
     const QUADRATIC: &str = "resources/ttf/Quadratic.ttf";
     const VARIABLE: &str = "resources/ttf/Variable.ttf";
     const VARIABLE_NO_HVAR: &str = "resources/ttf/VariableNoHvar.ttf";
+    const ANCHORS: &str = "resources/ttf/Anchors.ttf";
 
     fn master<'a>(font: &'a Font, name: &str) -> &'a crate::Master {
         font.masters
@@ -1545,6 +1546,44 @@ mod tests {
         // the dot's point 0 (0, 0) sits on O's point 2 (500, 200)
         let font = load(QUADRATIC).unwrap();
         assert_close(&component_coeffs(&font, "dotO")[1][4..], &[500.0, 200.0]);
+    }
+    #[test]
+    fn test_anchor_names() {
+        let font = load(ANCHORS).unwrap();
+        let anchors = |glyph: &str| -> Vec<(String, f64, f64)> {
+            let mut anchors: Vec<_> = font.glyphs.get(glyph).unwrap().layers[0]
+                .anchors
+                .iter()
+                .map(|a| (a.name.to_string(), a.x, a.y))
+                .collect();
+            anchors.sort_by(|a, b| a.0.cmp(&b.0));
+            anchors
+        };
+        let names = |glyph: &str| -> Vec<String> {
+            anchors(glyph)
+                .into_iter()
+                .map(|(name, _, _)| name)
+                .collect()
+        };
+        assert_eq!(names("a"), ["bottom", "ogonek", "top"]);
+        assert_eq!(names("uni0328"), ["_ogonek"]);
+        assert_eq!(names("dotbelowcomb"), ["_bottom"]);
+        // mark-to-mark uses the same class as mark-to-base: one pair of names
+        assert_eq!(
+            anchors("acutecomb"),
+            [
+                ("_top".to_string(), -100.0, 500.0),
+                ("top".to_string(), -100.0, 750.0)
+            ]
+        );
+        // a ligature's anchors are numbered by component
+        assert_eq!(
+            anchors("f_f"),
+            [
+                ("top_1".to_string(), 250.0, 700.0),
+                ("top_2".to_string(), 750.0, 700.0)
+            ]
+        );
     }
     #[test]
     fn test_master_names_from_instances() {
