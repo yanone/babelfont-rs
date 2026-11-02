@@ -97,6 +97,11 @@ fn main() {
             2 => log::LevelFilter::Debug,
             _ => log::LevelFilter::Trace,
         })
+        // fea-rs-ast warns about every bracket and space of every glyph class
+        // it reads, which is gigabytes for a large font's features
+        .filter_module("fea_rs_ast::glyphcontainers", log::LevelFilter::Error)
+        // RUST_LOG, where given, decides
+        .parse_default_env()
         .init();
     let input_name = PathBuf::from(args.get_one::<String>("font_path").unwrap());
     let input_extension = input_name.extension().unwrap().to_str().unwrap();
