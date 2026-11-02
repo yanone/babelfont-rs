@@ -762,11 +762,20 @@ impl<'a> Kerning<'a> {
             let Some(lookup) = lookup else {
                 continue;
             };
+            // one reason per lookup is enough
+            if failing.contains(&piece.lookup) {
+                continue;
+            }
             let systems = simulation.registered.get(*lookup);
             if systems.is_some_and(|s| !s.is_disjoint(&changed)) {
                 log::info!(
-                    "Lookup {} stays feature code; a compiler would add script records",
-                    piece.lookup
+                    "Lookup {} stays feature code; a compiler would add script records {:?}",
+                    piece.lookup,
+                    systems
+                        .into_iter()
+                        .flatten()
+                        .filter(|s| changed.contains(*s))
+                        .collect::<Vec<_>>()
                 );
                 failing.insert(piece.lookup.clone());
                 continue;
