@@ -619,3 +619,67 @@ vf, _, _ = varLib.build(doc)
 vf["head"].created = vf["head"].modified = 0
 vf.recalcTimestamp = False
 vf.save("Composites.ttf")
+
+
+def points_glyph(*contours):
+    """A simple glyph of exactly these points, (x, y, on_curve): nothing is
+    merged, so a contour may end on its start or pass it again"""
+    from array import array
+    from fontTools.ttLib.tables._g_l_y_f import GlyphCoordinates
+    from fontTools.ttLib.tables import ttProgram
+    g = Glyph()
+    g.numberOfContours = len(contours)
+    g.coordinates = GlyphCoordinates([(x, y) for c in contours for x, y, _ in c])
+    g.flags = array("B", [int(on) for c in contours for _, _, on in c])
+    g.endPtsOfContours, end = [], -1
+    for c in contours:
+        end += len(c)
+        g.endPtsOfContours.append(end)
+    g.program = ttProgram.Program()
+    g.program.fromBytecode(b"")
+    return g
+
+
+def coincident_master(weight):
+    """Coincident.ttf's master at a weight: points that coincide at 400 only"""
+    bold = weight == 900
+    x = 40 if bold else 0
+    order = [".notdef", "A", "B", "C", "D"]
+    glyphs = {
+        ".notdef": Glyph(),
+        # the last point is the first at 400
+        "A": points_glyph([(0, 0, 1), (0, 500, 1), (500, 500, 1), (500, 0, 1), (x, 0, 1)]),
+        # the start is passed again at 400
+        "B": points_glyph([(250 + x, 250, 1), (0, 500, 1), (0, 0, 1), (250, 250, 1),
+                           (500, 0, 1), (500, 500, 1)]),
+        # an on-curve on the start at 400, and a closing curve back to it
+        "C": points_glyph([(0, 0, 1), (0, 500, 1), (500, 500, 1), (10 * x, 0, 1),
+                           (250, -100, 0)]),
+        # single-point contours, as a font marks a glyph's box with
+        "D": points_glyph([(100, 100, 1), (100, 400, 1), (400, 400, 1), (400, 100, 1)],
+                          [(0, -50 - x, 1)], [(500 + x, 700, 1)]),
+    }
+    fb = FontBuilder(1000, isTTF=True)
+    fb.setupGlyphOrder(order)
+    fb.setupCharacterMap({ord(c): c for c in "ABCD"})
+    fb.setupGlyf(glyphs)
+    fb.setupHorizontalMetrics({g: (600, 0) for g in order})
+    fb.setupHorizontalHeader(ascent=800, descent=-200)
+    fb.setupNameTable({"familyName": "Fixture Coincident", "styleName": "Regular"})
+    fb.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWinAscent=800, usWinDescent=200)
+    fb.setupPost()
+    buf = io.BytesIO()
+    fb.font.save(buf)
+    buf.seek(0)
+    return TTFont(buf)
+
+
+doc = DesignSpaceDocument()
+doc.addAxisDescriptor(name="Weight", tag="wght", minimum=400, default=400, maximum=900)
+for weight in (400, 900):
+    source = doc.addSourceDescriptor(name=f"w{weight}", location={"Weight": weight})
+    source.font = coincident_master(weight)
+vf, _, _ = varLib.build(doc)
+vf["head"].created = vf["head"].modified = 0
+vf.recalcTimestamp = False
+vf.save("Coincident.ttf")

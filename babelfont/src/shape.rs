@@ -619,9 +619,13 @@ impl OutlinePen for PathBuilder {
             // The first node is currently a move, but we don't want a move
             // in a closed path. If the final node brought us back to the start
             // point, then drop the first node. Otherwise, convert it to a line.
+            // A contour of a single point keeps it.
             if let Some(first_node) = path.nodes.first() {
                 if let Some(last_node) = path.nodes.last() {
-                    if first_node.x == last_node.x && first_node.y == last_node.y {
+                    if path.nodes.len() > 1
+                        && first_node.x == last_node.x
+                        && first_node.y == last_node.y
+                    {
                         // Drop the first node
                         path.nodes.remove(0);
                     } else {
@@ -931,6 +935,17 @@ mod tests {
     use kurbo::PathEl;
 
     use super::*;
+
+    #[test]
+    fn test_path_builder_keeps_a_single_point_contour() {
+        let mut pen = PathBuilder::new();
+        OutlinePen::move_to(&mut pen, 10.0, 20.0);
+        OutlinePen::close(&mut pen);
+        let paths = pen.build();
+        assert_eq!(paths.len(), 1);
+        assert_eq!(paths[0].nodes.len(), 1);
+        assert_eq!((paths[0].nodes[0].x, paths[0].nodes[0].y), (10.0, 20.0));
+    }
 
     #[test]
     fn test_path_serde_roundtrip() {

@@ -31,7 +31,7 @@ use crate::layout::expand::expand_glyph_container;
 
 use crate::{
     features::PossiblyAutomaticCode, Anchor, BabelfontError, Features, Font, FormatSpecific, Glyph,
-    GlyphCategory, Instance, Layer, LayerType, MetricType, PathBuilder, Tag,
+    GlyphCategory, Instance, Layer, LayerType, MetricType, Tag,
 };
 
 /// Load a TTF font from a file path
@@ -1642,76 +1642,102 @@ fn read_shift(
 
 const COMPOSITE_RECURSION_LIMIT: usize = 32;
 
-/// A contour and the point it starts at
-type ContourWithStart = (crate::Path, (f64, f64));
-
-/// A pen that notes where each contour starts
-struct StartsPen {
-    builder: PathBuilder,
-    starts: Vec<(f64, f64)>,
+/// A pen that keeps each contour as skrifa draws it: its start, the move, is
+/// its first node, as a line, and nothing is merged or dropped. skrifa draws a
+/// glyf contour with the same calls wherever it is drawn (they follow the
+/// point flags, which every master shares), so the nodes are the same in every
+/// master, even where points coincide in some of them.
+#[derive(Default)]
+struct ContoursPen {
+    contours: Vec<crate::Path>,
 }
 
-impl skrifa::outline::OutlinePen for StartsPen {
+impl ContoursPen {
+    fn push(&mut self, node: crate::Node) {
+        if let Some(contour) = self.contours.last_mut() {
+            contour.nodes.push(node);
+        }
+    }
+}
+
+impl skrifa::outline::OutlinePen for ContoursPen {
     fn move_to(&mut self, x: f32, y: f32) {
-        self.starts.push((x as f64, y as f64));
-        skrifa::outline::OutlinePen::move_to(&mut self.builder, x, y);
+        self.contours.push(crate::Path {
+            nodes: vec![crate::Node::new_line(x, y)],
+            closed: true,
+            ..Default::default()
+        });
     }
     fn line_to(&mut self, x: f32, y: f32) {
-        skrifa::outline::OutlinePen::line_to(&mut self.builder, x, y);
+        self.push(crate::Node::new_line(x, y));
     }
     fn quad_to(&mut self, cx0: f32, cy0: f32, x: f32, y: f32) {
-        skrifa::outline::OutlinePen::quad_to(&mut self.builder, cx0, cy0, x, y);
+        self.push(crate::Node::new_offcurve(cx0, cy0));
+        self.push(crate::Node::new_qcurve(x, y));
     }
     fn curve_to(&mut self, cx0: f32, cy0: f32, cx1: f32, cy1: f32, x: f32, y: f32) {
-        skrifa::outline::OutlinePen::curve_to(&mut self.builder, cx0, cy0, cx1, cy1, x, y);
+        self.push(crate::Node::new_offcurve(cx0, cy0));
+        self.push(crate::Node::new_offcurve(cx1, cy1));
+        self.push(crate::Node::new_curve(x, y));
     }
-    fn close(&mut self) {
-        skrifa::outline::OutlinePen::close(&mut self.builder);
-    }
+    fn close(&mut self) {}
 }
 
-/// A glyph's contours as skrifa draws them, in glyf order and direction, with
-/// the point each one starts at
-fn draw_contours_with_starts(
-    fontref: &skrifa::FontRef<'_>,
-    gid: skrifa::GlyphId,
-    location: LocationRef,
-) -> Result<Vec<ContourWithStart>, BabelfontError> {
-    let Some(outline) = fontref.outline_glyphs().get(gid) else {
-        return Ok(vec![]);
-    };
-    let mut pen = StartsPen {
-        builder: PathBuilder::new(),
-        starts: vec![],
-    };
-    outline
-        .draw(DrawSettings::unhinted(Size::unscaled(), location), &mut pen)
-        .map_err(|e| BabelfontError::BinaryFontRead(e.to_string()))?;
-    Ok(pen.builder.build().into_iter().zip(pen.starts).collect())
-}
-
+/// A glyph's contours as skrifa draws them, in glyf order and direction, each
+/// starting with the point it starts at (see [`ContoursPen`])
 fn draw_contours(
     fontref: &skrifa::FontRef<'_>,
     gid: skrifa::GlyphId,
     location: LocationRef,
 ) -> Result<Vec<crate::Path>, BabelfontError> {
-    Ok(draw_contours_with_starts(fontref, gid, location)?
-        .into_iter()
-        .map(|(path, _)| path)
-        .collect())
+    let Some(outline) = fontref.outline_glyphs().get(gid) else {
+        return Ok(vec![]);
+    };
+    let mut pen = ContoursPen::default();
+    outline
+        .draw(DrawSettings::unhinted(Size::unscaled(), location), &mut pen)
+        .map_err(|e| BabelfontError::BinaryFontRead(e.to_string()))?;
+    Ok(pen.contours)
 }
 
-/// Reverses a contour drawn from a glyf, keeping the point it starts at as its
-/// start (the last node), as a compiler that reverses it back keeps it
-fn reverse_keeping_start(path: &mut crate::Path, start: (f64, f64)) {
-    path.reverse();
-    if let Some(index) = path
-        .nodes
+/// For each contour of a simple glyph, whether skrifa draws a segment back to
+/// the point the contour starts at, so that the start is drawn twice: as the
+/// move and as that segment's end. It does when the last point it reaches
+/// before closing is an off-curve: the contour's last point, or the one before
+/// it when a contour starting with an off-curve starts at its last point. This
+/// follows the flags alone, never the coordinates, so it is the same in every
+/// master.
+fn closes_with_a_segment(simple: &glyf::SimpleGlyph) -> Vec<bool> {
+    let on_curve: Vec<bool> = simple.points().map(|p| p.on_curve).collect();
+    let mut start = 0;
+    simple
+        .end_pts_of_contours()
         .iter()
-        .position(|n| n.nodetype != crate::NodeType::OffCurve && (n.x, n.y) == start)
-    {
-        path.nodes.rotate_left(index + 1);
+        .map(|end| {
+            let end = end.get() as usize;
+            let contour = on_curve.get(start..=end).unwrap_or_default();
+            start = end + 1;
+            let reached_last = match contour {
+                [false, .., before_last, true] => *before_last,
+                [.., last] => *last,
+                [] => true,
+            };
+            !reached_last
+        })
+        .collect()
+}
+
+/// Reverses a contour drawn from a glyf, keeping the node at `start` (the
+/// point the glyf contour starts at) as its start, the last node, as a
+/// compiler that reverses it back keeps it. The start is found by its index,
+/// never by its coordinates, which other points may share in some masters.
+fn reverse_keeping_start(path: &mut crate::Path, start: usize) {
+    if start < path.nodes.len() {
+        path.nodes.rotate_left(start);
     }
+    // the start, an on-curve, is now first; reversed, it is last, and
+    // reversing leaves it there since no off-curves trail it
+    path.reverse();
 }
 
 /// A coordinate skrifa computed in f32, rounded to the integer it stands for
@@ -1746,11 +1772,21 @@ fn load_layer(
     };
 
     match glyph {
-        glyf::Glyph::Simple(_) => {
+        glyf::Glyph::Simple(simple) => {
+            let closing = closes_with_a_segment(&simple);
             // glyf contours run clockwise, a source's counter-clockwise
-            layer.shapes = draw_contours_with_starts(fontref, gid, locationref)?
+            layer.shapes = draw_contours(fontref, gid, locationref)?
                 .into_iter()
-                .map(|(mut path, start)| {
+                .enumerate()
+                .map(|(index, mut path)| {
+                    // a start drawn twice is one point: keep the segment's end
+                    let start =
+                        if closing.get(index).copied().unwrap_or(false) && path.nodes.len() > 1 {
+                            path.nodes.remove(0);
+                            path.nodes.len() - 1
+                        } else {
+                            0
+                        };
                     reverse_keeping_start(&mut path, start);
                     crate::Shape::Path(path)
                 })
@@ -1830,6 +1866,7 @@ fn load_layer(
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::PathBuilder;
     use kurbo::Shape as _;
 
     const STATIC_LEGACY: &str = "resources/ttf/StaticLegacy.ttf";
@@ -1846,6 +1883,7 @@ mod tests {
     const RTL_KERNING: &str = "resources/ttf/RtlKerning.ttf";
     const COMPOSITES: &str = "resources/ttf/Composites.ttf";
     const REDDIT_SANS: &str = "resources/ttf/RedditSans-Subset.ttf";
+    const COINCIDENT: &str = "resources/ttf/Coincident.ttf";
 
     fn master<'a>(font: &'a Font, name: &str) -> &'a crate::Master {
         font.masters
@@ -2243,6 +2281,67 @@ mod tests {
             "{:?}",
             layer.paths().next().unwrap().nodes
         );
+    }
+    /// The contours of a glyph's master layers, as (node type, x, y), by the
+    /// masters' first coordinate
+    fn master_nodes(font: &Font, glyph: &str) -> Vec<Vec<Vec<(crate::NodeType, f64, f64)>>> {
+        let mut masters: Vec<&crate::Master> = font.masters.iter().collect();
+        masters.sort_by_key(|m| OrderedFloat(m.location.iter().next().unwrap().1.to_f64()));
+        masters
+            .iter()
+            .map(|m| {
+                font.glyphs
+                    .get(glyph)
+                    .unwrap()
+                    .layers
+                    .iter()
+                    .find(|l| l.master == LayerType::DefaultForMaster(m.id.clone()))
+                    .unwrap()
+                    .paths()
+                    .map(|p| p.nodes.iter().map(|n| (n.nodetype, n.x, n.y)).collect())
+                    .collect()
+            })
+            .collect()
+    }
+    #[test]
+    fn test_coincident_points_keep_their_place() {
+        use crate::NodeType::{Line, OffCurve, QCurve};
+        // the glyf points coincide at 400 only; every master has every point,
+        // in the same order, starting where the glyf contour starts
+        let font = load(COINCIDENT).unwrap();
+        let [regular, bold] = &master_nodes(&font, "A")[..] else {
+            panic!()
+        };
+        // the last point, on the start at 400, stays a point of its own
+        let types = |c: &Vec<(crate::NodeType, f64, f64)>| c.iter().map(|n| n.0).collect_vec();
+        assert_eq!(types(&regular[0]), vec![Line; 5]);
+        assert_eq!(types(&regular[0]), types(&bold[0]));
+        assert_eq!(regular[0].last().unwrap(), &(Line, 0.0, 0.0));
+        assert_eq!(bold[0].last().unwrap(), &(Line, 0.0, 0.0));
+        assert_eq!(bold[0].first().unwrap(), &(Line, 40.0, 0.0));
+        // the start, passed again at 400, is the glyf's start in every master
+        let [regular, bold] = &master_nodes(&font, "B")[..] else {
+            panic!()
+        };
+        assert_eq!(regular[0].last().unwrap(), &(Line, 250.0, 250.0));
+        assert_eq!(bold[0].last().unwrap(), &(Line, 290.0, 250.0));
+        assert_eq!(regular[0][2], (Line, 250.0, 250.0));
+        assert_eq!(bold[0][2], (Line, 250.0, 250.0));
+        // a curve closes C back to its start; the on-curve on the start at
+        // 400 is a point of its own
+        let [regular, bold] = &master_nodes(&font, "C")[..] else {
+            panic!()
+        };
+        assert_eq!(types(&regular[0]), vec![OffCurve, QCurve, Line, Line, Line]);
+        assert_eq!(types(&regular[0]), types(&bold[0]));
+        assert_eq!(regular[0][1], (QCurve, 0.0, 0.0));
+        assert_eq!(bold[0][1], (QCurve, 400.0, 0.0));
+        assert_eq!(regular[0][4], (Line, 0.0, 0.0));
+        assert_eq!(bold[0][4], (Line, 0.0, 0.0));
+        // single-point contours stay
+        for master in master_nodes(&font, "D") {
+            assert_eq!(master.iter().map(|c| c.len()).collect_vec(), vec![4, 1, 1]);
+        }
     }
     #[test]
     fn test_point_matched_component() {
@@ -3099,7 +3198,14 @@ mod tests {
 
     #[test]
     fn test_variable_layers_read_as_drawn() {
-        for path in [VARIABLE, VARIABLE_NO_HVAR, AVAR2, COMPOSITES, REDDIT_SANS] {
+        for path in [
+            VARIABLE,
+            VARIABLE_NO_HVAR,
+            AVAR2,
+            COMPOSITES,
+            REDDIT_SANS,
+            COINCIDENT,
+        ] {
             assert_layers_read_as_drawn(path);
         }
     }
@@ -3170,6 +3276,7 @@ mod tests {
         assert_interpolates_as_original(AVAR2, 8);
         assert_interpolates_as_original(COMPOSITES, 8);
         assert_interpolates_as_original(REDDIT_SANS, 20);
+        assert_interpolates_as_original(COINCIDENT, 20);
     }
 
     #[test]
