@@ -5,10 +5,12 @@ use serde::Deserialize;
 use crate::filters::FontFilter;
 
 #[derive(Debug, Deserialize)]
-struct GlyphInfo {
-    // unicode: Option<u32>,
-    // unicode_legacy: Option<String>,
-    name: String,
+pub(crate) struct GlyphInfo {
+    /// The codepoint, in hex
+    pub(crate) unicode: Option<String>,
+    /// The Unicode character name, or a description of the glyph
+    pub(crate) description: Option<String>,
+    pub(crate) name: String,
     category: String,
     // sub_category: Option<String>,
     // case: Option<String>,
@@ -22,6 +24,19 @@ const GLYPHS_DATA_STR: &str = include_str!(concat!(env!("OUT_DIR"), "/glyphsdata
 #[allow(clippy::expect_used)]
 static GLYPHS_DATA: LazyLock<Vec<GlyphInfo>> =
     LazyLock::new(|| serde_json::from_str(GLYPHS_DATA_STR).expect("Failed to parse glyphs data"));
+
+static GLYPHS_DATA_BY_NAME: LazyLock<std::collections::HashMap<&'static str, &'static GlyphInfo>> =
+    LazyLock::new(|| {
+        GLYPHS_DATA
+            .iter()
+            .map(|info| (info.name.as_str(), info))
+            .collect()
+    });
+
+/// Glyphs.app's data on a glyph, by its name
+pub(crate) fn glyph_info(name: &str) -> Option<&'static GlyphInfo> {
+    GLYPHS_DATA_BY_NAME.get(name).copied()
+}
 
 /// A filter that adds Glyphs.app glyph metadata to the font
 pub struct GlyphsData;
