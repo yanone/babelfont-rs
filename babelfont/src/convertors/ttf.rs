@@ -666,27 +666,34 @@ fn load_stat(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babelfont
     let Ok(stat) = fontref.stat() else {
         return Ok(());
     };
+    // a name's statements: its default, then its other languages (Windows)
     let name = |id: StringId| -> String {
-        fea_string(
-            name_id_to_i18n(fontref, id)
-                .get_default()
-                .map(String::as_str)
-                .unwrap_or_default(),
-        )
+        let names = name_id_to_i18n(fontref, id);
+        let mut statements = vec![format!(
+            "name \"{}\";",
+            fea_string(names.get_default().map(String::as_str).unwrap_or_default())
+        )];
+        for (language, value) in names.0.iter() {
+            match crate::names::name_language_to_ot_lang_id(language) {
+                Some(0x0409) | None => {}
+                Some(lang_id) => statements.push(format!(
+                    "name 3 1 0x{lang_id:04X} \"{}\";",
+                    fea_string(value)
+                )),
+            }
+        }
+        statements.join(" ")
     };
     let design_axes = stat.design_axes()?;
     let tag_of = |index: u16| design_axes.get(index as usize).map(|a| a.axis_tag());
     let mut lines = vec!["table STAT {".to_string()];
     // by its name: a compiler knows only the names feature code states
     if let Some(id) = stat.elided_fallback_name_id() {
-        lines.push(format!(
-            "    ElidedFallbackName {{ name \"{}\"; }};",
-            name(id)
-        ));
+        lines.push(format!("    ElidedFallbackName {{ {} }};", name(id)));
     }
     for axis in design_axes {
         lines.push(format!(
-            "    DesignAxis {} {} {{ name \"{}\"; }};",
+            "    DesignAxis {} {} {{ {} }};",
             axis.axis_tag(),
             axis.axis_ordering(),
             name(axis.axis_name_id())
@@ -752,7 +759,7 @@ fn load_stat(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babelfont
             for location in locations {
                 lines.push(format!("        location {location};"));
             }
-            lines.push(format!("        name \"{}\";", name(name_id)));
+            lines.push(format!("        {}", name(name_id)));
             let mut flag_names = vec![];
             if flags.bits() & 0x1 != 0 {
                 flag_names.push("OlderSiblingFontAttribute");
@@ -2065,6 +2072,24 @@ mod tests {
         assert_eq!(layer.vertical_advance, Some(1000.0));
         assert_eq!(layer.vertical_origin, Some(600.0));
     }
+    #[cfg(feature = "fontir")]
+    #[test]
+    fn test_stat_names_keep_their_languages() {
+        use crate::convertors::fontir::{BabelfontIrSource, CompilationOptions};
+        let original = std::fs::read(AVAR2_NO_MAP).unwrap();
+        let compiled = BabelfontIrSource::compile(
+            load_bytes(&original).unwrap(),
+            CompilationOptions::default(),
+        )
+        .unwrap();
+        let fontref = skrifa::FontRef::new(&compiled).unwrap();
+        let stat = fontref.stat().unwrap();
+        let wght = stat.design_axes().unwrap()[0].axis_name_id();
+        let names = name_id_to_i18n(&fontref, wght);
+        assert_eq!(names.get_default().map(String::as_str), Some("Weight"));
+        assert_eq!(names.0.get("DEU").map(String::as_str), Some("Gewicht"));
+    }
+
     #[cfg(feature = "fontir")]
     #[test]
     fn test_vertical_metrics_round_trip() {
