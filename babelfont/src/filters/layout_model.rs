@@ -602,10 +602,14 @@ impl Layout {
                 info.gpos && (self.feature_refs.contains_key(*name) || name.ends_with("#generated"))
             })
             .collect();
+        // at one index: lookups generated at an earlier marker (kern's, which
+        // shares the index of the lookup after it), then the moved ones,
+        // generated at the marker that takes their place, then the lookup
         let position = |name: &SmolStr, info: &LookupInfo| -> (usize, usize) {
             match moved.get(name) {
-                Some(p) => (*p, 0),
-                None => (info.index, 1),
+                Some(p) => (*p, 1),
+                None if name.ends_with("#generated") => (info.index, 0),
+                None => (info.index, 2),
             }
         };
         for (a, ai) in &referenced {
