@@ -69,7 +69,6 @@ struct Value {
 #[derive(Default, Debug)]
 struct LookupKerning {
     pairs: Vec<(Side, Side, Value)>,
-    first_glyphs: HashSet<SmolStr>,
 }
 
 /// What a compiler makes of the flags of kerning lookups
@@ -227,7 +226,6 @@ impl Reader<'_> {
                     }
                     for right in self.expand(&pair.glyphs_2, marks) {
                         if seen_pairs.insert((left.clone(), right.clone())) {
-                            kerning.first_glyphs.insert(left.clone());
                             kerning.pairs.push((
                                 Side::Glyph(left.clone()),
                                 Side::Glyph(right),
@@ -276,8 +274,7 @@ impl Reader<'_> {
                 if left_glyphs.iter().any(|g| claimed.contains(g)) {
                     return None;
                 }
-                covered.extend(left_glyphs.iter().cloned());
-                kerning.first_glyphs.extend(left_glyphs);
+                covered.extend(left_glyphs);
                 for (right, value) in row {
                     kerning.pairs.push((left.clone(), right, value));
                 }
@@ -869,10 +866,16 @@ impl FontFilter for MoveKerningFromFeatures {
                     || values.iter().any(|v| v.get(i).is_some_and(|v| *v != 0))
             })
             .collect();
+        // Within a lookup the first rule for a pair wins: where a class of one
+        // glyph and a glyph pair become the same pair (@f:@f 22 after f f 15),
+        // the first value stays
         for (master, master_values) in font.masters.iter_mut().zip(values) {
             for (i, (left, right, _)) in pairs.iter().enumerate() {
                 if let (Some(true), Some(value)) = (keep.get(i), master_values.get(i)) {
-                    master.kerning.insert((left.clone(), right.clone()), *value);
+                    master
+                        .kerning
+                        .entry((left.clone(), right.clone()))
+                        .or_insert(*value);
                 }
             }
         }
@@ -968,16 +971,15 @@ impl MoveKerningFromFeatures {
         candidates.sort_by_key(|(name, _)| layout.lookups.get(*name).map(|l| l.index));
         let mut master_values = MasterValues::new(font)?;
         let mut read: Vec<(SmolStr, LookupKerning, Vec<Vec<i16>>)> = vec![];
-        let mut first_glyphs: HashSet<SmolStr> = HashSet::new();
+        // The pairs the lookups read so far kern: by first glyph, the second
+        // glyphs of each kerning pair (a compiler splits one kerning by script
+        // into lookups that kern the same first glyphs, never the same pair)
+        let mut kerned: HashMap<SmolStr, Vec<HashSet<SmolStr>>> = HashMap::new();
         'lookups: for (name, lookup) in candidates {
             let Some(kerning) = reader.read_lookup(lookup) else {
                 log::info!("Lookup {name} stays feature code; the kerning model cannot hold it");
                 continue;
             };
-            // lookups kerning the same first glyphs add up; the model cannot
-            if !kerning.first_glyphs.is_disjoint(&first_glyphs) {
-                continue;
-            }
             let mut values = vec![vec![]; master_values.master_count()];
             for (_, _, value) in &kerning.pairs {
                 let Some(at_masters) = master_values.at_masters(&value.metric) else {
@@ -994,7 +996,33 @@ impl MoveKerningFromFeatures {
                     master.push(ot_round(v).clamp(i16::MIN as i32, i16::MAX as i32) as i16);
                 }
             }
-            first_glyphs.extend(kerning.first_glyphs.iter().cloned());
+            // lookups kerning the same pair add up; the model holds one value
+            let nonzero = |i: usize| values.iter().any(|m| m.get(i).is_some_and(|v| *v != 0));
+            let these: Vec<(Vec<SmolStr>, HashSet<SmolStr>)> = kerning
+                .pairs
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| nonzero(*i))
+                .map(|(_, (left, right, _))| (left.glyphs(), right.glyphs().into_iter().collect()))
+                .collect();
+            let adds_up = these.iter().any(|(lefts, rights)| {
+                lefts.iter().any(|left| {
+                    kerned
+                        .get(left)
+                        .is_some_and(|seconds| seconds.iter().any(|s| !s.is_disjoint(rights)))
+                })
+            });
+            if adds_up {
+                log::info!(
+                    "Lookup {name} stays feature code; an earlier lookup kerns some of its pairs too"
+                );
+                continue;
+            }
+            for (lefts, rights) in these {
+                for left in lefts {
+                    kerned.entry(left).or_default().push(rights.clone());
+                }
+            }
             read.push((name.clone(), kerning, values));
         }
         if read.is_empty() {
