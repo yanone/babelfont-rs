@@ -58,12 +58,12 @@ pub fn load_bytes(binary: &[u8]) -> Result<Font, BabelfontError> {
     load_instances(&fontref, &mut font)?;
     load_masters(&fontref, &mut font)?;
     load_glyphs(&fontref, &mut font)?;
-    load_features(&fontref, &mut font)?;
+    let provisional = load_features(&fontref, &mut font)?;
     load_stat(&fontref, &mut font)?;
     load_legacy_kerning(&fontref, &mut font)?;
     name_unnamed_glyphs(&fontref, &mut font)?;
     load_variation_sequences(&fontref, &mut font);
-    name_placeholder_anchors(&mut font);
+    name_placeholder_anchors(&mut font, &provisional);
     {
         use crate::filters::FontFilter;
         crate::filters::DropImpliedOnCurves.apply(&mut font)?;
@@ -388,7 +388,7 @@ fn may_share_name(
 /// feature code is renamed with it. It is shared with another class only where
 /// no glyph has both and their bases write different scripts; the feature code
 /// then keeps its class names apart.
-fn name_placeholder_anchors(font: &mut Font) {
+fn name_placeholder_anchors(font: &mut Font, provisional: &HashSet<String>) {
     let all_anchor_names = |font: &Font| -> HashSet<String> {
         font.glyphs
             .iter()
@@ -399,7 +399,7 @@ fn name_placeholder_anchors(font: &mut Font) {
     let mut placeholders: Vec<String> = all_anchor_names(font)
         .iter()
         .filter_map(|name| name.strip_prefix('_'))
-        .filter(|name| name.starts_with(PLACEHOLDER_ANCHOR_PREFIX))
+        .filter(|name| name.starts_with(PLACEHOLDER_ANCHOR_PREFIX) || provisional.contains(*name))
         .map(str::to_string)
         .collect();
     placeholders.sort();
@@ -1512,7 +1512,11 @@ fn shaper_mark(glyph: &Glyph) -> bool {
 }
 
 // This is only sound for mark class definitions
-fn load_features(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), BabelfontError> {
+/// The anchor names the decompiler made up are returned
+fn load_features(
+    fontref: &skrifa::FontRef,
+    font: &mut Font,
+) -> Result<HashSet<String>, BabelfontError> {
     let axes = font.fontdrasil_axes()?;
     // the scripts a compiler kerns the font's characters in, and so adds
     // script records for (fontc's guess_font_scripts)
@@ -1525,6 +1529,11 @@ fn load_features(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babel
             .collect();
     let mut uncompile_context = sr_aef::uncompile_context_with_scripts(fontref, &generated_scripts)
         .map_err(|e| BabelfontError::BinaryFontRead(e.to_string()))?;
+    let provisional: HashSet<String> = uncompile_context
+        .provisional_anchor_names
+        .iter()
+        .map(|name| name.to_string())
+        .collect();
     // ligature carets and attachment points; glyph classes are categories
     let gdef = uncompile_context
         .gdef_without_glyph_classes()
@@ -1654,7 +1663,7 @@ fn load_features(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babel
         ));
     }
     font.features = features;
-    Ok(())
+    Ok(provisional)
 }
 
 /// Ligature carets that vary become `caret_N` anchors, which a compiler
@@ -2724,6 +2733,19 @@ mod tests {
             };
             let mut layer = Layer::new(width);
             layer.master = LayerType::DefaultForMaster("m".into());
+            if *category != GlyphCategory::Mark {
+                // a box, for anchor names by where they are on it
+                use skrifa::outline::OutlinePen;
+                let mut pen = PathBuilder::new();
+                pen.move_to(0.0, 0.0);
+                pen.line_to(0.0, 700.0);
+                pen.line_to(600.0, 700.0);
+                pen.line_to(600.0, 0.0);
+                pen.close();
+                layer
+                    .shapes
+                    .extend(pen.build().into_iter().map(crate::Shape::Path));
+            }
             for (anchor, x, y) in anchors.iter() {
                 layer.anchors.push(Anchor {
                     id: None,
@@ -2791,6 +2813,89 @@ mod tests {
         assert!(anchors("acutecomb").contains(&format!("_{on_base}")));
         assert_eq!(anchors("candrabindu-deva").len(), 2);
         assert_eq!(anchors("ka-deva").len(), 1);
+    }
+
+    #[test]
+    #[cfg(feature = "fontir")]
+    fn test_anchor_names_keep_the_order_of_their_lookups() {
+        // two groups attach tildecomb to A: fontc writes a lookup per group in
+        // the order of their names, and the later one wins (FleurDeLeah's top
+        // and topviet). Read back, the names keep that order, though by where
+        // they are the first is topright, the second topleft.
+        let font = compiled_and_read(
+            &[
+                (
+                    "A",
+                    0x41,
+                    GlyphCategory::Base,
+                    &[("top", 560.0, 700.0), ("topviet", 40.0, 690.0)],
+                ),
+                (
+                    "tildecomb",
+                    0x303,
+                    GlyphCategory::Mark,
+                    &[("_top", 0.0, 500.0), ("_topviet", 10.0, 480.0)],
+                ),
+            ],
+            &[],
+        );
+        let fea = font.features.to_fea();
+        assert!(!fea.contains("pos base"), "{fea}");
+        let layer = &font.glyphs.get("A").unwrap().layers[0];
+        let name_at = |x: f64| {
+            layer
+                .anchors
+                .iter()
+                .find(|a| a.x == x)
+                .map(|a| a.name.clone())
+                .unwrap()
+        };
+        assert!(name_at(560.0) < name_at(40.0), "{:?}", layer.anchors);
+        for anchor in &layer.anchors {
+            assert!(
+                !anchor.name.starts_with("mark_class"),
+                "{:?}",
+                layer.anchors
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "fontir")]
+    fn test_anchor_names_keep_abvm_and_blwm_apart() {
+        // fontc puts a Devanagari group in blwm by its name (bottom*, nukta)
+        let font = compiled_and_read(
+            &[
+                (
+                    "ka-deva",
+                    0x915,
+                    GlyphCategory::Base,
+                    &[("top", 280.0, 720.0), ("bottom", 280.0, -40.0)],
+                ),
+                (
+                    "candrabindu-deva",
+                    0x901,
+                    GlyphCategory::Mark,
+                    &[("_top", 0.0, 520.0)],
+                ),
+                (
+                    "nukta-deva",
+                    0x93C,
+                    GlyphCategory::Mark,
+                    &[("_bottom", 0.0, 0.0)],
+                ),
+            ],
+            &[],
+        );
+        let fea = font.features.to_fea();
+        assert!(!fea.contains("pos base"), "{fea}");
+        let names: Vec<String> = font.glyphs.get("ka-deva").unwrap().layers[0]
+            .anchors
+            .iter()
+            .map(|a| a.name.to_string())
+            .collect();
+        let below: Vec<&String> = names.iter().filter(|n| n.starts_with("bottom")).collect();
+        assert_eq!(below.len(), 1, "{names:?}");
     }
 
     #[test]
@@ -3100,7 +3205,7 @@ mod tests {
                  markClass fatha-ar <anchor 0 0> @mark_class_0x4;",
             ),
         );
-        name_placeholder_anchors(&mut font);
+        name_placeholder_anchors(&mut font, &HashSet::new());
         let names = |glyph: &str| -> Vec<String> {
             font.glyphs.get(glyph).unwrap().layers[0]
                 .anchors
