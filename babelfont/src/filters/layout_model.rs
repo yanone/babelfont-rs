@@ -1024,37 +1024,49 @@ impl MasterValues {
         let Metric::Variable(items) = metric else {
             return None;
         };
+        let near = |a: &NormalizedLocation, b: &NormalizedLocation| {
+            self.axes.iter().all(|axis| {
+                let bits = |l: &NormalizedLocation| {
+                    l.get(axis.tag).unwrap_or_default().to_f2dot14().to_bits() as i32
+                };
+                (bits(a) - bits(b)).abs() <= 2
+            })
+        };
+        let stated: Vec<(NormalizedLocation, f64)> = items
+            .iter()
+            .map(|(user_location, value)| {
+                let normalized: NormalizedLocation = self
+                    .axes
+                    .iter()
+                    .map(|axis| {
+                        let user = user_location
+                            .get(axis.tag.to_string().as_str())
+                            .map_or(axis.default, |coord| UserCoord::new(coord.0));
+                        (axis.tag, user.to_normalized(&axis.converter))
+                    })
+                    .collect();
+                (normalized, *value as f64)
+            })
+            .collect();
+        // A location a feature file states in user units comes back a step
+        // or two of F2Dot14 away from the master it is (an axis mapped
+        // through avar: Big Shoulders' wght=333.6): it is that master's,
+        // where no other stated location is as near it
         let mut values: HashMap<NormalizedLocation, Vec<f64>> = HashMap::new();
-        for (user_location, value) in items {
-            let normalized: NormalizedLocation = self
-                .axes
-                .iter()
-                .map(|axis| {
-                    let user = user_location
-                        .get(axis.tag.to_string().as_str())
-                        .map_or(axis.default, |coord| UserCoord::new(coord.0));
-                    (axis.tag, user.to_normalized(&axis.converter))
-                })
-                .collect();
-            // A location a feature file states in user units comes back a
-            // step or two of F2Dot14 away from the master it is (an axis
-            // mapped through avar: Big Shoulders' wght=333.6): it is that
-            // master's
-            let near = |a: &NormalizedLocation, b: &NormalizedLocation| {
-                self.axes.iter().all(|axis| {
-                    let bits = |l: &NormalizedLocation| {
-                        l.get(axis.tag).unwrap_or_default().to_f2dot14().to_bits() as i32
-                    };
-                    (bits(a) - bits(b)).abs() <= 2
-                })
+        for (normalized, value) in &stated {
+            let master = self.masters.iter().find(|master| near(master, normalized));
+            let alone = master.is_some_and(|master| {
+                stated
+                    .iter()
+                    .filter(|(other, _)| near(master, other))
+                    .count()
+                    == 1
+            });
+            let location = match master {
+                Some(master) if alone => master.clone(),
+                _ => normalized.clone(),
             };
-            let normalized = self
-                .masters
-                .iter()
-                .find(|master| near(master, &normalized))
-                .cloned()
-                .unwrap_or(normalized);
-            values.insert(normalized, vec![*value as f64]);
+            values.insert(location, vec![*value]);
         }
         let key_of = |location: &NormalizedLocation, axes: &fontdrasil::types::Axes| {
             axes.iter()
