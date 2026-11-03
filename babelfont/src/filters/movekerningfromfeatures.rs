@@ -317,13 +317,18 @@ impl Groups {
             Side::Glyph(glyph) => return Some(glyph.clone()),
             Side::Class(name, members) => (name, members),
         };
-        if members.len() == 1 && name.is_none() {
-            return members.first().cloned();
-        }
         let mut sorted = members.clone();
         sorted.sort();
         if let Some(group) = self.by_members.get(&sorted) {
             return Some(format!("@{group}").into());
+        }
+        // A class of one glyph is a group of one: a compiler writes a glyph
+        // kerned by itself as glyph pairs, and a group as a class (Fustat's @B,
+        // @f). Where the glyph is in a group already, it is the glyph.
+        if let [glyph] = members.as_slice() {
+            if name.is_none() && self.by_glyph.contains_key(glyph) {
+                return Some(glyph.clone());
+            }
         }
         // a glyph is in one group at most
         if members.iter().any(|g| self.by_glyph.contains_key(g)) {
@@ -836,6 +841,7 @@ impl FontFilter for MoveKerningFromFeatures {
             first_groups,
             second_groups,
             marker_tags,
+            glyph_scripts,
         } = moved;
         let markers = vec![(first, marker_tags.iter().map(|t| t.as_str()).collect())];
         if !remove_lookup_blocks(&mut font.features, &names, &markers) {
@@ -887,6 +893,7 @@ impl FontFilter for MoveKerningFromFeatures {
         }
         font.first_kern_groups = first_groups.groups;
         font.second_kern_groups = second_groups.groups;
+        super::kerning_groups::merge_split_groups(font, &glyph_scripts);
         Ok(())
     }
 
@@ -917,6 +924,8 @@ struct MovedKerning {
     first_groups: Groups,
     second_groups: Groups,
     marker_tags: Vec<SmolStr>,
+    /// Each glyph's scripts and direction, as a compiler finds them
+    glyph_scripts: super::kerning_groups::GlyphScripts,
 }
 
 impl MoveKerningFromFeatures {
@@ -1163,6 +1172,25 @@ impl MoveKerningFromFeatures {
         if layout.features.contains_key("dist") {
             marker_tags.push("dist".into());
         }
+        let name = |i: &usize| font.glyphs.get_by_index(*i).map(|g| g.name.clone());
+        let glyph_scripts = super::kerning_groups::GlyphScripts {
+            scripts: kerning_model
+                .glyph_scripts
+                .iter()
+                .enumerate()
+                .filter_map(|(i, scripts)| Some((name(&i)?, scripts.clone())))
+                .collect(),
+            left_to_right: kerning_model
+                .left_to_right
+                .iter()
+                .filter_map(name)
+                .collect(),
+            right_to_left: kerning_model
+                .right_to_left
+                .iter()
+                .filter_map(name)
+                .collect(),
+        };
         Ok(Some(MovedKerning {
             names,
             first,
@@ -1171,6 +1199,7 @@ impl MoveKerningFromFeatures {
             first_groups,
             second_groups,
             marker_tags,
+            glyph_scripts,
         }))
     }
 }
@@ -1319,7 +1348,8 @@ mod tests {
         MoveKerningFromFeatures::new().apply(&mut font).unwrap();
         assert_eq!(font.first_kern_groups.get("A").unwrap(), &["A", "Adot"]);
         assert_eq!(kern(&font, "@A", "@O"), Some(-50));
-        assert_eq!(kern(&font, "V", "@O"), Some(-10));
+        // a class of one glyph is a group of one
+        assert_eq!(kern(&font, "@V", "@O"), Some(-10));
     }
 
     #[test]

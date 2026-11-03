@@ -4,6 +4,7 @@ use smol_str::SmolStr;
 
 mod curve_filter_common;
 mod feature_code;
+mod kerning_groups;
 mod fontforge_standard_height;
 pub(crate) mod layout_model;
 
