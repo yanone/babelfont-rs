@@ -16,7 +16,7 @@ pub(crate) struct GlyphInfo {
     alt_names: Option<String>,
     pub(crate) name: String,
     category: String,
-    // sub_category: Option<String>,
+    sub_category: Option<String>,
     // case: Option<String>,
     // direction: Option<String>,
     // script: Option<String>,
@@ -118,7 +118,19 @@ impl FontFilter for GlyphsData {
                     continue;
                 }
                 match glyph_info.category.as_str() {
-                    "Mark" => glyph.category = crate::GlyphCategory::Mark,
+                    // a mark only if it attaches: a spacing accent or a
+                    // modifier letter (acute, apostrophemod) is a base, as
+                    // glyphsLib and fontc have it (category_for_glyph_preliminary)
+                    "Mark" => {
+                        glyph.category = if matches!(
+                            glyph_info.sub_category.as_deref(),
+                            Some("Nonspacing" | "Spacing Combining")
+                        ) {
+                            crate::GlyphCategory::Mark
+                        } else {
+                            crate::GlyphCategory::Base
+                        }
+                    }
                     "Base" => glyph.category = crate::GlyphCategory::Base,
                     "Ligature" => glyph.category = crate::GlyphCategory::Ligature,
                     // "Component" => glyph.category = crate::GlyphCategory::Component,
@@ -145,5 +157,28 @@ impl FontFilter for GlyphsData {
             .long("glyphs-data")
             .help("Add Glyphs.app glyph metadata to the font")
             .action(clap::ArgAction::SetTrue)
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use crate::{Font, Glyph, GlyphCategory};
+
+    #[test]
+    fn test_only_attaching_marks_are_marks() {
+        // Glyphs' data has all three as Mark: Modifier, Spacing and
+        // Nonspacing. A shaper zeroes a mark's advance, so glyphsLib and fontc
+        // take only a nonspacing or spacing combining one for a mark.
+        let mut font = Font::new();
+        for name in ["apostrophemod", "acute", "acutecomb"] {
+            font.glyphs.push(Glyph::new(name));
+        }
+        GlyphsData.apply(&mut font).unwrap();
+        let category = |name: &str| font.glyphs.get(name).unwrap().category.clone();
+        assert_eq!(category("apostrophemod"), GlyphCategory::Base);
+        assert_eq!(category("acute"), GlyphCategory::Base);
+        assert_eq!(category("acutecomb"), GlyphCategory::Mark);
     }
 }

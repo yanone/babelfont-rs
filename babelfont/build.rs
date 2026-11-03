@@ -8,7 +8,7 @@ struct GlyphInfo {
     description: Option<String>,
     name: String,
     category: String,
-    // sub_category: Option<String>,
+    sub_category: Option<String>,
     // case: Option<String>,
     // direction: Option<String>,
     // script: Option<String>,
@@ -35,6 +35,7 @@ fn main() {
         entry.insert("name".into(), name.into());
         for (attribute, key) in [
             ("category", "category"),
+            ("subCategory", "sub_category"),
             ("production", "production"),
             ("unicode", "unicode"),
             ("description", "description"),
