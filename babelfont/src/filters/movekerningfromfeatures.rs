@@ -393,13 +393,9 @@ impl<'a> Kerning<'a> {
         marks: HashSet<SmolStr>,
     ) -> Option<Kerning<'a>> {
         use super::layout_model::unicode;
-        // the scripts a compiler knows: the cmap's and the language systems'
-        let mut known: HashSet<SmolStr> = props
-            .codepoints
-            .iter()
-            .flatten()
-            .flat_map(|cp| unicode::script_extensions(*cp))
-            .collect();
+        // the scripts a compiler knows: of characters of one script, and of
+        // the language systems
+        let mut known: HashSet<SmolStr> = unicode::font_scripts(&props.codepoints);
         known.extend(layout.declared.iter().filter_map(|(s, _)| ot_tag_script(s)));
         let classified = props.classify(|cp, buf: &mut Vec<SmolStr>| {
             if known.is_empty() {
