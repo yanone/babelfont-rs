@@ -1017,8 +1017,127 @@ fn load_variation_sequences(fontref: &skrifa::FontRef, font: &mut Font) {
 /// theirs alone (an intermediate layer), even where fontTools shared the tuple.
 /// A peak of the GDEF variation store (anchors and kerning) that moves anything
 /// is a master's too: kerning has a place only at masters.
+/// The rows of the GDEF variation store GPOS anchors use, by the glyphs they
+/// are on (cursive, mark, base, ligature and mark to mark anchors)
+fn anchor_rows(fontref: &skrifa::FontRef) -> HashMap<(u16, u16), HashSet<u32>> {
+    use skrifa::raw::tables::{
+        gpos::{AnchorTable, DeviceOrVariationIndex, PositionSubtables},
+        layout::CoverageTable,
+    };
+    use skrifa::raw::ReadError;
+    let mut out: HashMap<(u16, u16), HashSet<u32>> = HashMap::new();
+    let Ok(lookups) = fontref.gpos().and_then(|gpos| gpos.lookup_list()) else {
+        return out;
+    };
+    let mut add = |anchor: Option<Result<AnchorTable, ReadError>>, gid: u32| {
+        let Some(Ok(anchor)) = anchor else { return };
+        for device in [anchor.x_device(), anchor.y_device()] {
+            if let Some(Ok(DeviceOrVariationIndex::VariationIndex(index))) = device {
+                out.entry((index.delta_set_outer_index(), index.delta_set_inner_index()))
+                    .or_default()
+                    .insert(gid);
+            }
+        }
+    };
+    let glyphs = |coverage: Result<CoverageTable, ReadError>| -> Vec<u32> {
+        coverage
+            .map(|c| c.iter().map(|g| g.to_u32()).collect())
+            .unwrap_or_default()
+    };
+    for lookup in lookups.lookups().iter().flatten() {
+        let Ok(subtables) = lookup.subtables() else {
+            continue;
+        };
+        match subtables {
+            PositionSubtables::Cursive(subtables) => {
+                for t in subtables.iter().flatten() {
+                    for (gid, record) in glyphs(t.coverage()).into_iter().zip(t.entry_exit_record())
+                    {
+                        add(record.entry_anchor(t.offset_data()), gid);
+                        add(record.exit_anchor(t.offset_data()), gid);
+                    }
+                }
+            }
+            PositionSubtables::MarkToBase(subtables) => {
+                for t in subtables.iter().flatten() {
+                    if let Ok(marks) = t.mark_array() {
+                        for (gid, record) in glyphs(t.mark_coverage())
+                            .into_iter()
+                            .zip(marks.mark_records())
+                        {
+                            add(Some(record.mark_anchor(marks.offset_data())), gid);
+                        }
+                    }
+                    if let Ok(bases) = t.base_array() {
+                        for (gid, record) in glyphs(t.base_coverage())
+                            .into_iter()
+                            .zip(bases.base_records().iter().flatten())
+                        {
+                            for anchor in record.base_anchors(bases.offset_data()).iter() {
+                                add(anchor, gid);
+                            }
+                        }
+                    }
+                }
+            }
+            PositionSubtables::MarkToLig(subtables) => {
+                for t in subtables.iter().flatten() {
+                    if let Ok(marks) = t.mark_array() {
+                        for (gid, record) in glyphs(t.mark_coverage())
+                            .into_iter()
+                            .zip(marks.mark_records())
+                        {
+                            add(Some(record.mark_anchor(marks.offset_data())), gid);
+                        }
+                    }
+                    if let Ok(ligatures) = t.ligature_array() {
+                        for (gid, attach) in glyphs(t.ligature_coverage())
+                            .into_iter()
+                            .zip(ligatures.ligature_attaches().iter().flatten())
+                        {
+                            for component in attach.component_records().iter().flatten() {
+                                for anchor in
+                                    component.ligature_anchors(attach.offset_data()).iter()
+                                {
+                                    add(anchor, gid);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            PositionSubtables::MarkToMark(subtables) => {
+                for t in subtables.iter().flatten() {
+                    if let Ok(marks) = t.mark1_array() {
+                        for (gid, record) in glyphs(t.mark1_coverage())
+                            .into_iter()
+                            .zip(marks.mark_records())
+                        {
+                            add(Some(record.mark_anchor(marks.offset_data())), gid);
+                        }
+                    }
+                    if let Ok(marks2) = t.mark2_array() {
+                        for (gid, record) in glyphs(t.mark2_coverage())
+                            .into_iter()
+                            .zip(marks2.mark2_records().iter().flatten())
+                        {
+                            for anchor in record.mark2_anchors(marks2.offset_data()).iter() {
+                                add(anchor, gid);
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
 fn master_peaks(fontref: &skrifa::FontRef) -> Result<Vec<Vec<F2Dot14>>, BabelfontError> {
     let mut peaks: Vec<Vec<F2Dot14>> = vec![];
+    // each glyph's own gvar peaks: where it has a layer of its own
+    let mut glyph_peaks_by_gid: HashMap<u32, HashSet<Vec<F2Dot14>>> = HashMap::new();
     if let Ok(gvar) = fontref.gvar() {
         let mut counts: HashMap<Vec<F2Dot14>, usize> = HashMap::new();
         let mut varying = 0;
@@ -1031,9 +1150,10 @@ fn master_peaks(fontref: &skrifa::FontRef) -> Result<Vec<Vec<F2Dot14>>, Babelfon
                 .tuples()
                 .map(|tuple| tuple.peak().values().iter().map(|v| v.get()).collect())
                 .collect();
-            for peak in glyph_peaks {
-                *counts.entry(peak).or_default() += 1;
+            for peak in &glyph_peaks {
+                *counts.entry(peak.clone()).or_default() += 1;
             }
+            glyph_peaks_by_gid.insert(gid as u32, glyph_peaks);
         }
         let mut glyph_peaks: Vec<Vec<F2Dot14>> = counts
             .into_iter()
@@ -1050,11 +1170,15 @@ fn master_peaks(fontref: &skrifa::FontRef) -> Result<Vec<Vec<F2Dot14>>, Babelfon
         .transpose()?
     {
         let regions = store.variation_region_list()?.variation_regions();
-        for data in store.item_variation_data().iter().flatten() {
-            let Ok(data) = data else { continue };
+        // A region is a master where something font-wide varies there
+        // (kerning), or an anchor of a glyph without a layer of its own
+        // there. An anchor of a glyph with an intermediate layer there is
+        // that layer's: Rubik's Bold, where only pedagesh-hb's anchors vary,
+        // made a master of every glyph, interpolated and rounded there.
+        let anchors = anchor_rows(fontref);
+        for (outer, data) in store.item_variation_data().iter().enumerate() {
+            let Some(Ok(data)) = data else { continue };
             for (column, region_index) in data.region_indexes().iter().enumerate() {
-                let moves = (0..data.item_count())
-                    .any(|item| data.delta_set(item).nth(column).is_some_and(|d| d != 0));
                 let Ok(region) = regions.get(region_index.get() as usize) else {
                     continue;
                 };
@@ -1063,7 +1187,17 @@ fn master_peaks(fontref: &skrifa::FontRef) -> Result<Vec<Vec<F2Dot14>>, Babelfon
                     .iter()
                     .map(|axis| axis.peak_coord())
                     .collect();
-                if moves && !peaks.contains(&peak) {
+                let needs_master = (0..data.item_count())
+                    .filter(|item| data.delta_set(*item).nth(column).is_some_and(|d| d != 0))
+                    .any(|item| match anchors.get(&(outer as u16, item)) {
+                        Some(gids) => gids.iter().any(|gid| {
+                            !glyph_peaks_by_gid
+                                .get(gid)
+                                .is_some_and(|own| own.contains(&peak))
+                        }),
+                        None => true,
+                    });
+                if needs_master && !peaks.contains(&peak) {
                     peaks.push(peak);
                 }
             }
@@ -4053,6 +4187,97 @@ mod tests {
                 (master_place(font, master), out)
             })
             .collect()
+    }
+
+    #[test]
+    #[cfg(feature = "fontir")]
+    fn test_anchors_of_an_intermediate_layer_make_no_master() {
+        // Rubik: two masters, and one glyph with a layer of its own between
+        // them, where its anchor moves. Read back, that layer has the
+        // anchor, and no master is made there for every glyph.
+        use crate::convertors::fontir::{BabelfontIrSource, CompilationOptions};
+        use crate::{Anchor, Axis, Glyph, Layer, LayerType, Master};
+        use fontdrasil::coords::{DesignCoord, DesignLocation, UserCoord};
+        let wght = |w: f64| DesignLocation::from(vec![(Tag::new(b"wght"), DesignCoord::new(w))]);
+        let mut font = Font::new();
+        let mut axis = Axis::new("Weight", Tag::new(b"wght"));
+        axis.min = Some(UserCoord::new(300.0));
+        axis.default = Some(UserCoord::new(300.0));
+        axis.max = Some(UserCoord::new(900.0));
+        font.axes.push(axis);
+        for (id, weight) in [("light", 300.0), ("black", 900.0)] {
+            font.masters.push(Master::new(id, id, wght(weight)));
+        }
+        let anchor = |name: &str, x: f64, y: f64| Anchor {
+            name: name.into(),
+            x,
+            y,
+            format_specific: Default::default(),
+        };
+        let box_layer = |width: f64, top: f64| {
+            use skrifa::outline::OutlinePen;
+            let mut layer = Layer::new(width as f32);
+            let mut pen = PathBuilder::new();
+            pen.move_to(0.0, 0.0);
+            pen.line_to(0.0, 700.0);
+            pen.line_to(width as f32, 700.0);
+            pen.line_to(width as f32, 0.0);
+            pen.close();
+            layer
+                .shapes
+                .extend(pen.build().into_iter().map(crate::Shape::Path));
+            layer.anchors.push(anchor("top", top, 700.0));
+            layer
+        };
+        for (name, cp, tops) in [
+            ("A", 0x41, [300.0, 340.0, 0.0]),
+            ("O", 0x4F, [300.0, 360.0, 380.0]),
+        ] {
+            let mut glyph = Glyph::new(name);
+            glyph.codepoints = vec![cp];
+            glyph.exported = true;
+            glyph.category = GlyphCategory::Base;
+            for (i, id) in ["light", "black"].iter().enumerate() {
+                let mut layer = box_layer(600.0 + 100.0 * i as f64, tops[i]);
+                layer.master = LayerType::DefaultForMaster(id.to_string());
+                glyph.layers.push(layer);
+            }
+            if name == "O" {
+                // its own layer at 600, the anchor off the line between
+                let mut layer = box_layer(650.0, tops[2]);
+                layer.master = LayerType::AssociatedWithMaster("light".into());
+                layer.location = Some(wght(600.0));
+                glyph.layers.push(layer);
+            }
+            font.glyphs.push(glyph);
+        }
+        let mut mark = Glyph::new("acutecomb");
+        mark.codepoints = vec![0x301];
+        mark.exported = true;
+        mark.category = GlyphCategory::Mark;
+        for id in ["light", "black"] {
+            let mut layer = Layer::new(0.0);
+            layer.master = LayerType::DefaultForMaster(id.into());
+            layer.anchors.push(anchor("_top", 0.0, 500.0));
+            mark.layers.push(layer);
+        }
+        font.glyphs.push(mark);
+        let options = CompilationOptions {
+            dont_use_production_names: true,
+            ..Default::default()
+        };
+        let binary = BabelfontIrSource::compile(font, options).unwrap();
+        let read = load_bytes(&binary).unwrap();
+        assert_eq!(
+            read.masters.len(),
+            2,
+            "{:?}",
+            read.masters.iter().map(|m| &m.location).collect::<Vec<_>>()
+        );
+        let o = read.glyphs.get("O").unwrap();
+        let own: Vec<&Layer> = o.layers.iter().filter(|l| l.location.is_some()).collect();
+        assert_eq!(own.len(), 1);
+        assert_eq!(own[0].anchors.first().map(|a| a.x), Some(380.0));
     }
 
     #[test]
