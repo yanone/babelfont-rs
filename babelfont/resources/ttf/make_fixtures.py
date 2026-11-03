@@ -961,6 +961,34 @@ for case, fea in SHAPING_CASES.items():
     save(fb, f"Shaping{case}.ttf")
 
 
+# Kerning a caron and a dot accent, whose script extensions both name
+# Bopomofo: a compiler knows a script only from a character of that script
+# alone (or a language system), so it registers this kerning under DFLT and
+# latn only, and it moves into kerning. Were a bopo record added, it would hold
+# kern only, and take mark attachment away from Bopomofo text (Fustat, compiled
+# by fontc, kerns Arabic digits, whose extensions name Thaana and Yezidi)
+order = [".notdef", "A", "V", "caron", "dotaccent", "acutecomb"]
+fb = FontBuilder(1000, isTTF=True)
+fb.setupGlyphOrder(order)
+fb.setupCharacterMap({0x41: "A", 0x56: "V", 0x2C7: "caron", 0x2D9: "dotaccent", 0x301: "acutecomb"})
+fb.setupGlyf({g: shaping_box(0 if g == "acutecomb" else 600) for g in order})
+fb.setupHorizontalMetrics({g: (0 if g == "acutecomb" else 600, 50) for g in order})
+fb.setupHorizontalHeader(ascent=800, descent=-200)
+fb.setupNameTable({"familyName": "Fixture Shaping Extensions", "styleName": "Regular"})
+fb.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWinAscent=800, usWinDescent=200)
+fb.setupPost()
+addOpenTypeFeaturesFromString(fb.font, """
+languagesystem DFLT dflt; languagesystem latn dflt;
+table GDEF { GlyphClassDef [A V caron dotaccent], , [acutecomb], ; } GDEF;
+lookup k { lookupflag IgnoreMarks; pos A V -50; pos caron dotaccent -40; pos dotaccent caron -30; } k;
+feature kern { lookup k; } kern;
+markClass acutecomb <anchor 100 500> @TOP;
+lookup m { pos base [A V caron dotaccent] <anchor 300 700> mark @TOP; } m;
+feature mark { lookup m; } mark;
+""")
+save(fb, "ShapingExtensions.ttf")
+
+
 # A variable font whose kerning and mark attachment vary with the masters, as a
 # compiler writes them: they move into kerning and anchors.
 order = [".notdef", "A", "V", "O", "acutecomb"]

@@ -197,12 +197,7 @@ impl<'a> Model<'a> {
             }
             anchors.push(out);
         }
-        let mut known: HashSet<SmolStr> = props
-            .codepoints
-            .iter()
-            .flatten()
-            .flat_map(|cp| unicode::script_extensions(*cp))
-            .collect();
+        let mut known: HashSet<SmolStr> = unicode::font_scripts(&props.codepoints);
         known.extend(layout.declared.iter().filter_map(|(s, _)| ot_tag_script(s)));
         let classified = props.classify(|cp, buf: &mut Vec<SmolStr>| {
             buf.extend(

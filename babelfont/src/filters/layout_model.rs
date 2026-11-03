@@ -947,6 +947,26 @@ pub(crate) mod unicode {
         out
     }
 
+    /// The scripts a compiler takes a font to be in, by its codepoints: those
+    /// of characters of one script alone. A character of several (a middle
+    /// dot, Arabic digits) names none: fontc's `guess_font_scripts`, to which
+    /// it adds the language systems the feature code declares
+    pub(crate) fn font_scripts<'a>(
+        codepoints: impl IntoIterator<Item = &'a Vec<u32>>,
+    ) -> std::collections::HashSet<SmolStr> {
+        codepoints
+            .into_iter()
+            .flatten()
+            .filter_map(|cp| {
+                let scripts = script_extensions(*cp);
+                match scripts.as_slice() {
+                    [only] => Some(only.clone()),
+                    _ => None,
+                }
+            })
+            .collect()
+    }
+
     /// A codepoint's script
     pub(crate) fn script(cp: u32) -> Option<SmolStr> {
         short_name(ScriptWithExtensions::new().get_script_val32(cp))
