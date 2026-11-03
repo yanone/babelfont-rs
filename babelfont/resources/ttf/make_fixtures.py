@@ -897,6 +897,15 @@ languagesystem latn ROM;
 lookup k { lookupflag IgnoreMarks; pos A V -100; } k;
 lookup t { lookupflag IgnoreMarks; pos V A -50; } t;
 feature kern { lookup k; script latn; language TRK; lookup t; } kern;""",
+    # a script record a compiler's kern writer adds for the characters it
+    # kerns, without the mark attachment it registers under the declared
+    # language systems: the decompiled code does not declare it
+    "KernOnlyScript": """languagesystem DFLT dflt; languagesystem latn dflt;
+markClass acutecomb <anchor 100 500> @TOP;
+lookup m1 { pos base [A Alpha] <anchor 300 700> mark @TOP; } m1;
+lookup k { lookupflag IgnoreMarks; pos A V -100; pos Alpha V -60; } k;
+feature mark { lookup m1; } mark;
+feature kern { script DFLT; lookup k; script latn; lookup k; script grek; lookup k; } kern;""",
     # a language only GSUB has: a compiler registers kerning under every
     # declared language system, so the decompiled code declares GPOS's only
     "GsubLanguage": """languagesystem DFLT dflt; languagesystem latn dflt;
