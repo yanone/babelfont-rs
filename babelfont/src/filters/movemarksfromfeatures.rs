@@ -785,8 +785,69 @@ fn effective<'a>(
 type Decided = (Decision, Vec<Writer>, HashSet<SmolStr>);
 
 struct Decision {
-    /// writers that generate, with the lookups they replace, in order
-    moved: Vec<(Vec<Writer>, Vec<SmolStr>)>,
+    /// where the generated lookups go: the first moved lookup of some
+    /// features, those features, and the moved lookups of theirs
+    moved: Vec<(SmolStr, Vec<&'static str>, Vec<SmolStr>)>,
+}
+
+/// The moved lookups of the writers by the feature a compiler generates them
+/// in, each feature's at its first: lookups of other features between them
+/// keep their place (Noto Sans Thai's contextual dist lookups between mark
+/// and mkmk)
+fn by_feature(
+    layout: &Layout,
+    writers: &[Writer],
+    names: &[SmolStr],
+) -> Vec<(SmolStr, Vec<&'static str>, Vec<SmolStr>)> {
+    let index = |n: &SmolStr| layout.lookups.get(n).map(|l| l.index).unwrap_or(usize::MAX);
+    let tags: Vec<&'static str> = writers
+        .iter()
+        .flat_map(|w| w.tags().iter().copied())
+        .collect();
+    // each lookup's feature: the first of the writers' it is in
+    let feature_of = |name: &SmolStr| -> Option<&'static str> {
+        let refs = layout.feature_refs.get(name)?;
+        tags.iter().copied().find(|t| refs.contains(*t))
+    };
+    let mut groups: Vec<(SmolStr, Vec<&'static str>, Vec<SmolStr>)> = vec![];
+    let mut unplaced: Vec<SmolStr> = vec![];
+    for tag in &tags {
+        let mut these: Vec<SmolStr> = names
+            .iter()
+            .filter(|n| feature_of(n) == Some(*tag))
+            .cloned()
+            .collect();
+        if these.is_empty() {
+            continue;
+        }
+        these.sort_by_key(index);
+        let first = these[0].clone();
+        match groups.iter_mut().find(|(f, _, _)| *f == first) {
+            Some((_, t, n)) => {
+                t.push(tag);
+                n.extend(these);
+            }
+            None => groups.push((first, vec![tag], these)),
+        }
+    }
+    unplaced.extend(names.iter().filter(|n| feature_of(n).is_none()).cloned());
+    if !unplaced.is_empty() {
+        // lookups no feature of the writers refers to go with the first
+        match groups.iter_mut().min_by_key(|(f, _, _)| index(f)) {
+            Some((_, _, n)) => n.extend(unplaced),
+            None => {
+                unplaced.sort_by_key(index);
+                groups.push((unplaced[0].clone(), tags.clone(), unplaced));
+            }
+        }
+    }
+    // a feature with nothing moved still needs its marker: with the first
+    if let Some((_, t, _)) = groups.iter_mut().min_by_key(|(f, _, _)| index(f)) {
+        let missing: Vec<&'static str> = tags.iter().copied().filter(|tag| !t.contains(tag)).collect();
+        let placed: Vec<&'static str> = t.clone();
+        t.extend(missing.into_iter().filter(|tag| !placed.contains(tag)));
+    }
+    groups
 }
 
 impl MoveMarksFromFeatures {
@@ -1121,14 +1182,14 @@ impl MoveMarksFromFeatures {
         if let Some(moved) = try_writers(&[Writer::Curs]) {
             add(&[Writer::Curs], moved, &mut chosen);
         }
-        // generated lookups go where each writer's first moved lookup was
+        // generated lookups go where each feature's first moved lookup was
+        let mut chosen: Vec<(SmolStr, Vec<&'static str>, Vec<SmolStr>)> = chosen
+            .iter()
+            .flat_map(|(writers, names)| by_feature(&layout, writers, names))
+            .collect();
         let mut positions: HashMap<SmolStr, usize> = HashMap::new();
-        for (_, names) in &chosen {
-            let first = names
-                .iter()
-                .filter_map(|n| layout.lookups.get(n).map(|l| l.index))
-                .min()
-                .unwrap_or(usize::MAX);
+        for (first, _, names) in &chosen {
+            let first = layout.lookups.get(first).map(|l| l.index).unwrap_or(usize::MAX);
             for name in names {
                 positions.insert(name.clone(), first);
             }
@@ -1212,13 +1273,8 @@ impl FontFilter for MoveMarksFromFeatures {
             .collect();
         if !moved.is_empty() {
             let mut markers: Vec<(SmolStr, Vec<&str>)> = vec![];
-            for (writers, names) in &decision.moved {
-                let Some(first) = names.first() else { continue };
-                let tags: Vec<&str> = writers
-                    .iter()
-                    .flat_map(|w| w.tags().iter().copied())
-                    .collect();
-                markers.push((first.clone(), tags));
+            for (first, tags, _) in &decision.moved {
+                markers.push((first.clone(), tags.clone()));
             }
             let markers_ref = &markers;
             if !remove_lookup_blocks(&mut font.features, &moved, markers_ref) {

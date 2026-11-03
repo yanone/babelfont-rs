@@ -897,6 +897,16 @@ languagesystem latn ROM;
 lookup k { lookupflag IgnoreMarks; pos A V -100; } k;
 lookup t { lookupflag IgnoreMarks; pos V A -50; } t;
 feature kern { lookup k; script latn; language TRK; lookup t; } kern;""",
+    # a lookup of another feature between mark and mkmk, as in Noto Sans
+    # Thai: the generated mark and mkmk lookups go each where its feature's was
+    "MarkDistMkmk": """languagesystem DFLT dflt; languagesystem latn dflt;
+markClass acutecomb <anchor 100 500> @TOP;
+lookup m1 { pos base A <anchor 300 700> mark @TOP; } m1;
+lookup ctx { pos A acutecomb' 20; } ctx;
+lookup mm { lookupflag UseMarkFilteringSet [acutecomb]; pos mark acutecomb <anchor 100 800> mark @TOP; } mm;
+feature mark { lookup m1; } mark;
+feature dist { lookup ctx; } dist;
+feature mkmk { lookup mm; } mkmk;""",
     # a script record a compiler's kern writer adds for the characters it
     # kerns, without the mark attachment it registers under the declared
     # language systems: the decompiled code does not declare it
