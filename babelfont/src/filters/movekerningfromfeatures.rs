@@ -1245,24 +1245,27 @@ fn metric_at_masters_only(metric: &Metric, font: &Font) -> bool {
                 .collect()
         })
         .collect();
-    items.iter().all(|(location, _)| {
-        let here: Vec<i16> = axes
-            .iter()
-            .map(|axis| {
-                location
-                    .get(axis.tag.to_string().as_str())
-                    .map_or(axis.default, |c| fontdrasil::coords::UserCoord::new(c.0))
-                    .to_normalized(&axis.converter)
-                    .to_f2dot14()
-                    .to_bits()
-            })
-            .collect();
-        // a step or two away is the master (a location through avar)
+    let stated: Vec<Vec<i16>> = items
+        .iter()
+        .map(|(location, _)| {
+            axes.iter()
+                .map(|axis| {
+                    location
+                        .get(axis.tag.to_string().as_str())
+                        .map_or(axis.default, |c| fontdrasil::coords::UserCoord::new(c.0))
+                        .to_normalized(&axis.converter)
+                        .to_f2dot14()
+                        .to_bits()
+                })
+                .collect()
+        })
+        .collect();
+    // a step or two away is the master (a location through avar), unless
+    // another stated location is as near it
+    let near = |a: &[i16], b: &[i16]| a.iter().zip(b).all(|(a, b)| (*a as i32 - *b as i32).abs() <= 2);
+    stated.iter().all(|here| {
         masters.iter().any(|master| {
-            master
-                .iter()
-                .zip(&here)
-                .all(|(a, b)| (*a as i32 - *b as i32).abs() <= 2)
+            near(master, here) && stated.iter().filter(|other| near(master, other)).count() == 1
         })
     })
 }
@@ -1470,6 +1473,33 @@ mod tests {
         MoveKerningFromFeatures::new().apply(&mut font).unwrap();
         let at = |i: usize| font.masters[i].kerning.get(&("A".into(), "V".into())).copied();
         assert_eq!((at(0), at(1), at(2)), (Some(-10), Some(-20), Some(-30)));
+    }
+
+    #[test]
+    fn test_two_values_stated_near_one_master_stay() {
+        use crate::Axis;
+        use fontdrasil::coords::{DesignCoord, DesignLocation, UserCoord};
+        use write_fonts::types::Tag;
+        // two locations a step either side of the master at 300 (Mulish's
+        // axis maps back and forth): neither is the master's
+        let mut font = font(&format!(
+            "{LS}lookup k {{ lookupflag IgnoreMarks; pos A V (wght=100:-10 wght=299.95:-20 wght=300.05:-25 wght=900:-30); }} k;\n\
+             feature kern {{ lookup k; }} kern;"
+        ));
+        let mut axis = Axis::new("Weight", Tag::new(b"wght"));
+        axis.min = Some(UserCoord::new(100.0));
+        axis.default = Some(UserCoord::new(100.0));
+        axis.max = Some(UserCoord::new(900.0));
+        font.axes.push(axis);
+        font.masters.clear();
+        for (id, weight) in [("light", 100.0), ("regular", 300.0), ("bold", 900.0)] {
+            let location =
+                DesignLocation::from(vec![(Tag::new(b"wght"), DesignCoord::new(weight))]);
+            font.masters.push(Master::new(id, id, location));
+        }
+        MoveKerningFromFeatures::new().apply(&mut font).unwrap();
+        assert!(font.masters.iter().all(|m| m.kerning.is_empty()));
+        assert!(font.features.to_fea().contains("lookup k;"));
     }
 
     #[test]
