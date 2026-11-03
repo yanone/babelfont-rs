@@ -907,29 +907,45 @@ impl MoveMarksFromFeatures {
                 }
             }
         }
-        // a mark attached to a base and to a mark: the compiler attaches it to
-        // the base first, then to the mark
+        // a mark attached to a base and to a mark: the one attached later
+        // wins, so the marks attached to a mark before a base must be the
+        // ones the compiler attaches so. It writes abvm and blwm, mark to
+        // mark included, before mark and mkmk (fontc's add_features).
         if writers.contains(&Writer::Mark) && writers.contains(&Writer::Mkmk) {
-            let mut first_on_mark: HashMap<usize, usize> = HashMap::new();
-            let mut last_on_base: HashMap<usize, usize> = HashMap::new();
-            for w in &moved_written {
-                for (key, _) in &w.facts {
-                    match key {
-                        Key::Mark(_, m) => {
-                            first_on_mark.entry(*m).or_insert(w.index);
+            fn mark_first<'k>(lookups: impl Iterator<Item = &'k Vec<(Key, Value)>>) -> HashSet<usize> {
+                let mut first_on_mark: HashMap<usize, usize> = HashMap::new();
+                let mut last_on_base: HashMap<usize, usize> = HashMap::new();
+                for (index, facts) in lookups.enumerate() {
+                    for (key, _) in facts {
+                        match key {
+                            Key::Mark(_, m) => {
+                                first_on_mark.entry(*m).or_insert(index);
+                            }
+                            Key::Base(_, m) | Key::Ligature(_, _, m) => {
+                                last_on_base.insert(*m, index);
+                            }
+                            Key::Cursive(_) => {}
                         }
-                        Key::Base(_, m) | Key::Ligature(_, _, m) => {
-                            last_on_base.insert(*m, w.index);
-                        }
-                        Key::Cursive(_) => {}
                     }
                 }
+                first_on_mark
+                    .into_iter()
+                    .filter(|(m, i)| last_on_base.get(m).is_some_and(|j| j > i))
+                    .map(|(m, _)| m)
+                    .collect()
             }
-            if first_on_mark
-                .iter()
-                .any(|(m, i)| last_on_base.get(m).is_some_and(|j| j > i))
-            {
-                log::info!("Mark attachment stays feature code; it attaches to marks before bases");
+            let original = mark_first(moved_written.iter().map(|w| &w.facts));
+            let compiled = mark_first(
+                generated
+                    .lookups
+                    .iter()
+                    .filter(|(w, _)| writers.contains(w))
+                    .map(|(_, facts)| facts),
+            );
+            if original != compiled {
+                log::info!(
+                    "Mark attachment stays feature code; it attaches marks to marks and bases in another order"
+                );
                 return false;
             }
         }
