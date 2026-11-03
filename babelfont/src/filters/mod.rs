@@ -5,6 +5,7 @@ use smol_str::SmolStr;
 mod curve_filter_common;
 mod feature_code;
 mod fontforge_standard_height;
+mod kerning_groups;
 pub(crate) mod layout_model;
 
 /// Parse a comma-separated list of glyph names from a string argument.
