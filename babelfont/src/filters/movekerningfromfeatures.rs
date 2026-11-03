@@ -249,25 +249,8 @@ impl Reader<'_> {
                     None => rows.push((left, vec![(right, value)])),
                 }
             }
-            // First classes that kern alike are one class (a compiler may split
-            // a group, as class 0 of a class definition)
-            let mut merged: Vec<(Side, Vec<(Side, Value)>)> = vec![];
-            for (left, row) in rows {
-                match merged.iter_mut().find(|(_, r)| *r == row) {
-                    Some((Side::Class(name, members), _)) => {
-                        *name = None;
-                        members.extend(left.glyphs());
-                    }
-                    Some((existing, _)) => {
-                        let mut members = existing.glyphs();
-                        members.extend(left.glyphs());
-                        *existing = Side::Class(None, members);
-                    }
-                    None => merged.push((left, row)),
-                }
-            }
             let mut covered = HashSet::new();
-            for (left, row) in merged {
+            for (left, row) in rows {
                 let left_glyphs = left.glyphs();
                 // a glyph an earlier class subtable kerned is shadowed here; the
                 // model cannot leave a group member out of a group pair
@@ -358,11 +341,18 @@ struct Piece {
     is_mark: bool,
 }
 
+/// A feature and a language system a lookup is registered under
+type Registration = (SmolStr, LangSys);
+
+const KERN: &str = "kern";
+const DIST: &str = "dist";
+
 /// What fontc makes of the kerning: its pieces, the lookup each goes in
 /// (by script set and whether it kerns marks), and where each lookup applies
 struct Simulation {
     pieces: Vec<(Piece, Option<usize>, bool)>,
-    registered: Vec<BTreeSet<LangSys>>,
+    /// each lookup's features and language systems
+    registered: Vec<BTreeSet<Registration>>,
     /// lookups that cannot be moved: a compiler would drop some of their
     /// kerning
     dropped: HashSet<SmolStr>,
@@ -560,18 +550,18 @@ impl<'a> Kerning<'a> {
             };
             placed.push((piece, Some(index), rtl));
         }
-        // where fontc registers each lookup: kern for most scripts, dist for
-        // Indic and USE scripts
+        // where fontc registers each lookup (`assign_lookups_to_scripts`):
+        // kern for most scripts, dist for Indic and USE scripts, each with the
+        // common lookups; kern's defaults are the common lookups and the left
+        // to right ones (else the right to left ones)
         let mut by_script: BTreeMap<SmolStr, Vec<usize>> = BTreeMap::new();
         for (i, (scripts, _)) in lookups.iter().enumerate() {
             for script in scripts {
                 by_script.entry(script.clone()).or_default().push(i);
             }
         }
-        let mut registered: Vec<BTreeSet<LangSys>> = vec![BTreeSet::new(); lookups.len()];
+        let mut registered: Vec<BTreeSet<Registration>> = vec![BTreeSet::new(); lookups.len()];
         let common: Vec<usize> = by_script.get(COMMON).cloned().unwrap_or_default();
-        // kern's defaults: common lookups, and left-to-right ones (else
-        // right-to-left ones)
         let mut defaults = common.clone();
         let (mut ltr, mut rtl) = (vec![], vec![]);
         for (script, ids) in &by_script {
@@ -588,7 +578,7 @@ impl<'a> Kerning<'a> {
         for language in self.layout.declared_languages(DFLT_SCRIPT) {
             for id in &defaults {
                 if let Some(r) = registered.get_mut(*id) {
-                    r.insert((DFLT_SCRIPT.into(), language.clone()));
+                    r.insert((KERN.into(), (DFLT_SCRIPT.into(), language.clone())));
                 }
             }
         }
@@ -596,11 +586,12 @@ impl<'a> Kerning<'a> {
             if script == COMMON || script == INHERITED {
                 continue;
             }
+            let feature: SmolStr = if dist_script(script) { DIST } else { KERN }.into();
             for tag in fontc_script_tags(script) {
                 for language in self.layout.declared_languages(&tag) {
                     for id in ids.iter().chain(&common) {
                         if let Some(r) = registered.get_mut(*id) {
-                            r.insert((tag.clone(), language.clone()));
+                            r.insert((feature.clone(), (tag.clone(), language.clone())));
                         }
                     }
                 }
@@ -621,7 +612,7 @@ impl<'a> Kerning<'a> {
         let mut after = gpos.clone();
         let mut added: HashSet<LangSys> = HashSet::new();
         for systems in &simulation.registered {
-            for system in systems {
+            for (_, system) in systems {
                 let languages = after.scripts.entry(system.0.clone()).or_default();
                 if languages.insert(system.1.clone()) {
                     added.insert(system.clone());
@@ -643,7 +634,12 @@ impl<'a> Kerning<'a> {
             })
         };
         let generated_at =
-            |system: &LangSys| simulation.registered.iter().any(|r| r.contains(system));
+|system: &LangSys| {
+            simulation
+                .registered
+                .iter()
+                .any(|r| r.iter().any(|(_, s)| s == system))
+        };
         // Whether text of `script` shapes alike with the font's language
         // system `before` and the compiler's `now`: `before` has nothing but
         // the moved kerning, and the compiler kerns at `now` as it did
@@ -658,7 +654,7 @@ impl<'a> Kerning<'a> {
                         simulation
                             .registered
                             .get(l)
-                            .is_some_and(|r| r.contains(now))
+                            .is_some_and(|r| r.iter().any(|(_, s)| s == now))
                     });
                     then == generated
                 })
@@ -759,15 +755,17 @@ impl<'a> Kerning<'a> {
                 continue;
             }
             let systems = simulation.registered.get(*lookup);
-            if systems.is_some_and(|s| !s.is_disjoint(&changed)) {
+            let changes = |(_, s): &&Registration| changed.contains(s);
+            if systems.is_some_and(|s| s.iter().any(|r| changes(&r))) {
                 log::info!(
                     "Lookup {} stays feature code; a compiler would add script records {:?}",
                     piece.lookup,
                     systems
                         .into_iter()
                         .flatten()
-                        .filter(|s| changed.contains(*s))
-                        .collect::<Vec<_>>()
+                        .filter(changes)
+                        .map(|(_, s)| s)
+                        .collect::<BTreeSet<_>>()
                 );
                 failing.insert(piece.lookup.clone());
                 continue;
@@ -780,10 +778,11 @@ impl<'a> Kerning<'a> {
                 failing.insert(piece.lookup.clone());
                 continue;
             }
+            // kern and dist alike: a shaper applies both, in lookup order
             for system in after.relevant(&piece.scripts) {
                 let then = stood_for.get(&system).unwrap_or(&system);
                 let before = self.layout.applies(&piece.lookup, then);
-                let generated = systems.is_some_and(|s| s.contains(&system));
+                let generated = systems.is_some_and(|s| s.iter().any(|(_, s)| *s == system));
                 if before != generated {
                     log::info!(
                         "Lookup {} stays feature code; a compiler would apply it {} {} {}",
@@ -836,6 +835,7 @@ impl FontFilter for MoveKerningFromFeatures {
             second_groups,
             marker_tags,
             glyph_scripts,
+            stated,
         } = moved;
         let markers = vec![(first, marker_tags.iter().map(|t| t.as_str()).collect())];
         if !remove_lookup_blocks(&mut font.features, &names, &markers) {
@@ -875,7 +875,10 @@ impl FontFilter for MoveKerningFromFeatures {
         // Within a lookup the first rule for a pair wins: where a class of one
         // glyph and a glyph pair become the same pair (@f:@f 22 after f f 15),
         // the first value stays
-        for (master, master_values) in font.masters.iter_mut().zip(values) {
+        for ((master, master_values), stated) in font.masters.iter_mut().zip(values).zip(stated) {
+            if !stated {
+                continue;
+            }
             for (i, (left, right, _)) in pairs.iter().enumerate() {
                 if let (Some(true), Some(value)) = (keep.get(i), master_values.get(i)) {
                     master
@@ -920,6 +923,8 @@ struct MovedKerning {
     marker_tags: Vec<SmolStr>,
     /// Each glyph's scripts and direction, as a compiler finds them
     glyph_scripts: super::kerning_groups::GlyphScripts,
+    /// The masters the kerning is written at; elsewhere it is interpolated
+    stated: Vec<bool>,
 }
 
 impl MoveKerningFromFeatures {
@@ -971,15 +976,19 @@ impl MoveKerningFromFeatures {
         };
         let blocks = lookup_blocks(file);
 
-        // Candidates: pair lookups only the kern feature refers to, in order
+        // Candidates: pair lookups only the kern and dist features refer to,
+        // in order
         let mut candidates: Vec<(&SmolStr, &LookupBlock)> = blocks
             .iter()
-            .filter(|(name, _)| layout.only_in(name, &["kern"]))
+            .filter(|(name, _)| layout.only_in(name, &[KERN, DIST]))
             .map(|(n, b)| (n, *b))
             .collect();
         candidates.sort_by_key(|(name, _)| layout.lookups.get(*name).map(|l| l.index));
         let mut master_values = MasterValues::new(font)?;
-        let mut read: Vec<(SmolStr, LookupKerning, Vec<Vec<i16>>)> = vec![];
+        // each lookup's name, kerning, values at each master, and whether
+        // they are whole numbers there
+        type Read = (SmolStr, LookupKerning, Vec<Vec<i16>>, Vec<bool>);
+        let mut read: Vec<Read> = vec![];
         // The pairs the lookups read so far kern: by first glyph, the second
         // glyphs of each kerning pair (a compiler splits one kerning by script
         // into lookups that kern the same first glyphs, never the same pair)
@@ -990,6 +999,7 @@ impl MoveKerningFromFeatures {
                 continue;
             };
             let mut values = vec![vec![]; master_values.master_count()];
+            let mut whole = vec![true; master_values.master_count()];
             for (_, _, value) in &kerning.pairs {
                 let Some(at_masters) = master_values.at_masters(&value.metric) else {
                     log::info!("Lookup {name} stays feature code; a value has no master values");
@@ -1001,7 +1011,8 @@ impl MoveKerningFromFeatures {
                     );
                     continue 'lookups;
                 }
-                for (master, v) in values.iter_mut().zip(at_masters) {
+                for ((master, v), whole) in values.iter_mut().zip(at_masters).zip(whole.iter_mut()) {
+                    *whole &= (v - v.round()).abs() < 1e-6;
                     master.push(ot_round(v).clamp(i16::MIN as i32, i16::MAX as i32) as i16);
                 }
             }
@@ -1032,7 +1043,7 @@ impl MoveKerningFromFeatures {
                     kerned.entry(left).or_default().push(rights.clone());
                 }
             }
-            read.push((name.clone(), kerning, values));
+            read.push((name.clone(), kerning, values, whole));
         }
         if read.is_empty() {
             return Ok(None);
@@ -1050,7 +1061,7 @@ impl MoveKerningFromFeatures {
         let gpos = layout.gpos_systems();
         let mut unknown: HashSet<SmolStr> = HashSet::new();
         let mut pieces_of: HashMap<SmolStr, Vec<PairGlyphs>> = HashMap::new();
-        for (name, kerning, values) in &read {
+        for (name, kerning, values, _) in &read {
             let mut out = vec![];
             for (i, (left, right, value)) in kerning.pairs.iter().enumerate() {
                 let (Some(s1), Some(s2)) = (
@@ -1071,7 +1082,7 @@ impl MoveKerningFromFeatures {
         }
         let mut moving: Vec<SmolStr> = read
             .iter()
-            .map(|(n, _, _)| n.clone())
+            .map(|(n, _, _, _)| n.clone())
             .filter(|n| !unknown.contains(n))
             .collect();
         loop {
@@ -1119,7 +1130,11 @@ impl MoveKerningFromFeatures {
         let mut pairs: Vec<(SmolStr, SmolStr, Metric)> = vec![];
         let mut values: Vec<Vec<i16>> = vec![vec![]; font.masters.len()];
         let mut names: HashSet<SmolStr> = HashSet::new();
-        for (name, kerning, lookup_values) in read {
+        // Kerning goes where every value is a whole number: stated there, or
+        // interpolated exactly. Elsewhere a compiler interpolates it from the
+        // binary's rounded deltas, and a rounded value would be off by one.
+        let mut whole_at = vec![true; font.masters.len()];
+        for (name, kerning, lookup_values, whole) in read {
             if !moving.contains(&name) {
                 continue;
             }
@@ -1149,6 +1164,9 @@ impl MoveKerningFromFeatures {
             for (all, these) in values.iter_mut().zip(lookup_values) {
                 all.extend(these);
             }
+            for (all, these) in whole_at.iter_mut().zip(whole) {
+                *all &= these;
+            }
             names.insert(name);
         }
         if names.is_empty() {
@@ -1162,10 +1180,11 @@ impl MoveKerningFromFeatures {
             .unwrap_or(first);
         // Markers for the features the compiler writes kerning to; an Indic
         // script's kerning goes to a dist feature the font may have
-        let mut marker_tags = vec![SmolStr::from("kern")];
-        if layout.features.contains_key("dist") {
-            marker_tags.push("dist".into());
+        let mut marker_tags = vec![SmolStr::from(KERN)];
+        if layout.features.contains_key(DIST) {
+            marker_tags.push(DIST.into());
         }
+        let stated = whole_at;
         let name = |i: &usize| font.glyphs.get_by_index(*i).map(|g| g.name.clone());
         let glyph_scripts = super::kerning_groups::GlyphScripts {
             scripts: kerning_model
@@ -1184,6 +1203,7 @@ impl MoveKerningFromFeatures {
                 .iter()
                 .filter_map(name)
                 .collect(),
+            marks: kerning_model.marks.iter().filter_map(name).collect(),
         };
         Ok(Some(MovedKerning {
             names,
@@ -1194,6 +1214,7 @@ impl MoveKerningFromFeatures {
             second_groups,
             marker_tags,
             glyph_scripts,
+            stated,
         }))
     }
 }
@@ -1230,7 +1251,13 @@ fn metric_at_masters_only(metric: &Metric, font: &Font) -> bool {
                     .to_bits()
             })
             .collect();
-        masters.contains(&here)
+        // a step or two away is the master (a location through avar)
+        masters.iter().any(|master| {
+            master
+                .iter()
+                .zip(&here)
+                .all(|(a, b)| (*a as i32 - *b as i32).abs() <= 2)
+        })
     })
 }
 
@@ -1245,6 +1272,9 @@ mod tests {
         for (name, cp) in [
             ("A", 0x41),
             ("Adot", 0x1EA0),
+            ("Agrave", 0xC0),
+            ("kadeva", 0x915),
+            ("khadeva", 0x916),
             ("O", 0x4F),
             ("Q", 0x51),
             ("V", 0x56),
@@ -1333,17 +1363,107 @@ mod tests {
     }
 
     #[test]
-    fn test_first_classes_that_kern_alike_are_one_group() {
-        // as fontc writes a group: one member in class 0, the others in class 1
+    fn test_first_classes_that_kern_alike_stay_apart() {
+        // two groups whose other kerning a compiler wrote as glyph pairs
         let mut font = font(&format!(
-            "{LS}lookup k {{ lookupflag IgnoreMarks; pos [A] [O Q] -50; pos [Adot] [O Q] -50; pos [V] [O Q] -10; }} k;\n\
+            "{LS}lookup k {{ lookupflag IgnoreMarks; pos A O -60; pos [A Agrave] [O Q] -50; pos [Adot] [O Q] -50; pos [V] [O Q] -10; }} k;\n\
              feature kern {{ lookup k; }} kern;"
         ));
         MoveKerningFromFeatures::new().apply(&mut font).unwrap();
-        assert_eq!(font.first_kern_groups.get("A").unwrap(), &["A", "Adot"]);
+        assert_eq!(font.first_kern_groups.get("A").unwrap(), &["A", "Agrave"]);
         assert_eq!(kern(&font, "@A", "@O"), Some(-50));
+        assert_eq!(kern(&font, "A", "O"), Some(-60));
         // a class of one glyph is a group of one
+        assert_eq!(kern(&font, "@Adot", "@O"), Some(-50));
         assert_eq!(kern(&font, "@V", "@O"), Some(-10));
+    }
+
+    #[test]
+    fn test_indic_kerning_in_dist_is_kerning() {
+        // as fontc writes it: Latin kerning in kern, Devanagari in dist
+        let mut font = font(
+            "languagesystem DFLT dflt;\nlanguagesystem latn dflt;\n\
+             languagesystem dev2 dflt;\nlanguagesystem deva dflt;\n\
+             lookup kL { lookupflag IgnoreMarks; pos A V -30; } kL;\n\
+             lookup kD { lookupflag IgnoreMarks; pos kadeva khadeva -50; } kD;\n\
+             feature kern { script DFLT; lookup kL; script latn; lookup kL; } kern;\n\
+             feature dist { script dev2; lookup kD; script deva; lookup kD; } dist;",
+        );
+        MoveKerningFromFeatures::new().apply(&mut font).unwrap();
+        assert_eq!(kern(&font, "A", "V"), Some(-30));
+        assert_eq!(kern(&font, "kadeva", "khadeva"), Some(-50));
+        let fea = font.features.to_fea();
+        assert!(!fea.contains("lookup kL") && !fea.contains("lookup kD"), "{fea}");
+    }
+
+    #[test]
+    fn test_indic_kerning_in_kern_moves_to_dist() {
+        // a compiler puts it in dist, which a shaper applies as it does kern
+        let mut font = font(
+            "languagesystem DFLT dflt;\nlanguagesystem latn dflt;\n\
+             languagesystem dev2 dflt;\nlanguagesystem deva dflt;\n\
+             lookup kD { lookupflag IgnoreMarks; pos kadeva khadeva -50; } kD;\n\
+             feature kern { script dev2; lookup kD; script deva; lookup kD; } kern;",
+        );
+        MoveKerningFromFeatures::new().apply(&mut font).unwrap();
+        assert_eq!(kern(&font, "kadeva", "khadeva"), Some(-50));
+    }
+
+    #[test]
+    fn test_kerning_interpolated_to_a_fraction_is_not_stated() {
+        use crate::Axis;
+        use fontdrasil::coords::{DesignCoord, DesignLocation, UserCoord};
+        use write_fonts::types::Tag;
+        // a master between two others, from the outlines: where its kerning
+        // interpolates to a fraction, a compiler must interpolate it again;
+        // where to whole numbers, it is the kerning there
+        for (bold, between) in [(-51, None), (-50, Some(-25))] {
+            let mut font = font(&format!(
+                "{LS}lookup k {{ lookupflag IgnoreMarks; pos A V (wght=100:-10 wght=900:{bold}); }} k;\n\
+                 feature kern {{ lookup k; }} kern;"
+            ));
+            let mut axis = Axis::new("Weight", Tag::new(b"wght"));
+            axis.min = Some(UserCoord::new(100.0));
+            axis.default = Some(UserCoord::new(100.0));
+            axis.max = Some(UserCoord::new(900.0));
+            font.axes.push(axis);
+            font.masters.clear();
+            for (id, weight) in [("light", 100.0), ("regular", 400.0), ("bold", 900.0)] {
+                let location =
+                    DesignLocation::from(vec![(Tag::new(b"wght"), DesignCoord::new(weight))]);
+                font.masters.push(Master::new(id, id, location));
+            }
+            MoveKerningFromFeatures::new().apply(&mut font).unwrap();
+            let at = |i: usize| font.masters[i].kerning.get(&("A".into(), "V".into())).copied();
+            assert_eq!((at(0), at(1), at(2)), (Some(-10), between, Some(bold)));
+        }
+    }
+
+    #[test]
+    fn test_a_value_stated_a_step_from_a_master_is_the_masters() {
+        use crate::Axis;
+        use fontdrasil::coords::{DesignCoord, DesignLocation, UserCoord};
+        use write_fonts::types::Tag;
+        // wght=300.1 normalizes two F2Dot14 steps from the master at 300, as
+        // a location through avar comes back from a binary
+        let mut font = font(&format!(
+            "{LS}lookup k {{ lookupflag IgnoreMarks; pos A V (wght=100:-10 wght=300.1:-20 wght=900:-30); }} k;\n\
+             feature kern {{ lookup k; }} kern;"
+        ));
+        let mut axis = Axis::new("Weight", Tag::new(b"wght"));
+        axis.min = Some(UserCoord::new(100.0));
+        axis.default = Some(UserCoord::new(100.0));
+        axis.max = Some(UserCoord::new(900.0));
+        font.axes.push(axis);
+        font.masters.clear();
+        for (id, weight) in [("light", 100.0), ("regular", 300.0), ("bold", 900.0)] {
+            let location =
+                DesignLocation::from(vec![(Tag::new(b"wght"), DesignCoord::new(weight))]);
+            font.masters.push(Master::new(id, id, location));
+        }
+        MoveKerningFromFeatures::new().apply(&mut font).unwrap();
+        let at = |i: usize| font.masters[i].kerning.get(&("A".into(), "V".into())).copied();
+        assert_eq!((at(0), at(1), at(2)), (Some(-10), Some(-20), Some(-30)));
     }
 
     #[test]
