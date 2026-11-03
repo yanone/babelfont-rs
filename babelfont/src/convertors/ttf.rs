@@ -325,7 +325,13 @@ fn anchor_family(font: &Font, name: &str) -> (HashSet<SmolStr>, HashSet<SmolStr>
     let mut marks = HashSet::new();
     for glyph in font.glyphs.iter() {
         for anchor in glyph.layers.iter().flat_map(|l| l.anchors.iter()) {
-            if anchor.name == name {
+            // a ligature's anchors are named per component: name_1, name_2
+            let ligature = anchor
+                .name
+                .strip_prefix(name)
+                .and_then(|rest| rest.strip_prefix('_'))
+                .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()));
+            if anchor.name == name || ligature {
                 bases.insert(glyph.name.clone());
             } else if anchor.name == mark_name {
                 marks.insert(glyph.name.clone());
@@ -433,16 +439,24 @@ fn name_placeholder_anchors(font: &mut Font, provisional: &HashSet<String>) {
     }
 }
 
-/// Renames anchors `from` and `_from` to `to` and `_to`, and with
-/// `rename_class` the mark class `@from` in the feature code
+/// Renames anchors `from`, `_from` and a ligature's `from_1`, `from_2`, ...
+/// to `to`, `_to` and `to_1`, ..., and with `rename_class` the mark class
+/// `@from` in the feature code
 fn rename_anchor_family(font: &mut Font, from: &str, to: &str, rename_class: bool) {
     let mark_from = format!("_{from}");
+    let ligature_from = format!("{from}_");
     for layer in font.glyphs.iter_mut().flat_map(|g| g.layers.iter_mut()) {
         for anchor in layer.anchors.iter_mut() {
             if anchor.name == from {
                 anchor.name = to.to_string();
             } else if anchor.name == mark_from {
                 anchor.name = format!("_{to}");
+            } else if let Some(component) = anchor
+                .name
+                .strip_prefix(&ligature_from)
+                .filter(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+            {
+                anchor.name = format!("{to}_{component}");
             }
         }
     }
@@ -3366,6 +3380,45 @@ mod tests {
             Some("bottom")
         );
         assert_eq!(anchor_name_for_mark(None, Some("ARABIC DOT CENTER")), None);
+    }
+
+    #[test]
+    fn test_provisional_names_rename_ligature_anchors_too() {
+        // Great Vibes: a ligature's anchor2_1 and its mark's _anchor2 are
+        // renamed together, by what the mark is (an overlay: center)
+        let anchored = |name: &str, codepoints: Vec<u32>, anchors: &[&str]| {
+            let mut glyph = Glyph::new(name);
+            glyph.codepoints = codepoints;
+            let mut layer = Layer::new(0.0);
+            for anchor in anchors {
+                layer.anchors.push(Anchor {
+                    name: anchor.to_string(),
+                    x: 0.0,
+                    y: 0.0,
+                    format_specific: FormatSpecific::default(),
+                });
+            }
+            glyph.layers.push(layer);
+            glyph
+        };
+        let mut font = Font::new();
+        font.glyphs.push(anchored(
+            "f_f_l",
+            vec![],
+            &["anchor2_1", "anchor2_2", "top_1"],
+        ));
+        font.glyphs
+            .push(anchored("strokeshortcomb", vec![0x0335], &["_anchor2"]));
+        name_placeholder_anchors(&mut font, &["anchor2".to_string()].into());
+        let names = |glyph: &str| -> Vec<String> {
+            font.glyphs.get(glyph).unwrap().layers[0]
+                .anchors
+                .iter()
+                .map(|a| a.name.clone())
+                .collect()
+        };
+        assert_eq!(names("f_f_l"), ["center_1", "center_2", "top_1"]);
+        assert_eq!(names("strokeshortcomb"), ["_center"]);
     }
 
     #[cfg(feature = "glyphs")]
