@@ -1046,6 +1046,24 @@ impl MasterValues {
                     (axis.tag, user.to_normalized(&axis.converter))
                 })
                 .collect();
+            // A location a feature file states in user units comes back a
+            // step or two of F2Dot14 away from the master it is (an axis
+            // mapped through avar: Big Shoulders' wght=333.6): it is that
+            // master's
+            let near = |a: &NormalizedLocation, b: &NormalizedLocation| {
+                self.axes.iter().all(|axis| {
+                    let bits = |l: &NormalizedLocation| {
+                        l.get(axis.tag).unwrap_or_default().to_f2dot14().to_bits() as i32
+                    };
+                    (bits(a) - bits(b)).abs() <= 2
+                })
+            };
+            let normalized = self
+                .masters
+                .iter()
+                .find(|master| near(master, &normalized))
+                .cloned()
+                .unwrap_or(normalized);
             values.insert(normalized, vec![*value as f64]);
         }
         let key_of = |location: &NormalizedLocation, axes: &fontdrasil::types::Axes| {

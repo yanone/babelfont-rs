@@ -832,6 +832,13 @@ lookup k { lookupflag IgnoreMarks; pos kadeva khadeva -50; pos A V -30; pos A Al
 lookup d { pos khadeva 0; } d;
 feature kern { lookup k; } kern;
 feature dist { script dev2; lookup d; } dist;""",
+    # Indic kerning as fontc writes it: in dist, Latin kerning in kern
+    "DistCompiled": """languagesystem DFLT dflt; languagesystem latn dflt; languagesystem dev2 dflt;
+languagesystem deva dflt;
+lookup kl { lookupflag IgnoreMarks; pos A V -30; } kl;
+lookup kd { lookupflag IgnoreMarks; pos kadeva khadeva -50; } kd;
+feature kern { script DFLT; lookup kl; script latn; lookup kl; } kern;
+feature dist { script dev2; lookup kd; script deva; lookup kd; } dist;""",
     # mark attachment registered per script, and a blwm feature of the font's own
     "Marks": SHAPING_LS + """markClass acutecomb <anchor 100 500> @TOP;
 markClass nuktadeva <anchor 100 0> @BOT;

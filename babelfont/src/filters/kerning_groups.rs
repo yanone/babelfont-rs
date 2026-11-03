@@ -1,21 +1,25 @@
 //! Kerning groups a compiler split by script, put back together.
 //!
-//! fontc writes a kerning group's members of each script as a class of their
-//! own: Fustat's @A becomes a class of its Latin letters and one of
-//! backslash and backslash.case, which are common to all scripts, each
-//! kerning as the group did. Read back, the pieces are groups of their own,
-//! and a piece of one glyph is no group at all, so kerning the group means
-//! kerning each piece. Two pieces are taken to be one group where their
-//! glyphs are of different scripts (a compiler never splits a group
-//! otherwise) and they kern alike wherever both kern; they are merged where
-//! that leaves every pair of glyphs kerning as it did, but for a pair of
-//! glyphs of both directions, which a compiler leaves out as no text has it.
+//! fontc writes a kerning group as up to six classes: its bases and its marks
+//! (`split_base_and_mark_pairs`), each split by the direction of their
+//! scripts, left to right, right to left or common to all
+//! (`partition_by_script`). Fustat's @A becomes a class of its Latin letters
+//! and one of backslash and backslash.case, which are common, each kerning
+//! as the group did. Read back, the pieces are groups of their own, and a
+//! piece of one glyph is no group at all, so kerning the group means kerning
+//! each piece. Two pieces are taken to be one group where they are of a
+//! different kind, by direction and by being marks (a compiler never splits a
+//! group otherwise), and they kern alike wherever both kern; they are merged
+//! where that leaves every pair of glyphs kerning as it did, but for a pair
+//! of glyphs of both directions, which a compiler leaves out as no text has
+//! it.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use indexmap::IndexMap;
 use smol_str::SmolStr;
 
+use super::layout_model::{right_to_left_script, COMMON};
 use crate::Font;
 
 /// What a compiler knows of each glyph, by name
@@ -24,17 +28,38 @@ pub(crate) struct GlyphScripts {
     pub scripts: HashMap<SmolStr, BTreeSet<SmolStr>>,
     pub left_to_right: HashSet<SmolStr>,
     pub right_to_left: HashSet<SmolStr>,
+    /// Glyphs a compiler kerns as marks, in lookups of their own
+    pub marks: HashSet<SmolStr>,
 }
 
+/// How a compiler splits a group: by direction (0 common, 1 left to right,
+/// 2 right to left) and whether the glyphs are marks
+type Kind = (u8, bool);
+
 impl GlyphScripts {
-    fn of(&self, glyphs: &[SmolStr]) -> BTreeSet<SmolStr> {
+    /// The kinds of piece a compiler would split these glyphs into
+    fn kinds(&self, glyphs: &[SmolStr]) -> BTreeSet<Kind> {
         glyphs
             .iter()
             .flat_map(|g| {
-                self.scripts
-                    .get(g)
-                    .cloned()
-                    .unwrap_or_else(|| [SmolStr::from("Zyyy")].into())
+                let mark = self.marks.contains(g);
+                let scripts = self.scripts.get(g);
+                let directions: BTreeSet<u8> = match scripts {
+                    None => [0].into(),
+                    Some(scripts) => scripts
+                        .iter()
+                        .map(|s| {
+                            if s == COMMON {
+                                0
+                            } else if right_to_left_script(s) {
+                                2
+                            } else {
+                                1
+                            }
+                        })
+                        .collect(),
+                };
+                directions.into_iter().map(move |d| (d, mark))
             })
             .collect()
     }
@@ -91,6 +116,13 @@ impl View {
             .find_map(|(x, y)| kerning.get(&(x?, y?)))
             .copied()
             .unwrap_or(0)
+    }
+
+    /// Whether a compiler kerns nothing between glyphs of these kinds: each
+    /// of one direction, and the other
+    fn apart_kinds(a: &BTreeSet<Kind>, b: &BTreeSet<Kind>) -> bool {
+        a.iter()
+            .all(|(da, _)| b.iter().all(|(db, _)| *da != 0 && *db != 0 && da != db))
     }
 
     fn members(groups: &Groups, side: &SmolStr) -> Vec<SmolStr> {
@@ -201,11 +233,11 @@ impl View {
         let grouped: HashSet<SmolStr> = self.firsts.values().flatten().cloned().collect();
         let mut rows = self.rows();
         rows.retain(|side, _| side.starts_with('@') || !grouped.contains(side));
-        let scripts: BTreeMap<SmolStr, BTreeSet<SmolStr>> = rows
+        let kinds: BTreeMap<SmolStr, BTreeSet<Kind>> = rows
             .keys()
-            .map(|side| (side.clone(), info.of(&Self::members(&self.firsts, side))))
+            .map(|side| (side.clone(), info.kinds(&Self::members(&self.firsts, side))))
             .collect();
-        // pairs of first sides of different scripts that kern alike wherever
+        // pairs of first sides of different kinds that kern alike wherever
         // both kern, by how many second sides they share
         let mut by_second: BTreeMap<&SmolStr, Vec<&SmolStr>> = BTreeMap::new();
         for (first, row) in &rows {
@@ -224,21 +256,33 @@ impl View {
         let mut candidates: Vec<(usize, &SmolStr, &SmolStr)> = shared
             .into_iter()
             .filter(|((a, b), _)| {
-                scripts
+                kinds
                     .get(*a)
-                    .is_some_and(|s| scripts.get(*b).is_some_and(|t| s.is_disjoint(t)))
+                    .is_some_and(|s| kinds.get(*b).is_some_and(|t| s.is_disjoint(t)))
             })
             .filter(|((a, b), _)| {
                 let (ra, rb) = (&rows[*a], &rows[*b]);
-                ra.iter()
-                    .all(|(second, values)| rb.get(second).is_none_or(|v| v == values))
+                // the same kerning, against the same second sides but those a
+                // compiler drops for one of them as of the other direction
+                let kerns_alike = |ra: &BTreeMap<SmolStr, Vec<i16>>,
+                                   rb: &BTreeMap<SmolStr, Vec<i16>>,
+                                   b: &SmolStr| {
+                    ra.iter().all(|(second, values)| match rb.get(second) {
+                        Some(v) => v == values,
+                        None => Self::apart_kinds(
+                            &kinds[b],
+                            &info.kinds(&Self::members(&self.seconds, second)),
+                        ),
+                    })
+                };
+                kerns_alike(ra, rb, b) && kerns_alike(rb, ra, a)
             })
             .map(|((a, b), count)| (count, a, b))
             .collect();
         candidates.sort_by(|x, y| y.0.cmp(&x.0).then_with(|| (x.1, x.2).cmp(&(y.1, y.2))));
         // a side merged goes by its group's name from then on
         let mut now_in: HashMap<SmolStr, SmolStr> = HashMap::new();
-        let mut merged_scripts = scripts.clone();
+        let mut merged_kinds = kinds.clone();
         let mut merges = 0;
         for (_, a, b) in candidates {
             let resolve = |side: &SmolStr| {
@@ -252,21 +296,21 @@ impl View {
             if a == b {
                 continue;
             }
-            let (Some(sa), Some(sb)) = (merged_scripts.get(&a), merged_scripts.get(&b)) else {
+            let (Some(sa), Some(sb)) = (merged_kinds.get(&a), merged_kinds.get(&b)) else {
                 continue;
             };
-            // pieces of one group are of different scripts, every one
+            // pieces of one group are of different kinds, every one
             if !sa.is_disjoint(sb) {
                 continue;
             }
-            let union: BTreeSet<SmolStr> = sa.union(sb).cloned().collect();
+            let union: BTreeSet<Kind> = sa.union(sb).cloned().collect();
             if let Some(name) = self.try_merge(&a, &b, info) {
                 for side in [&a, &b] {
                     if *side != name {
                         now_in.insert(side.clone(), name.clone());
                     }
                 }
-                merged_scripts.insert(name, union);
+                merged_kinds.insert(name, union);
                 merges += 1;
             }
         }

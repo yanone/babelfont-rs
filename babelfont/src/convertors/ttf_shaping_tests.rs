@@ -233,6 +233,7 @@ shaping_fixture_tests! {
     test_shaping_kerning_written_against_direction: "ShapingRtl.ttf",
     test_shaping_kerning_as_compiled_for_direction: "ShapingRtlCompiled.ttf",
     test_shaping_indic_kerning_beside_dist: "ShapingDist.ttf",
+    test_shaping_indic_kerning_in_dist: "ShapingDistCompiled.ttf",
     test_shaping_marks_per_script: "ShapingMarks.ttf",
     test_shaping_marks_beside_blwm: "ShapingMarksEverywhere.ttf",
     test_shaping_indic_marks: "ShapingMarksNoBlwm.ttf",

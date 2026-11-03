@@ -3761,6 +3761,75 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "fontir")]
+    fn test_kerning_at_an_intermediate_master_comes_back() {
+        // A pair whose kerning at an intermediate master is the default's
+        // has no delta there: read back, it is still interpolated between all
+        // of the kerning masters, as for the pairs that have one (Big
+        // Shoulders)
+        use crate::convertors::fontir::{BabelfontIrSource, CompilationOptions};
+        use crate::{Axis, Glyph, Layer, LayerType, Master};
+        use fontdrasil::coords::{DesignCoord, DesignLocation, UserCoord};
+        let mut font = Font::new();
+        let mut axis = Axis::new("Weight", Tag::new(b"wght"));
+        axis.min = Some(UserCoord::new(100.0));
+        axis.default = Some(UserCoord::new(400.0));
+        axis.max = Some(UserCoord::new(900.0));
+        font.axes.push(axis);
+        let masters = [
+            ("light", 100.0),
+            ("semilight", 250.0),
+            ("regular", 400.0),
+            ("bold", 900.0),
+        ];
+        for (name, cp) in [("A", 0x41), ("V", 0x56), ("O", 0x4F)] {
+            let mut glyph = Glyph::new(name);
+            glyph.codepoints = vec![cp];
+            glyph.exported = true;
+            for (id, _) in masters {
+                let mut layer = Layer::new(500.0);
+                layer.master = LayerType::DefaultForMaster(id.to_string());
+                glyph.layers.push(layer);
+            }
+            font.glyphs.push(glyph);
+        }
+        // A V has no delta at semilight, A O has one
+        let kerning = [(-10, 0, 0, -20), (-10, -6, 0, -20)];
+        for (i, (id, weight)) in masters.iter().enumerate() {
+            let location =
+                DesignLocation::from(vec![(Tag::new(b"wght"), DesignCoord::new(*weight))]);
+            let mut master = Master::new(*id, *id, location);
+            let at = |k: &(i16, i16, i16, i16)| [k.0, k.1, k.2, k.3][i];
+            master
+                .kerning
+                .insert(("A".into(), "V".into()), at(&kerning[0]));
+            master
+                .kerning
+                .insert(("A".into(), "O".into()), at(&kerning[1]));
+            font.masters.push(master);
+        }
+        let binary =
+            BabelfontIrSource::compile(font.clone(), CompilationOptions::default()).unwrap();
+        let read = load_bytes(&binary).unwrap();
+        for (id, weight) in masters {
+            let master = read
+                .masters
+                .iter()
+                .find(|m| m.location.get(Tag::new(b"wght")).map(|c| c.to_f64()) == Some(weight))
+                .unwrap_or_else(|| panic!("no master at {weight}"));
+            let source = font.masters.iter().find(|m| m.id == id).unwrap();
+            for pair in [("A", "V"), ("A", "O")] {
+                let key = (pair.0.into(), pair.1.into());
+                assert_eq!(
+                    master.kerning.get(&key),
+                    source.kerning.get(&key),
+                    "{pair:?} at {id}"
+                );
+            }
+        }
+    }
+
+    #[test]
     #[cfg(all(feature = "fontir", feature = "glyphs"))]
     fn test_compiled_glyphs_kerning_comes_back() {
         use std::collections::BTreeSet;
@@ -3771,10 +3840,18 @@ mod tests {
         // first glyphs, has a class of one glyph with an exception (@f:f 15,
         // @f:@f 22), right-to-left kerning, and values varying by master
         use crate::convertors::fontir::{BabelfontIrSource, CompilationOptions};
-        for path in ["resources/Fustat.glyphs", "resources/G3RTLKerning.glyphs"] {
+        // Nunito's kerning varies on two axes, some pairs' values only on one:
+        // each is read back at every kerning location
+        for path in [
+            "resources/Fustat.glyphs",
+            "resources/G3RTLKerning.glyphs",
+            "resources/Nunito3.glyphs",
+        ] {
             let source = crate::load(path).unwrap();
             let expected = glyphs_source_kerning(&source);
-            // the groups the source kerns something with, by their members
+            // the groups the source kerns another group with, by their
+            // members (a compiler writes a group's pairs with glyphs as
+            // glyph pairs)
             let kerned_groups = |first: bool| -> BTreeSet<BTreeSet<SmolStr>> {
                 let groups = if first {
                     &source.first_kern_groups
@@ -3785,7 +3862,9 @@ mod tests {
                     .masters
                     .iter()
                     .flat_map(|m| m.kerning.iter())
-                    .filter(|(_, value)| **value != 0)
+                    .filter(|((l, r), value)| {
+                        **value != 0 && l.starts_with('@') && r.starts_with('@')
+                    })
                     .filter_map(|((l, r), _)| if first { l } else { r }.strip_prefix('@'))
                     .filter_map(|name| groups.get(name))
                     .map(|members| members.iter().cloned().collect())
