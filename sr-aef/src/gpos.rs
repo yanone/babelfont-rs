@@ -63,6 +63,38 @@ impl<'a> UncompileContext<'a> {
                 }
                 PositionSubtables::Pair(subtables) => {
                     let mut lookupblock = self.create_lookup_block(i as u16, Pos);
+                    let mut regions = std::collections::BTreeSet::new();
+                    for subtable in subtables.iter().flatten() {
+                        match subtable {
+                            PairPos::Format1(table) => {
+                                for pairset in table.pair_sets().iter().flatten() {
+                                    let offset_data = pairset.offset_data();
+                                    for pair in pairset.pair_value_records().iter().flatten() {
+                                        for record in [pair.value_record1(), pair.value_record2()] {
+                                            regions.extend(
+                                                self.value_record_regions(record, offset_data)?,
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                            PairPos::Format2(table) => {
+                                let offset_data = table.offset_data();
+                                for class1 in table.class1_records().iter().flatten() {
+                                    for class2 in class1.class2_records().iter().flatten() {
+                                        for record in
+                                            [class2.value_record1(), class2.value_record2()]
+                                        {
+                                            regions.extend(
+                                                self.value_record_regions(record, offset_data)?,
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    *self.lookup_regions.borrow_mut() = Some(regions);
                     for subtable in subtables.iter().flatten() {
                         add_subtable_break(&mut lookupblock);
                         match subtable {
@@ -74,6 +106,7 @@ impl<'a> UncompileContext<'a> {
                             }
                         }
                     }
+                    *self.lookup_regions.borrow_mut() = None;
                     lookupblock
                 }
                 PositionSubtables::Cursive(subtables) => {
