@@ -2862,6 +2862,60 @@ mod tests {
 
     #[test]
     #[cfg(feature = "fontir")]
+    fn test_anchor_names_keep_their_order_on_marks_too() {
+        // Splash: marks attach to marks by top and, later, top_viet, which
+        // only some have; read back, the names keep that order
+        let mark = GlyphCategory::Mark;
+        let font = compiled_and_read(
+            &[
+                (
+                    "A",
+                    0x41,
+                    GlyphCategory::Base,
+                    &[("top", 300.0, 700.0), ("top_viet", 200.0, 650.0)],
+                ),
+                (
+                    "dotaccentcomb",
+                    0x307,
+                    mark.clone(),
+                    &[
+                        ("_top", 250.0, 440.0),
+                        ("top", 250.0, 610.0),
+                        ("top_viet", 260.0, 580.0),
+                    ],
+                ),
+                (
+                    "acutecomb",
+                    0x301,
+                    mark.clone(),
+                    &[
+                        ("_top", 250.0, 440.0),
+                        ("_top_viet", 245.0, 452.0),
+                        ("top", 250.0, 610.0),
+                    ],
+                ),
+                (
+                    "tildecomb",
+                    0x303,
+                    mark,
+                    &[
+                        ("_top", 250.0, 440.0),
+                        ("_top_viet", 337.0, 377.0),
+                        ("top", 270.0, 610.0),
+                    ],
+                ),
+            ],
+            &[],
+        );
+        let fea = font.features.to_fea();
+        assert!(
+            !fea.contains("pos base") && !fea.contains("pos mark"),
+            "{fea}"
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "fontir")]
     fn test_anchor_names_keep_abvm_and_blwm_apart() {
         // fontc puts a Devanagari group in blwm by its name (bottom*, nukta)
         let font = compiled_and_read(
