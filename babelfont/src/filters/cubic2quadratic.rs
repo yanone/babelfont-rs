@@ -245,6 +245,57 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_quadratic_paths_are_left_as_they_are() {
+        // o: four off-curves, every on-curve implied; and a cubic beside it
+        let mut font = crate::load("resources/ttf/Quadratic.ttf").unwrap();
+        let before: Vec<Vec<Path>> = font
+            .glyphs
+            .iter()
+            .map(|g| g.layers.iter().flat_map(|l| l.paths().cloned()).collect())
+            .collect();
+        let node = |x: f64, y: f64, nodetype: crate::NodeType| crate::Node {
+            x,
+            y,
+            nodetype,
+            smooth: false,
+            format_specific: Default::default(),
+        };
+        let cubic = Path {
+            nodes: vec![
+                node(0.0, 0.0, crate::NodeType::Line),
+                node(0.0, 100.0, crate::NodeType::OffCurve),
+                node(100.0, 100.0, crate::NodeType::OffCurve),
+                node(100.0, 0.0, crate::NodeType::Curve),
+            ],
+            closed: true,
+            format_specific: Default::default(),
+        };
+        for layer in font.glyphs.get_mut("o").unwrap().layers.iter_mut() {
+            layer.shapes.push(crate::Shape::Path(cubic.clone()));
+        }
+        CubicToQuadratic::default().apply(&mut font).unwrap();
+        for (glyph, before) in font.glyphs.iter().zip(before) {
+            // all but the cubic added to o
+            let after: Vec<Path> = glyph
+                .layers
+                .iter()
+                .flat_map(|l| l.paths().take(before.len() / glyph.layers.len()).cloned())
+                .collect();
+            assert_eq!(after, before, "{}", glyph.name);
+        }
+        // the cubic beside them is converted
+        let o = font.glyphs.get("o").unwrap();
+        let converted = o.layers[0].paths().last().unwrap();
+        assert!(
+            converted
+                .nodes
+                .iter()
+                .all(|n| n.nodetype != crate::NodeType::Curve)
+        );
+        assert_eq!(o.layers[0].paths().next().unwrap().nodes.len(), 4);
+    }
+
+    #[test]
     fn test_an_off_curve_only_path_is_left_as_it_is() {
         // a TrueType circle: four off-curves, every on-curve implied; and a
         // cubic beside it
