@@ -2599,6 +2599,14 @@ mod tests {
 
         // head.created
         assert_eq!(font.date.to_rfc3339(), "2024-01-01T00:00:00+00:00");
+        // variation sequences survive JSON, nested by selector
+        let json = serde_json::to_value(&font).unwrap();
+        assert_eq!(
+            json["variation_sequences"],
+            serde_json::json!({"65024": {"65": "Adot", "79": "O"}})
+        );
+        let from_json: Font = serde_json::from_value(json).unwrap();
+        assert_eq!(from_json.variation_sequences, font.variation_sequences);
         // variation sequences: a variant glyph, and the default one
         let sequences: Vec<_> = font.variation_sequences.iter().collect();
         assert_eq!(
