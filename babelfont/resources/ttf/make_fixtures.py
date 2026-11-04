@@ -1014,6 +1014,16 @@ addOpenTypeFeaturesFromString(fb.font, "languagesystem DFLT dflt; languagesystem
 addFeatureVariations(fb.font, [([{"wght": (0.4, 1.0)}], {"A": "A.heavy"})], featureTag="rvrn")
 save(fb, "ShapingFeatureVariations.ttf")
 
+# The same with an avar that maps wght 600 to 0.3: the swap from normalized
+# 0.357 on (as Intel One Mono's) is at no whole user value a feature file states
+# exactly, and fea-rs-ast reads whole values only
+fb.font["avar"] = avar = newTable("avar")
+avar.segments = {"wght": {-1.0: -1.0, 0.0: 0.0, 0.4: 0.3, 1.0: 1.0}}
+fb.font["GSUB"].table.FeatureVariations.FeatureVariationRecord[0].ConditionSet \
+    .ConditionTable[0].FilterRangeMinValue = 0.357
+fb.setupNameTable({"familyName": "Fixture Shaping Feature Variations Avar", "styleName": "Regular"})
+save(fb, "ShapingFeatureVariationsAvar.ttf")
+
 
 # GDEF beyond glyph classes: a ligature caret and attachment points.
 order = [".notdef", "f", "f_f"]
