@@ -1514,7 +1514,16 @@ fn shaper_mark(glyph: &Glyph) -> bool {
 // This is only sound for mark class definitions
 fn load_features(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), BabelfontError> {
     let axes = font.fontdrasil_axes()?;
-    let mut uncompile_context = sr_aef::uncompile_context(fontref)
+    // the scripts a compiler kerns the font's characters in, and so adds
+    // script records for (fontc's guess_font_scripts)
+    let codepoints: Vec<u32> = fontref.charmap().mappings().map(|(cp, _)| cp).collect();
+    let generated_scripts: std::collections::HashSet<skrifa::Tag> =
+        crate::filters::layout_model::unicode::font_scripts(&[codepoints])
+            .iter()
+            .flat_map(|script| crate::filters::layout_model::fontc_script_tags(script))
+            .filter_map(|tag| skrifa::Tag::new_checked(format!("{tag:<4}").as_bytes()).ok())
+            .collect();
+    let mut uncompile_context = sr_aef::uncompile_context_with_scripts(fontref, &generated_scripts)
         .map_err(|e| BabelfontError::BinaryFontRead(e.to_string()))?;
     // ligature carets and attachment points; glyph classes are categories
     let gdef = uncompile_context

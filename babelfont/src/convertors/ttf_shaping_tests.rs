@@ -210,6 +210,7 @@ const SAMPLES: &[Sample] = &[
     text("\u{916}\u{93C}"),
     text("\u{915}\u{301}"),
     in_script("\u{301}", "Latn"),
+    text("\u{391}\u{301}"),
     in_language("AV", "Latn", "tr"),
     in_language("VA", "Latn", "tr"),
     in_language("AV", "Latn", "ro"),
@@ -245,6 +246,7 @@ shaping_fixture_tests! {
     test_shaping_language_under_script: "ShapingLanguage.ttf",
     test_shaping_language_excluding_default: "ShapingExcludeDflt.ttf",
     test_shaping_language_only_in_gsub: "ShapingGsubLanguage.ttf",
+    test_shaping_kern_only_script: "ShapingKernOnlyScript.ttf",
     test_shaping_cursive: "ShapingCursive.ttf",
     test_shaping_kerning_before_cursive: "ShapingKernThenCursive.ttf",
     test_shaping_mark_to_mark: "ShapingMkmk.ttf",
@@ -326,6 +328,15 @@ fn test_gsub_language_systems_are_not_declared() {
     assert!(fea.contains("language TRK"), "{fea}");
 }
 
+/// A script record a compiler adds for the kerning of the font's characters
+/// is not declared: it would take the mark attachment too
+#[test]
+fn test_kern_only_scripts_are_not_declared() {
+    let font = crate::convertors::ttf::load("resources/ttf/ShapingKernOnlyScript.ttf").unwrap();
+    let fea = font.features.to_fea();
+    assert!(!fea.contains("languagesystem grek"), "{fea}");
+}
+
 /// The fixtures whose kerning and attachment a compiler regenerates alike
 /// move: the tests above would pass if nothing moved
 #[test]
@@ -342,6 +353,7 @@ fn test_what_moves() {
         ("ShapingVariable.ttf", &[]),
         ("ShapingExtensions.ttf", &[]),
         ("ShapingGsubLanguage.ttf", &[]),
+        ("ShapingKernOnlyScript.ttf", &[]),
         ("ShapingLanguage.ttf", &["pos V A -50"]),
         ("ShapingIgnoreMarks.ttf", &["pos A V -100"]),
         ("ShapingRtl.ttf", &["pos "]),
