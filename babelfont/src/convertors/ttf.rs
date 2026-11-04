@@ -2392,6 +2392,52 @@ mod tests {
         }
     }
 
+    #[cfg(all(feature = "fontir", feature = "glyphs"))]
+    #[test]
+    fn test_composites_round_trip_through_glyphs() {
+        // Abar's bar is scaled and slanted: Glyphs reads its fields in its own
+        // order, and its slant in degrees
+        use crate::convertors::fontir::{BabelfontIrSource, CompilationOptions};
+        let font = load(COMPOSITES).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("Composites.glyphs");
+        font.save(&path).unwrap();
+        let again = crate::load(&path).unwrap();
+        let compile = |f: &Font| {
+            BabelfontIrSource::compile(f.clone(), CompilationOptions::default()).unwrap()
+        };
+        let (a, b) = (compile(&font), compile(&again));
+        let drawn = |binary: &[u8], glyph: &str, wght: f32, wdth: f32| {
+            let fontref = skrifa::FontRef::new(binary).unwrap();
+            let location = fontref.axes().location([("wght", wght), ("wdth", wdth)]);
+            let coords: Vec<F2Dot14> = location.coords().to_vec();
+            let (gid, _) = fontref
+                .glyph_names()
+                .iter()
+                .find(|(_, name)| name.as_str() == glyph)
+                .unwrap();
+            let mut points: Vec<(f64, f64)> =
+                draw_contours(&fontref, gid, LocationRef::new(&coords))
+                    .unwrap()
+                    .iter()
+                    .flat_map(|p| p.nodes.iter().map(|n| (n.x.round(), n.y.round())))
+                    .collect();
+            points.sort_by(|p, q| p.partial_cmp(q).unwrap());
+            points
+        };
+        let names: Vec<String> = font.glyphs.iter().map(|g| g.name.to_string()).collect();
+        assert!(names.iter().any(|n| n == "Abar"));
+        for glyph in &names {
+            for (wght, wdth) in [(400.0, 100.0), (100.0, 75.0), (900.0, 100.0), (650.0, 87.5)] {
+                assert_eq!(
+                    drawn(&b, glyph, wght, wdth),
+                    drawn(&a, glyph, wght, wdth),
+                    "{glyph} at wght {wght} wdth {wdth}"
+                );
+            }
+        }
+    }
+
     #[cfg(feature = "fontir")]
     #[test]
     fn test_stat_names_keep_their_languages() {
