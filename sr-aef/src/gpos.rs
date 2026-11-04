@@ -136,7 +136,13 @@ impl<'a> UncompileContext<'a> {
             if let Some(Statement::Subtable(_)) = lookupblock.statements.last() {
                 lookupblock.statements.pop();
             }
-            lookupblock.use_extension = matches!(lookup, PositionLookup::Extension(_));
+            // In a variable font, fontc leaves the variation indices in
+            // extension subtables unresolved and panics (write-fonts 0.52
+            // skips Extension in PositionLookup::remap_variation_indices), so
+            // there the compiler decides; it promotes lookups to extension
+            // when offsets overflow.
+            lookupblock.use_extension =
+                matches!(lookup, PositionLookup::Extension(_)) && self.axis_tags.is_empty();
             self.add_lookup_flags(
                 &mut lookupblock,
                 lookup.lookup_flag(),
