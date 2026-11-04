@@ -780,6 +780,11 @@ pub(crate) fn dist_script(script: &str) -> bool {
         || script == "Mymr"
 }
 
+/// Scripts whose mark attachment fontc puts in `abvm` and `blwm`
+pub(crate) fn abvm_script(script: &str) -> bool {
+    INDIC_SCRIPTS.contains(&script) || USE_SCRIPTS.contains(&script) || script == "Khmr"
+}
+
 /// Whether text of a script runs right to left, as fontc has it
 pub(crate) fn right_to_left_script(script: &str) -> bool {
     matches!(
@@ -960,6 +965,11 @@ pub(crate) mod unicode {
                 }
             })
             .collect()
+    }
+
+    /// A codepoint's script
+    pub(crate) fn script(cp: u32) -> Option<SmolStr> {
+        short_name(ScriptWithExtensions::new().get_script_val32(cp))
     }
 
     /// Left to right (true) or right to left (false), for strong characters
