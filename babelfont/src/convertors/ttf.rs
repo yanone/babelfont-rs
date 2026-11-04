@@ -1210,6 +1210,21 @@ fn load_metrics(
             MetricType::VheaLineGap,
             vertical(vhea.line_gap().to_i16(), b"vlgp"),
         );
+        for (metric, value, tag) in [
+            (
+                MetricType::VheaCaretSlopeRise,
+                vhea.caret_slope_rise(),
+                b"vcrs",
+            ),
+            (
+                MetricType::VheaCaretSlopeRun,
+                vhea.caret_slope_run(),
+                b"vcrn",
+            ),
+            (MetricType::VheaCaretOffset, vhea.caret_offset(), b"vcof"),
+        ] {
+            metrics.insert(metric, vertical(value, tag));
+        }
     }
 
     // post stores the angle negative for a right lean; babelfont stores the
@@ -2173,6 +2188,43 @@ mod tests {
         let layer = &font.glyphs.get("a").unwrap().layers[0];
         assert_eq!(layer.vertical_advance, Some(1000.0));
         assert_eq!(layer.vertical_origin, Some(600.0));
+    }
+    #[cfg(feature = "fontir")]
+    #[test]
+    fn test_vertical_metrics_round_trip() {
+        use crate::convertors::fontir::{BabelfontIrSource, CompilationOptions};
+        let original = std::fs::read(GDEF_CLASSES).unwrap();
+        let compiled = BabelfontIrSource::compile(
+            load_bytes(&original).unwrap(),
+            CompilationOptions::default(),
+        )
+        .unwrap();
+        let vertical = |binary: &[u8]| {
+            let fontref = skrifa::FontRef::new(binary).unwrap();
+            let vhea = fontref.vhea().unwrap();
+            let vmtx = fontref.vmtx().unwrap();
+            let names: Vec<String> = fontref
+                .glyph_names()
+                .iter()
+                .map(|(_, n)| n.to_string())
+                .collect();
+            let mut glyphs: Vec<(String, Option<u16>, Option<i16>)> = names
+                .iter()
+                .enumerate()
+                .map(|(gid, n)| {
+                    let gid = GlyphId::new(gid as u32);
+                    (n.clone(), vmtx.advance(gid), vmtx.side_bearing(gid))
+                })
+                .collect();
+            glyphs.sort();
+            (
+                vhea.ascender().to_i16(),
+                vhea.descender().to_i16(),
+                vhea.line_gap().to_i16(),
+                glyphs,
+            )
+        };
+        assert_eq!(vertical(&compiled), vertical(&original));
     }
     #[test]
     fn test_name_record_languages_are_keyed_as_sfd_names() {
