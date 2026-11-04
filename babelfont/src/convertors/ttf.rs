@@ -2857,6 +2857,43 @@ mod tests {
 
     #[test]
     #[cfg(feature = "fontir")]
+    fn test_anchor_names_keep_their_order_across_zones() {
+        // FleurDeLeah: the later group sits low on the base, where its name
+        // would be bottomright, before the earlier one's topright. Outside
+        // abvm and blwm, fontc orders all groups by name together.
+        let font = compiled_and_read(
+            &[
+                (
+                    "A",
+                    0x41,
+                    GlyphCategory::Base,
+                    &[("top", 560.0, 700.0), ("topviet", 560.0, 20.0)],
+                ),
+                (
+                    "tildecomb",
+                    0x303,
+                    GlyphCategory::Mark,
+                    &[("_top", 0.0, 500.0), ("_topviet", 10.0, 480.0)],
+                ),
+            ],
+            &[],
+        );
+        let fea = font.features.to_fea();
+        assert!(!fea.contains("pos base"), "{fea}");
+        let layer = &font.glyphs.get("A").unwrap().layers[0];
+        let name_at = |y: f64| {
+            layer
+                .anchors
+                .iter()
+                .find(|a| a.y == y)
+                .map(|a| a.name.clone())
+                .unwrap()
+        };
+        assert!(name_at(700.0) < name_at(20.0), "{:?}", layer.anchors);
+    }
+
+    #[test]
+    #[cfg(feature = "fontir")]
     fn test_anchor_names_keep_their_order_on_marks_too() {
         // Splash: marks attach to marks by top and, later, top_viet, which
         // only some have; read back, the names keep that order
