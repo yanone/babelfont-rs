@@ -15,6 +15,14 @@ x gravecomb -15). Glyphs:
   its xMin.
 * gravecomb (U+0300, advance 0) and commaaccent (unencoded, advance 120).
 
+Metadata.ttf: a symbol font: its Windows cmap is symbol-encoded (3, 0), star at
+U+F041 and moon at U+F042, and no Unicode one; family "Fixture Metadata" and
+style "Ornaments" in names 1 and 2, no 16 or 17, and German ones; a Japanese
+copyright; usWeightClass 700, usWidthClass 3, fsType 8, sFamilyClass 0x0805,
+fsSelection BOLD | USE_TYPO_METRICS | WWS, unicode range bits 0 and 60, code page
+bit 31 (symbol); a PANOSE; post.isFixedPitch 1, italicAngle -16.333;
+lowestRecPPEM 7.
+
 GdefClasses.ttf: GDEF glyph classes (gravecomb a base with an advance, acutecomb a
 mark without one, tildecomb a mark with one, f_f a ligature, script a base named
 like a keyword); a calt rule whose five-glyph backtrack reads back as a named
@@ -197,6 +205,36 @@ fb.font["name"].setName("\u3057\u3063\u307d\u308a", 1, 1, 1, 11)
 legacy_kern(fb.font, {("x", "H"): -30, ("x", "x"): 5, ("x", "gravecomb"): -15},
             {("H", "x"): -20, ("x", "x"): 5})
 save(fb, "StaticLegacy.ttf")
+
+
+# a symbol font that states what a compiler would not choose
+order = [".notdef", "star", "moon"]
+fb = FontBuilder(1000, isTTF=True)
+fb.setupGlyphOrder(order)
+fb.setupCharacterMap({0xF041: "star", 0xF042: "moon"})
+fb.font["cmap"].tables = [t for t in fb.font["cmap"].tables if t.platformID == 3]
+for table in fb.font["cmap"].tables:
+    table.platEncID = 0
+fb.setupGlyf({".notdef": Glyph(), "star": rect(100, 0, 500, 600), "moon": rect(100, 0, 500, 600)})
+fb.setupHorizontalMetrics({g: (600, 0 if g == ".notdef" else 100) for g in order})
+fb.setupHorizontalHeader(ascent=800, descent=-200)
+fb.setupNameTable({
+    "familyName": {"en": "Fixture Metadata", "de": "Fixture Metadaten"},
+    "styleName": {"en": "Ornaments", "de": "Ornamente"},
+    "copyright": {"en": "Nobody", "ja": "\u8ab0\u3082"},
+})
+fb.setupOS2(
+    version=4, usWeightClass=700, usWidthClass=3, fsType=8, sFamilyClass=0x0805,
+    fsSelection=0x20 | 0x80 | 0x100, ulUnicodeRange1=1, ulUnicodeRange2=1 << 28,
+    ulUnicodeRange3=0, ulUnicodeRange4=0, ulCodePageRange1=1 << 31, ulCodePageRange2=0,
+    sTypoAscender=800, sTypoDescender=-200, usWinAscent=800, usWinDescent=200,
+    panose=Panose(bFamilyType=5, bSerifStyle=0, bWeight=8, bProportion=9),
+)
+fb.setupPost(isFixedPitch=1, italicAngle=-16.333)
+fb.font["head"].lowestRecPPEM = 7
+fb.font["head"].macStyle = 1  # bold, as fsSelection says
+fb.font["OS/2"].recalcUnicodeRanges = lambda *a, **k: None
+save(fb, "Metadata.ttf")
 
 
 order = [".notdef", "a", "gravecomb", "acutecomb", "tildecomb", "f_f", "script"]
