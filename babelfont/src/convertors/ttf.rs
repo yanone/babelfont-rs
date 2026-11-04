@@ -3615,6 +3615,183 @@ mod tests {
             assert_eq!((o, q), (7, 8), "{name}");
         }
     }
+    /// Each kerned glyph pair's value at a master: a pair of glyphs, else of
+    /// a glyph and a group, of a group and a glyph, then of groups
+    fn effective_kerning(
+        kerning: &IndexMap<(SmolStr, SmolStr), i16>,
+        first_groups: &HashMap<SmolStr, Vec<SmolStr>>,
+        second_groups: &HashMap<SmolStr, Vec<SmolStr>>,
+    ) -> PairKerning {
+        let group_of = |groups: &HashMap<SmolStr, Vec<SmolStr>>| {
+            let mut of: HashMap<SmolStr, SmolStr> = HashMap::new();
+            for (name, members) in groups {
+                for glyph in members {
+                    of.insert(glyph.clone(), format!("@{name}").into());
+                }
+            }
+            of
+        };
+        let (first_of, second_of) = (group_of(first_groups), group_of(second_groups));
+        let side = |key: &SmolStr, groups: &HashMap<SmolStr, Vec<SmolStr>>| -> Vec<SmolStr> {
+            match key.strip_prefix('@') {
+                Some(group) => groups.get(group).cloned().unwrap_or_default(),
+                None => vec![key.clone()],
+            }
+        };
+        let mut out = HashMap::new();
+        for (left, right) in kerning.keys() {
+            for l in side(left, first_groups) {
+                for r in side(right, second_groups) {
+                    let lg = first_of.get(&l).cloned().unwrap_or_default();
+                    let rg = second_of.get(&r).cloned().unwrap_or_default();
+                    let value = [(&l, &r), (&l, &rg), (&lg, &r), (&lg, &rg)]
+                        .into_iter()
+                        .find_map(|(a, b)| kerning.get(&(a.clone(), b.clone())));
+                    if let Some(value) = value {
+                        out.insert((l.clone(), r.clone()), *value);
+                    }
+                }
+            }
+        }
+        out.retain(|_, v| *v != 0);
+        out
+    }
+
+    /// A master's place: its normalized location, rounded as a binary stores it
+    type Place = Vec<(String, i16)>;
+    /// Kerning by glyph pair
+    type PairKerning = HashMap<(SmolStr, SmolStr), i16>;
+
+    fn master_place(font: &Font, master: &crate::Master) -> Place {
+        let axes = font.fontdrasil_axes().unwrap();
+        let mut place: Vec<(String, i16)> = master
+            .location
+            .to_normalized(&axes)
+            .unwrap()
+            .iter()
+            .map(|(tag, coord)| (tag.to_string(), coord.to_f2dot14().to_bits()))
+            .collect();
+        place.sort();
+        place
+    }
+
+    /// A Glyphs source's kerning at each master, by its place: its kerning,
+    /// and its right-to-left kerning (first glyph by its right group, second
+    /// by its left group)
+    #[cfg(feature = "glyphs")]
+    fn glyphs_source_kerning(font: &Font) -> HashMap<Place, PairKerning> {
+        use std::collections::BTreeMap;
+        let groups_by = |key: &str| {
+            let mut groups: HashMap<SmolStr, Vec<SmolStr>> = HashMap::new();
+            for glyph in font.glyphs.iter() {
+                let group = glyph.format_specific.get_string(key);
+                if !group.is_empty() {
+                    groups
+                        .entry(group.into())
+                        .or_default()
+                        .push(glyph.name.clone());
+                }
+            }
+            groups
+        };
+        let (right_groups, left_groups) = (groups_by("kern_right"), groups_by("kern_left"));
+        let rtl: BTreeMap<String, BTreeMap<String, BTreeMap<String, f64>>> = font
+            .format_specific
+            .get_parse_or("com.schriftgestalt.Glyphs.kerningRTL", BTreeMap::new());
+        let first: HashMap<SmolStr, Vec<SmolStr>> = font
+            .first_kern_groups
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        let second: HashMap<SmolStr, Vec<SmolStr>> = font
+            .second_kern_groups
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        font.masters
+            .iter()
+            .map(|master| {
+                let mut out = effective_kerning(&master.kerning, &first, &second);
+                let mut rtl_kerning: IndexMap<(SmolStr, SmolStr), i16> = IndexMap::new();
+                for (left, rights) in rtl.get(&master.id).into_iter().flatten() {
+                    for (right, value) in rights {
+                        let key = |k: &str, prefix: &str| -> SmolStr {
+                            k.strip_prefix(prefix)
+                                .map(|g| format!("@{g}").into())
+                                .unwrap_or_else(|| k.into())
+                        };
+                        rtl_kerning.insert(
+                            (key(left, "@MMK_R_"), key(right, "@MMK_L_")),
+                            value.round() as i16,
+                        );
+                    }
+                }
+                out.extend(effective_kerning(&rtl_kerning, &right_groups, &left_groups));
+                (master_place(font, master), out)
+            })
+            .collect()
+    }
+
+    #[test]
+    #[cfg(all(feature = "fontir", feature = "glyphs"))]
+    fn test_compiled_glyphs_kerning_comes_back() {
+        // A source compiled by fontc, read back: every glyph pair kerns as the
+        // source kerns it, at every master, and the kerning is all kerning.
+        // Fustat's kerning is split by script into lookups that kern the same
+        // first glyphs, has a class of one glyph with an exception (@f:f 15,
+        // @f:@f 22), right-to-left kerning, and values varying by master
+        use crate::convertors::fontir::{BabelfontIrSource, CompilationOptions};
+        for path in ["resources/Fustat.glyphs", "resources/G3RTLKerning.glyphs"] {
+            let source = crate::load(path).unwrap();
+            let expected = glyphs_source_kerning(&source);
+            let options = CompilationOptions {
+                dont_use_production_names: true,
+                ..Default::default()
+            };
+            let binary = BabelfontIrSource::compile(source, options).unwrap();
+            let font = load_bytes(&binary).unwrap();
+            // the kern feature refers to no lookup: a compiler writes it all
+            for (tag, code) in &font.features.features {
+                assert!(
+                    tag != "kern" || !code.code.contains("lookup "),
+                    "{path}: kerning stays feature code:\n{}",
+                    code.code
+                );
+            }
+            let first: HashMap<SmolStr, Vec<SmolStr>> = font
+                .first_kern_groups
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+            let second: HashMap<SmolStr, Vec<SmolStr>> = font
+                .second_kern_groups
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+            for master in &font.masters {
+                let name = master.name.get_default().cloned().unwrap_or_default();
+                let Some(want) = expected.get(&master_place(&font, master)) else {
+                    panic!("{path}: no master where {name} is in the source");
+                };
+                let got = effective_kerning(&master.kerning, &first, &second);
+                let mut differ: Vec<_> = want
+                    .keys()
+                    .chain(got.keys())
+                    .filter(|k| want.get(*k) != got.get(*k))
+                    .map(|k| (k.clone(), want.get(k), got.get(k)))
+                    .collect();
+                differ.sort();
+                differ.dedup();
+                assert!(
+                    differ.is_empty(),
+                    "{path} {name}: {} pairs differ, e.g. {:?}",
+                    differ.len(),
+                    &differ[..differ.len().min(5)]
+                );
+            }
+        }
+    }
+
     #[test]
     fn test_gpos_kerning_is_kerning() {
         let font = load(SHAPING_VARIABLE).unwrap();
