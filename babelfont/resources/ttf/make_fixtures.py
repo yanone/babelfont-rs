@@ -76,6 +76,24 @@ RtlKerning.ttf: Arabic alef, beh and teh; kerning as ufo2ft writes it for a
 right-to-left script, <v 0 v 0>: alef beh -50, and @BEHS [beh teh] against alef
 -30.
 
+Inter-Subset.ttf (not written by this script): Inter 4.001 (SIL Open Font
+License, see its name table), the variable font with opsz and wght as macOS
+users install it, subset by fontTools' pyftsubset:
+
+    pyftsubset Inter-VariableFont_opsz,wght.ttf --text="AHOTVWYaenostvƬÁáéöÅå.,1" \
+        --glyphs=uni01AC,uni01AC.base --layout-features=kern,mark,mkmk \
+        --glyph-names --notdef-outline --output-file=Inter-Subset.ttf
+
+uni01AC's points 0 and 7 coincide only in the opsz 32 / wght 900 master; its
+kerning is in an extension lookup with variable values.
+
+Coincident.ttf: wght 400 (default) to 900. A's last point lies on its first at
+400 only; B's start is passed again at 400 only; C has an on-curve on its start
+at 400 only and closes with a curve back to it; D marks its box with two
+single-point contours.
+
+Malformed.ttf and Cff.otf: see where they are written.
+
 Anchors.ttf: marks on a (top: acutecomb, bottom: dotbelowcomb, ogonek at the
 bottom right: uni0328 for U+0328), on the ligature f_f (top on each component),
 and acutecomb on acutecomb (mark-to-mark, the same mark class as on bases).
