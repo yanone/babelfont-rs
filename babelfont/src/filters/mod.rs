@@ -152,6 +152,7 @@ declare_filters! {
         NbspWidth(nbspwidth) => "nbspwidth",
         SubsetLayout(subsetlayout) => "subsetlayout",
         MoveKerningFromFeatures(movekerningfromfeatures) => "movekerningfromfeatures",
+        MoveMarksFromFeatures(movemarksfromfeatures) => "movemarksfromfeatures",
     }
     group "General font filters" {
         DropCopyrightDescription(dropcopyrightdescription) => "dropcopyrightdescription",
