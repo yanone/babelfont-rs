@@ -63,6 +63,7 @@ pub fn load_bytes(binary: &[u8]) -> Result<Font, BabelfontError> {
         use crate::filters::FontFilter;
         crate::filters::DropImpliedOnCurves.apply(&mut font)?;
         crate::filters::MoveKerningFromFeatures.apply(&mut font)?;
+        crate::filters::MoveMarksFromFeatures.apply(&mut font)?;
     }
     Ok(font)
 }
@@ -1708,33 +1709,34 @@ mod tests {
             .contains("= [a gravecomb acutecomb tildecomb f_f\n];"));
     }
     #[test]
-    fn test_mark_classes_defined() {
-        // every mark class a lookup names has a markClass statement
-        let fea = load(GDEF_CLASSES).unwrap().features.to_fea();
-        let used: Vec<&str> = fea
-            .split("mark @")
-            .skip(1)
-            .map(|rest| {
-                rest.split(|c: char| c == ';' || c.is_whitespace())
-                    .next()
-                    .unwrap()
-            })
-            .collect();
-        assert!(!used.is_empty(), "{fea}");
-        for class in used {
-            assert!(fea.contains(&format!("> @{class};")), "@{class}: {fea}");
-        }
+    fn test_mark_attachment_is_anchors() {
+        // the anchors state the mark feature in full: it is theirs to build
+        let font = load(GDEF_CLASSES).unwrap();
+        let fea = font.features.to_fea();
+        assert!(
+            !fea.contains("pos base") && !fea.contains("markClass"),
+            "{fea}"
+        );
+        assert!(!font.features.features.iter().any(|(tag, _)| tag == "mark"));
+        let anchor = |glyph: &str, name: &str| {
+            font.glyphs.get(glyph).unwrap().layers[0]
+                .anchors
+                .iter()
+                .find(|a| a.name == name)
+                .map(|a| (a.x, a.y))
+        };
+        assert_eq!(anchor("a", "top"), Some((250.0, 500.0)));
+        assert_eq!(anchor("acutecomb", "_top"), Some((-100.0, 600.0)));
     }
     #[test]
     fn test_feature_code_does_not_depend_on_prefix_order() {
-        // the calt rule calls a lookup and the mark lookup uses a mark class:
-        // everything they need is in the one prefix, before them
+        // the calt rule calls a lookup: everything it needs is in the one
+        // prefix, before it
         let font = load(GDEF_CLASSES).unwrap();
         assert_eq!(font.features.prefixes.len(), 1);
         let code = &font.features.prefixes.get("Decompiled").unwrap().code;
         let at = |text: &str| code.find(text).unwrap_or_else(|| panic!("{text}: {code}"));
-        assert!(at("languagesystem") < at("markClass"));
-        assert!(at("markClass") < at("lookup gpos_mark_to_base"));
+        assert!(at("languagesystem") < at("lookup gsub_single"));
         assert!(at("lookup gsub_single") < at("lookup gsub_chain_contextual"));
     }
     #[test]
@@ -1994,6 +1996,49 @@ mod tests {
             ]
         );
     }
+    #[cfg(feature = "fontir")]
+    #[test]
+    fn test_moved_anchor_moves_the_attachment() {
+        use crate::convertors::fontir::{BabelfontIrSource, CompilationOptions};
+        let mut font = load(ANCHORS).unwrap();
+        let fea = font.features.to_fea();
+        assert!(!fea.contains("markClass"), "{fea}");
+        let anchors = |font: &Font| -> Vec<(String, String, f64, f64)> {
+            let mut anchors: Vec<_> = font
+                .glyphs
+                .iter()
+                .flat_map(|g| {
+                    g.layers[0]
+                        .anchors
+                        .iter()
+                        .map(|a| (g.name.to_string(), a.name.clone(), a.x, a.y))
+                })
+                .collect();
+            anchors.sort_by(|a, b| (&a.0, &a.1).cmp(&(&b.0, &b.1)));
+            anchors
+        };
+        let compile = |font: &Font| {
+            let bytes =
+                BabelfontIrSource::compile(font.clone(), CompilationOptions::default()).unwrap();
+            load_bytes(&bytes).unwrap()
+        };
+        // the compiler builds the same attachment from the anchors
+        assert_eq!(anchors(&compile(&font)), anchors(&font));
+        // and a moved anchor moves it
+        let top = font.glyphs.get_mut("a").unwrap().layers[0]
+            .anchors
+            .iter_mut()
+            .find(|a| a.name == "top")
+            .unwrap();
+        top.x += 30.0;
+        let again = compile(&font);
+        let moved = again.glyphs.get("a").unwrap().layers[0]
+            .anchors
+            .iter()
+            .find(|a| a.name == "top")
+            .map(|a| a.x);
+        assert_eq!(moved, Some(280.0));
+    }
     #[test]
     fn test_master_names_from_instances() {
         let font = load(VARIABLE).unwrap();
@@ -2187,6 +2232,8 @@ mod tests {
     fn test_variable_font_round_trips() {
         use crate::convertors::fontir::{BabelfontIrSource, CompilationOptions};
         let font = load(VARIABLE).unwrap();
+        // the variable anchors state the mark feature: the compiler builds it
+        assert!(!font.features.to_fea().contains("pos base"));
         let bytes =
             BabelfontIrSource::compile(font.clone(), CompilationOptions::default()).unwrap();
         let again = load_bytes(&bytes).unwrap();
@@ -2213,6 +2260,16 @@ mod tests {
                         .collect::<Vec<_>>()
                 };
                 assert_eq!(components(a), components(b), "{} {name}", glyph.name);
+                let anchors = |l: &Layer| {
+                    let mut anchors: Vec<_> = l
+                        .anchors
+                        .iter()
+                        .map(|a| (a.name.clone(), a.x, a.y))
+                        .collect();
+                    anchors.sort_by(|a, b| a.0.cmp(&b.0));
+                    anchors
+                };
+                assert_eq!(anchors(a), anchors(b), "{} {name}", glyph.name);
             }
             for (l, r) in [("A", "Adot"), ("A", "O"), ("Adot", "Q"), ("O", "A")] {
                 assert_eq!(
