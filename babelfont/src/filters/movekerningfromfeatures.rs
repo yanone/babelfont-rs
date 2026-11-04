@@ -34,6 +34,12 @@ impl MoveKerningFromFeatures {
     pub fn new() -> Self {
         MoveKerningFromFeatures::default()
     }
+
+    /// The filter, knowing glyphs' Unicode properties as a compiler finds
+    /// them (through the substitutions of the font the code came from)
+    pub(crate) fn with_glyph_props(props: GlyphProps) -> Self {
+        MoveKerningFromFeatures { props: Some(props) }
+    }
 }
 
 /// One side of a pair: a glyph, or a class of glyphs

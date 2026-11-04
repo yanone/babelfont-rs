@@ -68,8 +68,10 @@ pub fn load_bytes(binary: &[u8]) -> Result<Font, BabelfontError> {
         use crate::filters::FontFilter;
         crate::filters::DropImpliedOnCurves.apply(&mut font)?;
         mark_smooth_points(&mut font);
-        crate::filters::MoveKerningFromFeatures.apply(&mut font)?;
-        crate::filters::MoveMarksFromFeatures.apply(&mut font)?;
+        let props = glyph_props(binary, &font);
+        crate::filters::MoveKerningFromFeatures::with_glyph_props(props.clone())
+            .apply(&mut font)?;
+        crate::filters::MoveMarksFromFeatures::with_glyph_props(props).apply(&mut font)?;
     }
     Ok(font)
 }
@@ -91,6 +93,31 @@ fn check_outline_format(fontref: &skrifa::FontRef) -> Result<(), BabelfontError>
     Err(BabelfontError::BinaryFontRead(format!(
         "Only TrueType-outline (glyf) fonts can be opened; {instead}"
     )))
+}
+
+/// Glyphs' codepoints, and the substitutions of the font's GSUB to carry their
+/// properties to the glyphs they reach, as a compiler of the same feature code
+/// follows them
+fn glyph_props(binary: &[u8], font: &Font) -> crate::filters::layout_model::GlyphProps {
+    use skrifa::raw::collections::IntSet;
+    let data: std::sync::Arc<[u8]> = binary.into();
+    let closure: crate::filters::layout_model::Closure =
+        std::sync::Arc::new(move |glyphs: &mut std::collections::BTreeSet<usize>| {
+            let Ok(fontref) = skrifa::FontRef::new(&data) else {
+                return;
+            };
+            let Ok(gsub) = fontref.gsub() else {
+                return;
+            };
+            let Ok(lookups) = gsub.collect_lookups(&IntSet::all()) else {
+                return;
+            };
+            let mut set: IntSet<GlyphId> = glyphs.iter().map(|g| GlyphId::new(*g as u32)).collect();
+            if gsub.closure_glyphs(&lookups, &mut set).is_ok() {
+                glyphs.extend(set.iter().map(|g| g.to_u32() as usize));
+            }
+        });
+    crate::filters::layout_model::GlyphProps::new(font, Some(closure))
 }
 
 /// Names each glyph that the post table leaves unnamed and the cmap encodes for
@@ -2045,6 +2072,8 @@ mod tests {
     const INTER: &str = "resources/ttf/Inter-Subset.ttf";
     const MALFORMED: &str = "resources/ttf/Malformed.ttf";
     const CFF: &str = "resources/ttf/Cff.otf";
+    const SHAPING_VARIABLE: &str = "resources/ttf/ShapingVariable.ttf";
+    const SHAPING_MKMK: &str = "resources/ttf/ShapingMkmk.ttf";
 
     fn master<'a>(font: &'a Font, name: &str) -> &'a crate::Master {
         font.masters
@@ -2571,7 +2600,8 @@ mod tests {
         let font = load(GDEF_CLASSES).unwrap();
         let kerning = &font.masters[0].kerning;
         assert_eq!(kerning.get(&("a".into(), "f_f".into())), None);
-        assert_eq!(kerning.get(&("a".into(), "a".into())), Some(&-10));
+        // (the GPOS kerning has no IgnoreMarks: it stays feature code)
+        assert!(font.features.to_fea().contains("pos a a -10"));
     }
     #[test]
     fn test_unnamed_glyphs() {
@@ -2882,7 +2912,7 @@ mod tests {
     #[test]
     fn test_moved_anchor_moves_the_attachment() {
         use crate::convertors::fontir::{BabelfontIrSource, CompilationOptions};
-        let mut font = load(ANCHORS).unwrap();
+        let mut font = load(SHAPING_MKMK).unwrap();
         let fea = font.features.to_fea();
         assert!(!fea.contains("markClass"), "{fea}");
         let anchors = |font: &Font| -> Vec<(String, String, f64, f64)> {
@@ -2907,19 +2937,19 @@ mod tests {
         // the compiler builds the same attachment from the anchors
         assert_eq!(anchors(&compile(&font)), anchors(&font));
         // and a moved anchor moves it
-        let top = font.glyphs.get_mut("a").unwrap().layers[0]
+        let top = font.glyphs.get_mut("A").unwrap().layers[0]
             .anchors
             .iter_mut()
             .find(|a| a.name == "top")
             .unwrap();
         top.x += 30.0;
         let again = compile(&font);
-        let moved = again.glyphs.get("a").unwrap().layers[0]
+        let moved = again.glyphs.get("A").unwrap().layers[0]
             .anchors
             .iter()
             .find(|a| a.name == "top")
             .map(|a| a.x);
-        assert_eq!(moved, Some(280.0));
+        assert_eq!(moved, Some(330.0));
     }
     /// STAT's axis values: format, location, flags and name
     fn stat_values(binary: &[u8]) -> Vec<String> {
@@ -3446,23 +3476,30 @@ mod tests {
     }
     #[test]
     fn test_gpos_kerning_is_kerning() {
-        let font = load(VARIABLE).unwrap();
+        let font = load(SHAPING_VARIABLE).unwrap();
         for (name, pair, class) in [
-            ("Thin", -10, -40),
-            ("Regular", -20, -50),
-            ("Black", -30, -80),
+            ("wght=100", -60, -10),
+            ("Default", -40, -20),
+            ("wght=900", -120, -30),
         ] {
             let m = master(&font, name);
-            assert_eq!(kern_value(&font, m, "A", "Adot"), pair, "{name}");
+            assert_eq!(kern_value(&font, m, "A", "V"), pair, "{name}");
             assert_eq!(kern_value(&font, m, "A", "O"), class, "{name}");
-            assert_eq!(kern_value(&font, m, "Adot", "Q"), class, "{name}");
+            assert_eq!(kern_value(&font, m, "V", "O"), class, "{name}");
         }
-        let groups: Vec<&Vec<SmolStr>> = font.first_kern_groups.values().collect();
-        assert_eq!(groups, [&vec![SmolStr::from("A"), "Adot".into()]]);
-        // the contextual rule stays, with the lookup it calls
         let fea = font.features.to_fea();
+        assert!(!fea.contains("pos A V"), "{fea}");
+    }
+
+    #[test]
+    fn test_kerning_across_marks_stays_feature_code() {
+        // the lookup has no IgnoreMarks, and the font has marks: a compiler
+        // kerning from the kerning table would kern across them
+        let font = load(VARIABLE).unwrap();
+        assert!(font.masters.iter().all(|m| m.kerning.is_empty()));
+        let fea = font.features.to_fea();
+        assert!(fea.contains("pos A Adot"), "{fea}");
         assert!(fea.contains("pos Q' lookup"), "{fea}");
-        assert!(!fea.contains("pos A Adot"), "{fea}");
     }
     /// Outlines and advances of two fonts, drawn by skrifa at a location
     /// Every point a glyph is drawn with, in order

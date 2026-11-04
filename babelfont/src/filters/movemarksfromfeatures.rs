@@ -35,6 +35,12 @@ impl MoveMarksFromFeatures {
     pub fn new() -> Self {
         MoveMarksFromFeatures::default()
     }
+
+    /// The filter, knowing glyphs' Unicode properties as a compiler finds
+    /// them (through the substitutions of the font the code came from)
+    pub(crate) fn with_glyph_props(props: GlyphProps) -> Self {
+        MoveMarksFromFeatures { props: Some(props) }
+    }
 }
 
 /// A position at each master

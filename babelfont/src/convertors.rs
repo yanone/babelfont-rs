@@ -23,6 +23,8 @@ pub mod robocjk;
 #[cfg(feature = "ttf")]
 /// TTF convertor
 pub mod ttf;
+#[cfg(all(test, feature = "ttf", feature = "fontir"))]
+mod ttf_shaping_tests;
 #[cfg(feature = "ufo")]
 /// Bare UFO convertor
 pub mod ufo;
