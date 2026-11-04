@@ -3309,8 +3309,9 @@ mod tests {
             expected.get(&("alef-ar".into(), "beh-ar".into())),
             Some(&-50)
         );
+        // @ALEFS = [alef-ar], a group of one
         assert_eq!(
-            expected.get(&("@beh-ar".into(), "alef-ar".into())),
+            expected.get(&("@beh-ar".into(), "@alef-ar".into())),
             Some(&-30)
         );
         assert!(
@@ -3735,8 +3736,10 @@ mod tests {
     #[test]
     #[cfg(all(feature = "fontir", feature = "glyphs"))]
     fn test_compiled_glyphs_kerning_comes_back() {
+        use std::collections::BTreeSet;
         // A source compiled by fontc, read back: every glyph pair kerns as the
-        // source kerns it, at every master, and the kerning is all kerning.
+        // source kerns it, at every master, the kerning is all kerning, and
+        // every group the source kerns with comes back whole.
         // Fustat's kerning is split by script into lookups that kern the same
         // first glyphs, has a class of one glyph with an exception (@f:f 15,
         // @f:@f 22), right-to-left kerning, and values varying by master
@@ -3744,6 +3747,24 @@ mod tests {
         for path in ["resources/Fustat.glyphs", "resources/G3RTLKerning.glyphs"] {
             let source = crate::load(path).unwrap();
             let expected = glyphs_source_kerning(&source);
+            // the groups the source kerns something with, by their members
+            let kerned_groups = |first: bool| -> BTreeSet<BTreeSet<SmolStr>> {
+                let groups = if first {
+                    &source.first_kern_groups
+                } else {
+                    &source.second_kern_groups
+                };
+                source
+                    .masters
+                    .iter()
+                    .flat_map(|m| m.kerning.iter())
+                    .filter(|(_, value)| **value != 0)
+                    .filter_map(|((l, r), _)| if first { l } else { r }.strip_prefix('@'))
+                    .filter_map(|name| groups.get(name))
+                    .map(|members| members.iter().cloned().collect())
+                    .collect()
+            };
+            let (first_groups, second_groups) = (kerned_groups(true), kerned_groups(false));
             let options = CompilationOptions {
                 dont_use_production_names: true,
                 ..Default::default()
@@ -3768,6 +3789,18 @@ mod tests {
                 .iter()
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect();
+            // each group comes back whole, though a compiler split it by script
+            for (wanted, got) in [(&first_groups, &first), (&second_groups, &second)] {
+                let got: BTreeSet<BTreeSet<SmolStr>> = got
+                    .values()
+                    .map(|members| members.iter().cloned().collect())
+                    .collect();
+                let missing: Vec<_> = wanted.iter().filter(|g| !got.contains(*g)).collect();
+                assert!(
+                    missing.is_empty(),
+                    "{path}: groups not back whole: {missing:?}"
+                );
+            }
             for master in &font.masters {
                 let name = master.name.get_default().cloned().unwrap_or_default();
                 let Some(want) = expected.get(&master_place(&font, master)) else {
