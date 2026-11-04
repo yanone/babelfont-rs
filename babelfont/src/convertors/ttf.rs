@@ -3676,44 +3676,63 @@ mod tests {
         place
     }
 
-    /// A Glyphs source's kerning at each master, by its place: its kerning,
-    /// and its right-to-left kerning (first glyph by its right group, second
-    /// by its left group)
+    /// A Glyphs source's kerning at each master, by its place, as glyphsLib
+    /// and fontc's Glyphs reader have it (`derive_kern_groups`,
+    /// `get_glyphs_with_rtl_kerning`): a glyph in right-to-left kerning kerns
+    /// first by its left group and second by its right group, and the
+    /// right-to-left kerning (`@MMK_R_` first, `@MMK_L_` second) is added to
+    /// the kerning
     #[cfg(feature = "glyphs")]
     fn glyphs_source_kerning(font: &Font) -> HashMap<Place, PairKerning> {
         use std::collections::BTreeMap;
-        let groups_by = |key: &str| {
-            let mut groups: HashMap<SmolStr, Vec<SmolStr>> = HashMap::new();
-            for glyph in font.glyphs.iter() {
-                let group = glyph.format_specific.get_string(key);
-                if !group.is_empty() {
-                    groups
-                        .entry(group.into())
-                        .or_default()
-                        .push(glyph.name.clone());
-                }
-            }
-            groups
+        let group = |glyph: &crate::Glyph, key: &str| -> Option<SmolStr> {
+            let group = glyph.format_specific.get_string(key);
+            (!group.is_empty()).then(|| group.into())
         };
-        let (right_groups, left_groups) = (groups_by("kern_right"), groups_by("kern_left"));
         let rtl: BTreeMap<String, BTreeMap<String, BTreeMap<String, f64>>> = font
             .format_specific
             .get_parse_or("com.schriftgestalt.Glyphs.kerningRTL", BTreeMap::new());
-        let first: HashMap<SmolStr, Vec<SmolStr>> = font
-            .first_kern_groups
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
-        let second: HashMap<SmolStr, Vec<SmolStr>> = font
-            .second_kern_groups
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
+        // the glyphs in right-to-left kerning: named, or in a group named
+        let mut rtl_glyphs: HashSet<SmolStr> = HashSet::new();
+        let mut rtl_right: HashSet<SmolStr> = HashSet::new();
+        let mut rtl_left: HashSet<SmolStr> = HashSet::new();
+        for (left, rights) in rtl.values().flatten() {
+            for key in std::iter::once(left).chain(rights.keys()) {
+                if let Some(g) = key.strip_prefix("@MMK_L_") {
+                    rtl_right.insert(g.into());
+                } else if let Some(g) = key.strip_prefix("@MMK_R_") {
+                    rtl_left.insert(g.into());
+                } else {
+                    rtl_glyphs.insert(key.into());
+                }
+            }
+        }
+        for glyph in font.glyphs.iter() {
+            if group(glyph, "kern_right").is_some_and(|g| rtl_right.contains(&g))
+                || group(glyph, "kern_left").is_some_and(|g| rtl_left.contains(&g))
+            {
+                rtl_glyphs.insert(glyph.name.clone());
+            }
+        }
+        let mut first: HashMap<SmolStr, Vec<SmolStr>> = HashMap::new();
+        let mut second: HashMap<SmolStr, Vec<SmolStr>> = HashMap::new();
+        for glyph in font.glyphs.iter() {
+            let (side1, side2) = if rtl_glyphs.contains(&glyph.name) {
+                (group(glyph, "kern_left"), group(glyph, "kern_right"))
+            } else {
+                (group(glyph, "kern_right"), group(glyph, "kern_left"))
+            };
+            if let Some(g) = side1 {
+                first.entry(g).or_default().push(glyph.name.clone());
+            }
+            if let Some(g) = side2 {
+                second.entry(g).or_default().push(glyph.name.clone());
+            }
+        }
         font.masters
             .iter()
             .map(|master| {
-                let mut out = effective_kerning(&master.kerning, &first, &second);
-                let mut rtl_kerning: IndexMap<(SmolStr, SmolStr), i16> = IndexMap::new();
+                let mut kerning = master.kerning.clone();
                 for (left, rights) in rtl.get(&master.id).into_iter().flatten() {
                     for (right, value) in rights {
                         let key = |k: &str, prefix: &str| -> SmolStr {
@@ -3721,13 +3740,13 @@ mod tests {
                                 .map(|g| format!("@{g}").into())
                                 .unwrap_or_else(|| k.into())
                         };
-                        rtl_kerning.insert(
+                        kerning.insert(
                             (key(left, "@MMK_R_"), key(right, "@MMK_L_")),
                             value.round() as i16,
                         );
                     }
                 }
-                out.extend(effective_kerning(&rtl_kerning, &right_groups, &left_groups));
+                let out = effective_kerning(&kerning, &first, &second);
                 (master_place(font, master), out)
             })
             .collect()
