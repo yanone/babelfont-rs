@@ -892,6 +892,12 @@ languagesystem latn ROM;
 lookup k { lookupflag IgnoreMarks; pos A V -100; } k;
 lookup t { lookupflag IgnoreMarks; pos V A -50; } t;
 feature kern { lookup k; script latn; language TRK; lookup t; } kern;""",
+    # a language only GSUB has: a compiler registers kerning under every
+    # declared language system, so the decompiled code declares GPOS's only
+    "GsubLanguage": """languagesystem DFLT dflt; languagesystem latn dflt;
+lookup k { lookupflag IgnoreMarks; pos A V -100; pos V A -50; } k;
+feature kern { lookup k; } kern;
+feature locl { script latn; language TRK; sub A by A.ss01; } locl;""",
     "ExcludeDflt": """languagesystem DFLT dflt; languagesystem latn dflt; languagesystem latn TRK;
 lookup k { lookupflag IgnoreMarks; pos A V -100; } k;
 lookup t { lookupflag IgnoreMarks; pos V A -50; } t;

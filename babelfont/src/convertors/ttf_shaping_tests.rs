@@ -243,6 +243,7 @@ shaping_fixture_tests! {
     test_shaping_zero_pair_before_class_pair: "ShapingZero.ttf",
     test_shaping_language_under_script: "ShapingLanguage.ttf",
     test_shaping_language_excluding_default: "ShapingExcludeDflt.ttf",
+    test_shaping_language_only_in_gsub: "ShapingGsubLanguage.ttf",
     test_shaping_cursive: "ShapingCursive.ttf",
     test_shaping_kerning_before_cursive: "ShapingKernThenCursive.ttf",
     test_shaping_mark_to_mark: "ShapingMkmk.ttf",
@@ -314,6 +315,16 @@ fn test_shaping_existing_fixtures() {
     }
 }
 
+/// A language system only GSUB has is not declared: a compiler would
+/// register the kerning it generates there too
+#[test]
+fn test_gsub_language_systems_are_not_declared() {
+    let font = crate::convertors::ttf::load("resources/ttf/ShapingGsubLanguage.ttf").unwrap();
+    let fea = font.features.to_fea();
+    assert!(!fea.contains("languagesystem latn TRK"), "{fea}");
+    assert!(fea.contains("language TRK"), "{fea}");
+}
+
 /// The fixtures whose kerning and attachment a compiler regenerates alike
 /// move: the tests above would pass if nothing moved
 #[test]
@@ -329,6 +340,7 @@ fn test_what_moves() {
         ("ShapingMarksNoBlwm.ttf", &[]),
         ("ShapingVariable.ttf", &[]),
         ("ShapingExtensions.ttf", &[]),
+        ("ShapingGsubLanguage.ttf", &[]),
         ("ShapingLanguage.ttf", &["pos V A -50"]),
         ("ShapingIgnoreMarks.ttf", &["pos A V -100"]),
         ("ShapingRtl.ttf", &["pos "]),

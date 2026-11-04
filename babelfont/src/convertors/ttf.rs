@@ -1599,7 +1599,7 @@ fn load_features(fontref: &skrifa::FontRef, font: &mut Font) -> Result<(), Babel
             .insert(class_name.clone(), PossiblyAutomaticCode::new(members));
     }
     let mut language_systems = vec![];
-    for (script_tag, lang_sys_tags) in &uncompile_context.language_systems {
+    for (script_tag, lang_sys_tags) in &uncompile_context.declared_language_systems {
         for lang_sys_tag in lang_sys_tags {
             let lss =
                 LanguageSystemStatement::new(script_tag.to_string(), lang_sys_tag.to_string());
