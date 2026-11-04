@@ -252,6 +252,7 @@ shaping_fixture_tests! {
     test_shaping_variable: "ShapingVariable.ttf",
     test_shaping_feature_variations: "ShapingFeatureVariations.ttf",
     test_shaping_feature_variations_through_avar: "ShapingFeatureVariationsAvar.ttf",
+    test_shaping_script_extensions: "ShapingExtensions.ttf",
 }
 
 #[test]
@@ -327,6 +328,7 @@ fn test_what_moves() {
         ("ShapingShare.ttf", &[]),
         ("ShapingMarksNoBlwm.ttf", &[]),
         ("ShapingVariable.ttf", &[]),
+        ("ShapingExtensions.ttf", &[]),
         ("ShapingLanguage.ttf", &["pos V A -50"]),
         ("ShapingIgnoreMarks.ttf", &["pos A V -100"]),
         ("ShapingRtl.ttf", &["pos "]),
