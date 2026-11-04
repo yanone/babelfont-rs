@@ -2690,6 +2690,104 @@ mod tests {
         assert_eq!(anchor("a", "top"), Some((250.0, 500.0)));
         assert_eq!(anchor("acutecomb", "_top"), Some((-100.0, 600.0)));
     }
+    /// A test glyph: name, codepoint, category and anchors (name, x, y)
+    #[cfg(feature = "fontir")]
+    type TestGlyph<'a> = (&'a str, u32, GlyphCategory, &'a [(&'a str, f64, f64)]);
+
+    /// A static font of these glyphs (name, codepoint, category, anchors),
+    /// with kerning, compiled by fontc and read back
+    #[cfg(feature = "fontir")]
+    fn compiled_and_read(glyphs: &[TestGlyph], kerning: &[(&str, &str, i16)]) -> Font {
+        use crate::convertors::fontir::{BabelfontIrSource, CompilationOptions};
+        use crate::{Anchor, Glyph, Layer, LayerType, Master};
+        let mut font = Font::new();
+        let mut master = Master::new("Regular", "m", Default::default());
+        for (left, right, value) in kerning {
+            master
+                .kerning
+                .insert(((*left).into(), (*right).into()), *value);
+        }
+        font.masters.push(master);
+        for (name, codepoint, category, anchors) in glyphs {
+            let mut glyph = Glyph::new(name);
+            glyph.codepoints = vec![*codepoint];
+            glyph.category = category.clone();
+            glyph.exported = true;
+            let width = if *category == GlyphCategory::Mark {
+                0.0
+            } else {
+                600.0
+            };
+            let mut layer = Layer::new(width);
+            layer.master = LayerType::DefaultForMaster("m".into());
+            for (anchor, x, y) in anchors.iter() {
+                layer.anchors.push(Anchor {
+                    name: (*anchor).into(),
+                    x: *x,
+                    y: *y,
+                    format_specific: Default::default(),
+                });
+            }
+            glyph.layers.push(layer);
+            font.glyphs.push(glyph);
+        }
+        let options = CompilationOptions {
+            dont_use_production_names: true,
+            ..Default::default()
+        };
+        let binary = BabelfontIrSource::compile(font, options).unwrap();
+        load_bytes(&binary).unwrap()
+    }
+
+    #[test]
+    #[cfg(feature = "fontir")]
+    fn test_compiled_attachment_of_two_scripts_is_anchors() {
+        // fontc writes abvm, mark to mark included, before mark, and the
+        // kerning before the mark attachment: a mark attached to a mark in
+        // abvm before a base in mark is as it builds it
+        let base = GlyphCategory::Base;
+        let mark = GlyphCategory::Mark;
+        let font = compiled_and_read(
+            &[
+                ("A", 0x41, base.clone(), &[("top", 300.0, 700.0)]),
+                ("V", 0x56, base.clone(), &[]),
+                ("ka-deva", 0x915, base.clone(), &[("top", 280.0, 720.0)]),
+                (
+                    "acutecomb",
+                    0x301,
+                    mark.clone(),
+                    &[("_top", 0.0, 500.0), ("top", 0.0, 700.0)],
+                ),
+                (
+                    "candrabindu-deva",
+                    0x901,
+                    mark.clone(),
+                    &[("_top", 0.0, 520.0), ("top", 0.0, 760.0)],
+                ),
+            ],
+            &[("A", "V", -50)],
+        );
+        let fea = font.features.to_fea();
+        for code in ["pos base", "pos mark", "markClass"] {
+            assert!(!fea.contains(code), "{code} stays:\n{fea}");
+        }
+        let anchors = |glyph: &str| -> Vec<String> {
+            let mut names: Vec<String> = font.glyphs.get(glyph).unwrap().layers[0]
+                .anchors
+                .iter()
+                .map(|a| a.name.to_string())
+                .collect();
+            names.sort();
+            names
+        };
+        // (named by where they are on glyphs without outlines) base and mark
+        // anchors pair up, and the marks attach to marks
+        let [on_base] = anchors("A").try_into().unwrap();
+        assert!(anchors("acutecomb").contains(&format!("_{on_base}")));
+        assert_eq!(anchors("candrabindu-deva").len(), 2);
+        assert_eq!(anchors("ka-deva").len(), 1);
+    }
+
     #[test]
     fn test_feature_code_does_not_depend_on_prefix_order() {
         // the calt rule calls a lookup: everything it needs is in the one
