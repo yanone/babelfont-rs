@@ -9,6 +9,10 @@ use smol_str::SmolStr;
 
 use crate::{Features, Font, filters::FontFilter, layout::expand::expand_glyph_container};
 
+use super::feature_code::{
+    INSERTION_MARKER, lookup_reference_count, lookups_by_section, remove_lookup_blocks,
+};
+
 /// A filter that moves explicit FEA-based kerning rules into the kerning table
 ///
 /// It moves the pair kerning lookups of the `kern` feature: lookups the feature
@@ -244,88 +248,6 @@ impl Groups {
     }
 }
 
-/// The lookups each script and language section of a feature block applies
-fn lookups_by_section(statements: &[Statement]) -> Option<Vec<Vec<SmolStr>>> {
-    // a block that starts with a script statement has no default section
-    let starts_with_script = statements
-        .iter()
-        .find(|s| !matches!(s, Statement::Comment(_)))
-        .is_some_and(|s| matches!(s, Statement::Script(_) | Statement::Language(_)));
-    let mut sections: Vec<Vec<SmolStr>> = if starts_with_script {
-        vec![]
-    } else {
-        vec![vec![]]
-    };
-    let mut default_lookups: Vec<SmolStr> = vec![];
-    let mut in_default = true;
-    for statement in statements {
-        match statement {
-            Statement::Script(_) | Statement::Language(_) => {
-                in_default = false;
-                // a new section starts with the default section's lookups
-                sections.push(default_lookups.clone());
-            }
-            Statement::LookupReference(reference) => {
-                let name: SmolStr = reference.lookup_name.as_str().into();
-                if in_default {
-                    default_lookups.push(name.clone());
-                }
-                sections.last_mut()?.push(name);
-            }
-            Statement::Comment(_) => {}
-            // rules written in the feature block itself stay where they are
-            _ => {}
-        }
-    }
-    Some(sections)
-}
-
-fn lookup_reference_count(fea: &str, name: &str) -> usize {
-    let Ok(pattern) = regex::Regex::new(&format!(r"\blookup\s+{}\b", regex::escape(name))) else {
-        return usize::MAX;
-    };
-    pattern.find_iter(fea).count()
-}
-
-/// The comment that tells a compiler where to put the kerning it generates
-/// (ufo2ft's; fontc skips generating a feature the code states without it)
-const INSERTION_MARKER: &str = "# Automatic Code";
-
-/// Replaces `lookup <name>;` lines in feature code with one insertion marker,
-/// where the first of them was
-fn remove_lookup_references(code: &str, names: &HashSet<SmolStr>) -> String {
-    let mut marked = code.lines().any(|l| l.trim().starts_with(INSERTION_MARKER));
-    code.lines()
-        .filter_map(|line| {
-            let trimmed = line.trim();
-            let moved = trimmed.ends_with(';')
-                && names.iter().any(|name| {
-                    trimmed
-                        .strip_prefix("lookup")
-                        .map(|rest| rest.trim().trim_end_matches(';').trim() == name.as_str())
-                        .unwrap_or(false)
-                });
-            if !moved {
-                return Some(line.to_string());
-            }
-            if marked {
-                return None;
-            }
-            marked = true;
-            Some(INSERTION_MARKER.to_string())
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-/// Whether feature code states nothing but scripts, languages and comments
-fn is_empty_feature(code: &str) -> bool {
-    code.lines().all(|line| {
-        let line = line.split('#').next().unwrap_or("").trim();
-        line.is_empty() || line.starts_with("script ") || line.starts_with("language ")
-    })
-}
-
 impl FontFilter for MoveKerningFromFeatures {
     fn apply(&self, font: &mut crate::Font) -> Result<(), crate::BabelfontError> {
         let has_kern = font.features.features.iter().any(|(n, _)| n == "kern")
@@ -510,48 +432,11 @@ impl FontFilter for MoveKerningFromFeatures {
     }
 }
 
-/// A lookup block's text in feature code: `lookup <name> { ... } <name>;`
-fn lookup_block_pattern(name: &str) -> Option<regex::Regex> {
-    let name = regex::escape(name);
-    regex::Regex::new(&format!(
-        r"(?s)[ \t]*\blookup\s+{name}\s*\{{.*?\}}\s*{name}\s*;[ \t]*\n?"
-    ))
-    .ok()
-}
-
 /// Takes the moved lookups out of the feature code, keeping its structure
 /// where each lookup is a block of its own in some prefix and the kern feature
 /// refers to it, as a decompiled font's code is
 fn remove_lookups(features: &mut Features, names: &HashSet<SmolStr>, file: FeatureFile) {
-    let patterns: Vec<regex::Regex> = names
-        .iter()
-        .filter_map(|name| lookup_block_pattern(name))
-        .collect();
-    let structured = patterns.len() == names.len()
-        && patterns.iter().all(|pattern| {
-            features
-                .prefixes
-                .values()
-                .filter(|code| pattern.is_match(&code.code))
-                .count()
-                == 1
-        })
-        && features.features.iter().any(|(n, _)| n == "kern");
-    if structured {
-        for code in features.prefixes.values_mut() {
-            for pattern in &patterns {
-                code.code = pattern.replace(&code.code, "").into_owned();
-            }
-        }
-        features
-            .prefixes
-            .retain(|_, code| !code.code.trim().is_empty());
-        for (_, code) in features.features.iter_mut().filter(|(n, _)| n == "kern") {
-            code.code = remove_lookup_references(&code.code, names);
-        }
-        features
-            .features
-            .retain(|(n, code)| n != "kern" || !is_empty_feature(&code.code));
+    if remove_lookup_blocks(features, names, &["kern"]) {
         return;
     }
     // Otherwise rewrite the feature code without them
