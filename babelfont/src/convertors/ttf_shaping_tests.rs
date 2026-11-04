@@ -247,6 +247,7 @@ shaping_fixture_tests! {
     test_shaping_language_excluding_default: "ShapingExcludeDflt.ttf",
     test_shaping_language_only_in_gsub: "ShapingGsubLanguage.ttf",
     test_shaping_kern_only_script: "ShapingKernOnlyScript.ttf",
+    test_shaping_lookup_between_mark_and_mkmk: "ShapingMarkDistMkmk.ttf",
     test_shaping_cursive: "ShapingCursive.ttf",
     test_shaping_kerning_before_cursive: "ShapingKernThenCursive.ttf",
     test_shaping_mark_to_mark: "ShapingMkmk.ttf",
@@ -354,6 +355,10 @@ fn test_what_moves() {
         ("ShapingExtensions.ttf", &[]),
         ("ShapingGsubLanguage.ttf", &[]),
         ("ShapingKernOnlyScript.ttf", &[]),
+        (
+            "ShapingMarkDistMkmk.ttf",
+            &["pos acutecomb 20", "pos A acutecomb'"],
+        ),
         ("ShapingLanguage.ttf", &["pos V A -50"]),
         ("ShapingIgnoreMarks.ttf", &["pos A V -100"]),
         ("ShapingRtl.ttf", &["pos "]),
