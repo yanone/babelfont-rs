@@ -1101,6 +1101,7 @@ dependencies = [
 [[package]]
 name = "glyphslib"
 version = "0.4.1"
+source = "git+https://github.com/yanone/glyphslib-rs?rev=d1a33fe21d5436409e4fb63c44521f7da8b71720#d1a33fe21d5436409e4fb63c44521f7da8b71720"
 dependencies = [
  "itertools",
  "openstep-plist",
@@ -1533,6 +1534,7 @@ dependencies = [
 [[package]]
 name = "norad"
 version = "0.19.2"
+source = "git+https://github.com/yanone/norad?rev=645b4cb69fe9443aeb2bc0607633dd2efb26651d#645b4cb69fe9443aeb2bc0607633dd2efb26651d"
 dependencies = [
  "base64 0.23.1",
  "close_already",
@@ -1608,6 +1610,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 [[package]]
 name = "openstep-plist"
 version = "1.1.0"
+source = "git+https://github.com/yanone/glyphslib-rs?rev=d1a33fe21d5436409e4fb63c44521f7da8b71720#d1a33fe21d5436409e4fb63c44521f7da8b71720"
 dependencies = [
  "itertools",
  "serde",
