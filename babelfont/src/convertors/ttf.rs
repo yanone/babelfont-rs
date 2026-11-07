@@ -1844,7 +1844,7 @@ fn load_ligature_carets(
                     };
                     for (i, metric) in caret.carets.iter().enumerate() {
                         let x = crate::features::metric_at(metric, &location, axes)?;
-                        layer.anchors.push(Anchor {
+                        layer.anchors.push(Anchor { id: None,
                             name: format!("caret_{}", i + 1),
                             x,
                             y: 0.0,
@@ -2894,7 +2894,7 @@ mod tests {
                     .extend(pen.build().into_iter().map(crate::Shape::Path));
             }
             for (anchor, x, y) in anchors.iter() {
-                layer.anchors.push(Anchor {
+                layer.anchors.push(Anchor { id: None,
                     name: (*anchor).into(),
                     x: *x,
                     y: *y,
@@ -3394,7 +3394,7 @@ mod tests {
             glyph.codepoints = codepoints;
             let mut layer = Layer::new(0.0);
             for anchor in anchors {
-                layer.anchors.push(Anchor {
+                layer.anchors.push(Anchor { id: None,
                     name: anchor.to_string(),
                     x: 0.0,
                     y: 0.0,
@@ -3432,7 +3432,7 @@ mod tests {
             glyph.codepoints = codepoints;
             let mut layer = Layer::new(0.0);
             for anchor in anchors {
-                layer.anchors.push(Anchor {
+                layer.anchors.push(Anchor { id: None,
                     name: anchor.to_string(),
                     x: 0.0,
                     y: 0.0,
@@ -4264,7 +4264,7 @@ mod tests {
         for (id, weight) in [("light", 300.0), ("black", 900.0)] {
             font.masters.push(Master::new(id, id, wght(weight)));
         }
-        let anchor = |name: &str, x: f64, y: f64| Anchor {
+        let anchor = |name: &str, x: f64, y: f64| Anchor { id: None,
             name: name.into(),
             x,
             y,

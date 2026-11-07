@@ -1352,7 +1352,7 @@ mod tests {
             font.masters
                 .push(Master::new(format!("w{w}"), format!("m{w}"), location));
         }
-        let anchor = |name: &str, x: f64, y: f64| Anchor {
+        let anchor = |name: &str, x: f64, y: f64| Anchor { id: None,
             name: name.into(),
             x,
             y,

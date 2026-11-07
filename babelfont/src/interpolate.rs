@@ -430,7 +430,7 @@ mod tests {
             font.masters.push(Master::new(id, id, location));
             let mut layer = Layer::new(500.0);
             layer.master = LayerType::DefaultForMaster(id.to_string());
-            layer.shapes.push(Shape::Component(Component {
+            layer.shapes.push(Shape::Component(Component { id: None,
                 reference: "B".into(),
                 transform: DecomposedAffine::from(affine),
                 location: Default::default(),

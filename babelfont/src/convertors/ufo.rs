@@ -185,13 +185,33 @@ fn normalize_virtual_path(path: &str) -> Option<String> {
 pub fn as_norad(font: &Font, master_ix: usize) -> Result<norad::Font, BabelfontError> {
     let mut ufo = norad::Font::new();
     // Move some things into lib key before serializing it:
-    // exports
-    // categories
-    ufo.lib = font
+    let mut lib = font
         .format_specific
         .get(KEY_LIB)
-        .and_then(|x| serde_json::from_value::<norad::Plist>(x.clone()).ok())
-        .unwrap_or_default();
+        .unwrap_or_default()
+        .as_object()
+        .unwrap_or(&serde_json::Map::new())
+        .clone();
+    // exports
+    // categories
+    let categories = font
+        .glyphs
+        .iter()
+        .flat_map(|g| match &g.category {
+            GlyphCategory::Base => Some((g.name.to_string(), "base")),
+            GlyphCategory::Ligature => Some((g.name.to_string(), "ligature")),
+            GlyphCategory::Mark => Some((g.name.to_string(), "mark")),
+            GlyphCategory::Unknown => None,
+            GlyphCategory::Custom(x) => Some((g.name.to_string(), x.as_str())),
+        })
+        .collect::<HashMap<_, _>>();
+    let any_non_bases = categories.values().any(|&v| v != "base");
+    if lib.contains_key(KEY_CATEGORIES) || any_non_bases {
+        lib.insert(KEY_CATEGORIES.into(), serde_json::to_value(&categories)?);
+    }
+
+    ufo.lib = serde_json::from_value::<norad::Plist>(lib.into())?;
+    save_uvs_sequences(font, &mut ufo.lib);
     let first_master = font
         .masters
         .first()
@@ -1391,7 +1411,69 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn test_roundtrip() {
+    fn test_preferred_names_are_typographic() {
+        let mut ufo = norad::Font::load("resources/IbarraRealNova-Italic.ufo").unwrap();
+        ufo.font_info.open_type_name_preferred_family_name = Some("Ibarra".into());
+        ufo.font_info.open_type_name_preferred_subfamily_name = Some("Real Italic".into());
+        ufo.font_info.open_type_name_wws_family_name = Some("Ibarra WWS".into());
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("names.ufo");
+        ufo.save(&path).unwrap();
+        let font = crate::load(&path).unwrap();
+        let name = |n: &crate::I18NDictionary| n.get_default().cloned();
+        assert_eq!(
+            name(&font.names.typographic_family).as_deref(),
+            Some("Ibarra")
+        );
+        assert_eq!(
+            name(&font.names.typographic_subfamily).as_deref(),
+            Some("Real Italic")
+        );
+        assert_eq!(
+            name(&font.names.wws_family_name).as_deref(),
+            Some("Ibarra WWS")
+        );
+        assert_eq!(name(&font.names.preferred_subfamily_name), None);
+        // and back
+        let info = as_norad(&font, 0).unwrap().font_info;
+        assert_eq!(
+            info.open_type_name_preferred_family_name.as_deref(),
+            Some("Ibarra")
+        );
+        assert_eq!(
+            info.open_type_name_preferred_subfamily_name.as_deref(),
+            Some("Real Italic")
+        );
+        assert_eq!(
+            info.open_type_name_wws_family_name.as_deref(),
+            Some("Ibarra WWS")
+        );
+    }
+
+    #[test]
+    fn test_variation_sequences_round_trip() {
+        let mut font = crate::load("resources/IbarraRealNova-Italic.ufo").unwrap();
+        font.variation_sequences
+            .insert((0xFE00, 0x41), smol_str::SmolStr::from("A"));
+        font.variation_sequences
+            .insert((0xE0100, 0x1F600), smol_str::SmolStr::from("B"));
+        let ufo = as_norad(&font, 0).unwrap();
+        let lib = ufo
+            .lib
+            .get("public.unicodeVariationSequences")
+            .and_then(|v| v.as_dictionary())
+            .unwrap();
+        let fe00 = lib.get("FE00").and_then(|v| v.as_dictionary()).unwrap();
+        assert_eq!(fe00.get("0041").and_then(|v| v.as_string()), Some("A"));
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("uvs.ufo");
+        font.save(out.clone()).unwrap();
+        let reloaded = crate::load(out).unwrap();
+        assert_eq!(reloaded.variation_sequences, font.variation_sequences);
+    }
+
+    #[test]
+    fn test_roundtrip_1() {
         let there = crate::load("resources/NotoSans-LightItalic.ufo").unwrap();
         assert!(there.masters.len() == 1);
         let backagain = as_norad(&there, 0).unwrap();

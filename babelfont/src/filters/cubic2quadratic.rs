@@ -253,14 +253,14 @@ mod tests {
             .iter()
             .map(|g| g.layers.iter().flat_map(|l| l.paths().cloned()).collect())
             .collect();
-        let node = |x: f64, y: f64, nodetype: crate::NodeType| crate::Node {
+        let node = |x: f64, y: f64, nodetype: crate::NodeType| crate::Node { id: None,
             x,
             y,
             nodetype,
             smooth: false,
             format_specific: Default::default(),
         };
-        let cubic = Path {
+        let cubic = Path { id: None,
             nodes: vec![
                 node(0.0, 0.0, crate::NodeType::Line),
                 node(0.0, 100.0, crate::NodeType::OffCurve),
@@ -299,14 +299,14 @@ mod tests {
     fn test_an_off_curve_only_path_is_left_as_it_is() {
         // a TrueType circle: four off-curves, every on-curve implied; and a
         // cubic beside it
-        let node = |x: f64, y: f64, nodetype: crate::NodeType| crate::Node {
+        let node = |x: f64, y: f64, nodetype: crate::NodeType| crate::Node { id: None,
             x,
             y,
             nodetype,
             smooth: false,
             format_specific: Default::default(),
         };
-        let quadratic = Path {
+        let quadratic = Path { id: None,
             nodes: vec![
                 node(0.0, 50.0, crate::NodeType::OffCurve),
                 node(50.0, 100.0, crate::NodeType::OffCurve),
@@ -316,7 +316,7 @@ mod tests {
             closed: true,
             format_specific: Default::default(),
         };
-        let cubic = Path {
+        let cubic = Path { id: None,
             nodes: vec![
                 node(0.0, 0.0, crate::NodeType::Line),
                 node(0.0, 100.0, crate::NodeType::OffCurve),
