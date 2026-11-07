@@ -253,6 +253,12 @@ fn export_variable_font_origin(
     if font.axes.iter().any(|axis| axis.default != axis.min) {
         // Find the master that matches the default locations
         if let Some(master) = font.default_master() {
+            // Loading picks this master anyway (by its name, as glyphsLib
+            // does), so a font that did not say it need not.
+            let stated = get_cp(&font.format_specific, "Variable Font Origin").is_some();
+            if !stated && super::get_origin_master(font).map(|m| &m.id) == Some(&master.id) {
+                return Ok(());
+            }
             find_or_insert(
                 custom_parameters,
                 CustomParameter {
@@ -261,9 +267,9 @@ fn export_variable_font_origin(
                     disabled: false,
                 },
             );
-        } else {
-            return Err(BabelfontError::NoDefaultMaster);
         }
+        // Without a master at the axes' defaults there is no origin to
+        // state; a stated one is written back as it was.
     }
     Ok(())
 }

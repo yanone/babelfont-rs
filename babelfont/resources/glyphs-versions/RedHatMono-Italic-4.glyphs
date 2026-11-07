@@ -1,0 +1,1772 @@
+{
+.appVersion = "3324";
+.formatVersion = 4;
+axes = (
+{
+name = Weight;
+tag = wght;
+},
+);
+classes = (
+{
+code = "zero one two three four five six seven eight nine";
+name = fig;
+},
+{
+code = "zerosuperior onesuperior twosuperior threesuperior foursuperior fivesuperior sixsuperior sevensuperior eightsuperior ninesuperior 
+";
+name = sups;
+},
+{
+code = "zeroinferior oneinferior twoinferior threeinferior fourinferior fiveinferior sixinferior seveninferior eightinferior nineinferior 
+";
+name = dnom;
+},
+);
+customParameters = (
+{
+disabled = 1;
+name = glyphOrder;
+value = (
+.notdef,
+NULL,
+CR,
+space,
+uni00A0,
+A,
+B,
+C,
+D,
+E,
+F,
+G,
+H,
+I,
+J,
+K,
+L,
+M,
+N,
+O,
+P,
+Q,
+R,
+S,
+T,
+U,
+V,
+W,
+X,
+Y,
+Z,
+Aacute,
+Abreve,
+Acircumflex,
+Adieresis,
+AE,
+Agrave,
+Amacron,
+Aogonek,
+Aring,
+Atilde,
+Cacute,
+Ccaron,
+Ccedilla,
+Ccircumflex,
+Cdotaccent,
+Dcaron,
+Dcroat,
+Eacute,
+Ebreve,
+Ecaron,
+Ecircumflex,
+Edieresis,
+Edotaccent,
+Egrave,
+Emacron,
+Eng,
+Eogonek,
+Eth,
+Gbreve,
+Gcircumflex,
+Gcommaaccent,
+Gdotaccent,
+Hbar,
+Hcircumflex,
+Iacute,
+Ibreve,
+Icircumflex,
+Idieresis,
+Idotaccent,
+Igrave,
+IJ,
+Imacron,
+Iogonek,
+Itilde,
+Jcircumflex,
+Kcommaaccent,
+Lacute,
+Lcaron,
+Lcommaaccent,
+Ldot,
+Lslash,
+Nacute,
+Ncaron,
+Ncommaaccent,
+Ntilde,
+Oacute,
+Obreve,
+Ocircumflex,
+Odieresis,
+OE,
+Ograve,
+Ohungarumlaut,
+Omacron,
+Oslash,
+Otilde,
+Racute,
+Rcaron,
+Rcommaaccent,
+Sacute,
+Scaron,
+Scedilla,
+Scircumflex,
+Scommaaccent,
+Tbar,
+Tcaron,
+Tcedilla,
+uni021A,
+Thorn,
+Uacute,
+Ubreve,
+Ucircumflex,
+Udieresis,
+Ugrave,
+Uhungarumlaut,
+Umacron,
+Uogonek,
+Uring,
+Utilde,
+Wacute,
+Wdieresis,
+Wgrave,
+Wcircumflex,
+Yacute,
+Ycircumflex,
+Ydieresis,
+Ygrave,
+Zacute,
+Zcaron,
+Zdotaccent,
+a,
+b,
+c,
+d,
+e,
+f,
+g,
+h,
+i,
+j,
+k,
+l,
+m,
+n,
+o,
+p,
+q,
+r,
+s,
+t,
+u,
+v,
+w,
+x,
+y,
+z,
+aacute,
+abreve,
+acircumflex,
+adieresis,
+ae,
+agrave,
+amacron,
+aogonek,
+aring,
+atilde,
+cacute,
+ccaron,
+ccedilla,
+ccircumflex,
+cdotaccent,
+dcaron,
+dcroat,
+dotlessi,
+dotlessj,
+eacute,
+ebreve,
+ecaron,
+ecircumflex,
+edieresis,
+edotaccent,
+egrave,
+emacron,
+eng,
+eogonek,
+eth,
+gbreve,
+gcircumflex,
+gcommaaccent,
+gdotaccent,
+germandbls,
+hbar,
+hcircumflex,
+iacute,
+ibreve,
+icircumflex,
+idieresis,
+idotaccent,
+igrave,
+ij,
+imacron,
+iogonek,
+itilde,
+jcircumflex,
+kcommaaccent,
+kgreenlandic,
+lacute,
+lcaron,
+lcommaaccent,
+ldot,
+lslash,
+nacute,
+ncaron,
+ncommaaccent,
+ntilde,
+oacute,
+obreve,
+ocircumflex,
+odieresis,
+oe,
+ograve,
+ohungarumlaut,
+omacron,
+oslash,
+otilde,
+racute,
+rcaron,
+rcommaaccent,
+sacute,
+scaron,
+scedilla,
+scircumflex,
+scommaaccent,
+tbar,
+tcaron,
+tcedilla,
+uni021B,
+thorn,
+uacute,
+ubreve,
+ucircumflex,
+udieresis,
+ugrave,
+uhungarumlaut,
+umacron,
+uogonek,
+uring,
+utilde,
+wacute,
+wdieresis,
+wgrave,
+wcircumflex,
+yacute,
+ycircumflex,
+ydieresis,
+ygrave,
+zacute,
+zcaron,
+zdotaccent,
+ordfeminine,
+ordmasculine,
+cordinal,
+a.school,
+aacute.school,
+abreve.school,
+acircumflex.school,
+adieresis.school,
+agrave.school,
+amacron.school,
+aogonek.school,
+aring.school,
+atilde.school,
+g.alt,
+gbreve.alt,
+gcircumflex.alt,
+gcommaaccent.alt,
+gdotaccent.alt,
+fi,
+fl,
+ampersand,
+grave,
+acute,
+circumflex,
+tilde,
+macron,
+breve,
+dotaccent,
+dieresis,
+ring,
+hungarumlaut,
+caron,
+caronSlovak,
+commaaccent,
+cedilla,
+ogonek,
+period,
+comma,
+colon,
+semicolon,
+ellipsis,
+exclam,
+exclamdown,
+exclamdown.cap,
+question,
+questiondown,
+questiondown.cap,
+quoteleft,
+quoteright,
+quotedblleft,
+quotedblright,
+quotesinglbase,
+quotedblbase,
+reversequoteleft,
+reversequotedblleft,
+guilsinglleft,
+guilsinglright,
+guillemotleft,
+guillemotright,
+slash,
+backslash,
+bar,
+bullet,
+enspace,
+emspace,
+thinspace,
+hairspace,
+zerowidthspace,
+periodcentered,
+hyphen,
+endash,
+emdash,
+uni2015,
+periodcentered.cap,
+hyphen.cap,
+endash.cap,
+emdash.cap,
+uni2015.cap,
+parenleft,
+parenright,
+bracketleft,
+bracketright,
+braceleft,
+braceright,
+asterisk,
+dagger,
+daggerdbl,
+section,
+paragraph,
+asciicircum,
+asciitilde,
+underscore,
+quotesingle,
+quotedbl,
+at,
+at.cap,
+copyright,
+registered,
+trademark,
+Euro,
+dollar,
+cent,
+sterling,
+yen,
+numbersign,
+zero,
+one,
+two,
+three,
+four,
+five,
+six,
+seven,
+eight,
+nine,
+uni2070,
+onesuperior,
+twosuperior,
+threesuperior,
+uni2074,
+uni2075,
+uni2076,
+uni2077,
+uni2078,
+uni2079,
+uni2080,
+uni2081,
+uni2082,
+uni2083,
+uni2084,
+uni2085,
+uni2086,
+uni2087,
+uni2088,
+uni2089,
+fraction,
+onehalf,
+onequarter,
+threequarters,
+percent,
+perthousand,
+plus,
+minus,
+plusminus,
+multiply,
+divide,
+equal,
+notequal,
+less,
+greater,
+degree,
+uni00A4,
+uni00A6,
+uni00AC,
+uni00AD,
+uni00B5,
+uni02BB,
+uni02BC,
+uni2032,
+uni2033,
+uni2191,
+uni2193,
+uni2215,
+uniFEFF,
+uniFFFD,
+gravecmb,
+acutecmb,
+uni0302,
+tildecmb,
+uni0304,
+uni0306,
+uni0307,
+uni0308,
+uni030A,
+uni030B,
+uni030C,
+uni0326,
+uni0327,
+uni0328,
+zero.slash,
+);
+},
+{
+name = "Family Alignment Zones";
+value = (
+{
+pos = 727;
+size = 10;
+},
+{
+pos = 700;
+size = 11;
+},
+{
+pos = 488;
+size = 10;
+},
+{
+pos = 0;
+size = -11;
+},
+{
+pos = -209;
+size = -10;
+},
+);
+},
+{
+name = openTypeHeadFlags;
+value = (
+0,
+1,
+3,
+);
+},
+{
+name = panose;
+value = (
+2,
+1,
+3,
+9,
+4,
+2,
+1,
+13,
+3,
+3,
+);
+},
+{
+name = fsType;
+value = (
+);
+},
+{
+name = vendorID;
+value = MCKL;
+},
+{
+name = postscriptIsFixedPitch;
+value = 1;
+},
+{
+name = "Axis Mappings";
+value = {
+wght = {
+300 = 300;
+400 = 400;
+536 = 500;
+618 = 600;
+700 = 700;
+};
+};
+},
+{
+name = "Use Typo Metrics";
+value = 1;
+},
+);
+date = "2024-10-14 19:29:26 +0000";
+featurePrefixes = (
+{
+automatic = 1;
+code = "languagesystem DFLT dflt;
+
+languagesystem latn dflt;
+languagesystem latn TRK;
+languagesystem latn AZE;
+languagesystem latn CRT;
+languagesystem latn ROM;
+";
+name = Languagesystems;
+},
+{
+code = "#table head {
+#    FontRevision 1.020;
+#} head;
+#
+#table BASE {
+#    HorizAxis.BaseTagList       ideo  romn;
+#    HorizAxis.BaseScriptList    DFLT    romn    -158 0,
+#                                latn    romn    -158 0;
+#} BASE;
+#
+#table name {
+#    nameid 0 \"Copyright 2021 The Red Hat Project Authors (https://github.com/RedHatOfficial/RedHatFont)\";
+#    nameid 0 1 \"Copyright 2021 The Red Hat Project Authors (https://github.com/RedHatOfficial/RedHatFont)\";
+#    nameid 7 \"Copyright 2021 The Red Hat Project Authors (https://github.com/RedHatOfficial/RedHatFont)\";
+#    nameid 7 1 \"Copyright 2021 The Red Hat Project Authors (https://github.com/RedHatOfficial/RedHatFont)\";
+#    nameid 8 \"Pentagram, MCKL\";
+#    nameid 8 1 \"Pentagram, MCKL\";
+#    nameid 9 \"Pentagram, MCKL\";
+#    nameid 9 1 \"Pentagram, MCKL\";
+#    nameid 10 \"This Font Software is licensed under the SIL Open Font License, Version 1.1. This license is available with a FAQ at: https://scripts.sil.org/OFL\";
+#    nameid 10 1 \"This Font Software is licensed under the SIL Open Font License, Version 1.1. This license is available with a FAQ at: https://scripts.sil.org/OFL\";
+#    nameid 11 \"https://www.mckltype.com\";
+#    nameid 11 1 \"https://www.mckltype.com\";
+#    nameid 12 \"https://pentagram.com/\";
+#    nameid 12 1 \"https://pentagram.com/\";
+#	nameid 13 \"This Font Software is licensed under the SIL Open Font License, Version 1.1. This license is available with a FAQ at: https://scripts.sil.org/OFL\";
+#	nameid 13 1 \"This Font Software is licensed under the SIL Open Font License, Version 1.1. This license is available with a FAQ at: https://scripts.sil.org/OFL\";
+#    nameid 14 \"https://scripts.sil.org/OFL\";
+#    nameid 14 1 \"https://scripts.sil.org/OFL\";
+#} name;
+";
+name = Prefix;
+},
+);
+features = (
+{
+code = "script latn;
+
+	language TRK exclude_dflt;
+		lookup IDOT {
+			sub i by idotaccent;
+		} IDOT;
+
+	language AZE exclude_dflt;
+		lookup IDOT;
+
+	language CRT exclude_dflt;
+		lookup IDOT;
+
+	language ROM exclude_dflt;
+		lookup SCEDILLA {
+			sub scedilla by scommaaccent;
+			sub Scedilla by Scommaaccent;
+			sub Tcedilla by Tcommaaccent;
+			sub tcedilla by tcommaaccent;
+		} SCEDILLA;
+";
+tag = locl;
+},
+{
+code = "    feature ss01;
+    feature ss02;
+    feature case;
+    feature dnom;
+    feature numr;
+    feature zero;
+    ";
+tag = aalt;
+},
+{
+code = "    sub [a aacute abreve acircumflex adieresis agrave amacron aogonek aring atilde] by [a.school aacute.school abreve.school acircumflex.school adieresis.school agrave.school amacron.school aogonek.school aring.school atilde.school];
+    ";
+labels = (
+{
+language = dflt;
+value = ss01;
+},
+);
+tag = ss01;
+},
+{
+code = "    sub [g gbreve gcircumflex gcommaaccent gdotaccent] by [g.alt gbreve.alt gcircumflex.alt gcommaaccent.alt gdotaccent.alt];
+    ";
+labels = (
+{
+language = dflt;
+value = ss02;
+},
+);
+tag = ss02;
+},
+{
+automatic = 1;
+code = "sub exclamdown by exclamdown.case;
+sub questiondown by questiondown.case;
+sub periodcentered by periodcentered.case;
+sub periodcentered.loclCAT by periodcentered.loclCAT.case;
+sub hyphen by hyphen.case;
+sub endash by endash.case;
+sub emdash by emdash.case;
+sub horizontalbar by horizontalbar.case;
+sub at by at.case;
+";
+tag = case;
+},
+{
+code = "    sub one slash two by onehalf;
+    sub one slash four by onequarter;
+    sub three slash four by threequarters;
+    ";
+tag = frac;
+},
+{
+code = "    sub @fig by @dnom;
+    ";
+tag = dnom;
+},
+{
+code = "    sub @fig by @dnom;
+    ";
+tag = subs;
+},
+{
+code = "    sub @fig by @sups;
+    ";
+tag = numr;
+},
+{
+code = "    sub @fig by @sups;
+    ";
+tag = sups;
+},
+{
+code = "    sub zero by zero.slash;
+    ";
+tag = zero;
+},
+{
+code = "    lookup calt1 {
+    sub [hyphen endash emdash horizontalbar]' [less greater hyphen endash emdash horizontalbar] by [hyphen.case endash.case emdash.case horizontalbar.case];
+    sub [less greater hyphen endash emdash horizontalbar] [hyphen endash emdash horizontalbar]' by [hyphen.case endash.case emdash.case horizontalbar.case];
+    } calt1;
+    lookup calt2 {
+    sub [hyphen.case endash.case emdash.case horizontalbar.case] [hyphen endash emdash horizontalbar]' by [hyphen.case endash.case emdash.case horizontalbar.case];
+    sub [hyphen endash emdash horizontalbar]' [hyphen.case endash.case emdash.case horizontalbar.case] by [hyphen.case endash.case emdash.case horizontalbar.case];
+    } calt2;
+    
+";
+tag = calt;
+},
+{
+automatic = 1;
+code = "lookup ccmp_DFLT_1 {
+	@CombiningTopAccents = [acutecomb brevecomb caroncomb circumflexcomb commaturnedabovecomb dieresiscomb dotaccentcomb gravecomb hungarumlautcomb macroncomb ringcomb tildecomb];
+	lookupflag UseMarkFilteringSet @CombiningTopAccents;
+	sub i' @CombiningTopAccents by idotless;
+	sub j' @CombiningTopAccents by jdotless;
+} ccmp_DFLT_1;
+";
+tag = ccmp;
+},
+{
+automatic = 1;
+code = "sub zero by zeroinferior;
+sub one by oneinferior;
+sub two by twoinferior;
+sub three by threeinferior;
+sub four by fourinferior;
+sub five by fiveinferior;
+sub six by sixinferior;
+sub seven by seveninferior;
+sub eight by eightinferior;
+sub nine by nineinferior;
+";
+tag = sinf;
+},
+{
+automatic = 1;
+code = "sub [zero one two three four five six seven eight nine] [A a]' by ordfeminine;
+sub [zero one two three four five six seven eight nine] [O o]' by ordmasculine;
+";
+tag = ordn;
+},
+);
+fontMaster = (
+{
+axesValues = (
+300,
+);
+customParameters = (
+{
+name = typoAscender;
+value = 1018;
+},
+{
+name = typoDescender;
+value = -305;
+},
+{
+name = typoLineGap;
+value = 0;
+},
+{
+name = hheaAscender;
+value = 1018;
+},
+{
+name = hheaDescender;
+value = -305;
+},
+{
+name = hheaLineGap;
+value = 0;
+},
+{
+name = winAscent;
+value = 1018;
+},
+{
+name = winDescent;
+value = 305;
+},
+{
+name = strikeoutPosition;
+value = 317;
+},
+{
+name = strikeoutSize;
+value = 50;
+},
+{
+name = underlineThickness;
+value = 100;
+},
+{
+name = underlinePosition;
+value = -200;
+},
+{
+name = subscriptXOffset;
+value = 0;
+},
+{
+name = subscriptXSize;
+value = 650;
+},
+{
+name = subscriptYOffset;
+value = 75;
+},
+{
+name = subscriptYSize;
+value = 600;
+},
+{
+name = superscriptXOffset;
+value = 0;
+},
+{
+name = superscriptXSize;
+value = 650;
+},
+{
+name = superscriptYOffset;
+value = 350;
+},
+{
+name = superscriptYSize;
+value = 600;
+},
+);
+id = m001;
+metricValues = (
+{
+pos = 1018;
+},
+{
+over = 11;
+pos = 700;
+},
+{
+over = 10;
+pos = 481;
+},
+{
+over = -11;
+},
+{
+pos = -305;
+},
+{
+pos = 12;
+},
+{
+over = 10;
+pos = 727;
+},
+{
+over = -10;
+pos = -209;
+},
+);
+name = "Light Italic";
+stemValues = (
+50,
+52,
+43,
+46,
+47,
+0,
+0,
+0,
+0,
+0,
+0,
+0,
+0,
+0,
+);
+userData = {
+layerinfo.color = "1,0.75,0,0.7";
+};
+},
+{
+axesValues = (
+400,
+);
+customParameters = (
+{
+name = typoAscender;
+value = 1018;
+},
+{
+name = typoDescender;
+value = -305;
+},
+{
+name = typoLineGap;
+value = 0;
+},
+{
+name = hheaAscender;
+value = 1018;
+},
+{
+name = hheaDescender;
+value = -305;
+},
+{
+name = hheaLineGap;
+value = 0;
+},
+{
+name = winAscent;
+value = 1018;
+},
+{
+name = winDescent;
+value = 305;
+},
+{
+name = strikeoutPosition;
+value = 317;
+},
+{
+name = strikeoutSize;
+value = 50;
+},
+{
+name = underlineThickness;
+value = 100;
+},
+{
+name = underlinePosition;
+value = -200;
+},
+{
+name = subscriptXOffset;
+value = 0;
+},
+{
+name = subscriptXSize;
+value = 650;
+},
+{
+name = subscriptYOffset;
+value = 75;
+},
+{
+name = subscriptYSize;
+value = 600;
+},
+{
+name = superscriptXOffset;
+value = 0;
+},
+{
+name = superscriptXSize;
+value = 650;
+},
+{
+name = superscriptYOffset;
+value = 350;
+},
+{
+name = superscriptYSize;
+value = 600;
+},
+);
+id = "73361422-4D71-4ED1-86BB-2DC193C1BE05";
+metricValues = (
+{
+pos = 1018;
+},
+{
+over = 11;
+pos = 700;
+},
+{
+over = 10;
+pos = 488;
+},
+{
+over = -11;
+},
+{
+pos = -305;
+},
+{
+pos = 12;
+},
+{
+over = 10;
+pos = 727;
+},
+{
+over = -10;
+pos = -209;
+},
+);
+name = Italic;
+stemValues = (
+73,
+73,
+60,
+60,
+60,
+73,
+73,
+73,
+60,
+60,
+60,
+78,
+65,
+70,
+);
+userData = {
+layerinfo.color = "0,0,1,0.75";
+};
+},
+{
+axesValues = (
+700,
+);
+customParameters = (
+{
+name = typoAscender;
+value = 1018;
+},
+{
+name = typoDescender;
+value = -305;
+},
+{
+name = typoLineGap;
+value = 0;
+},
+{
+name = hheaAscender;
+value = 1018;
+},
+{
+name = hheaDescender;
+value = -305;
+},
+{
+name = hheaLineGap;
+value = 0;
+},
+{
+name = winAscent;
+value = 1018;
+},
+{
+name = winDescent;
+value = 305;
+},
+{
+name = strikeoutPosition;
+value = 317;
+},
+{
+name = strikeoutSize;
+value = 50;
+},
+{
+name = underlineThickness;
+value = 100;
+},
+{
+name = underlinePosition;
+value = -200;
+},
+{
+name = subscriptXOffset;
+value = 0;
+},
+{
+name = subscriptXSize;
+value = 650;
+},
+{
+name = subscriptYOffset;
+value = 75;
+},
+{
+name = subscriptYSize;
+value = 600;
+},
+{
+name = superscriptXOffset;
+value = 0;
+},
+{
+name = superscriptXSize;
+value = 650;
+},
+{
+name = superscriptYOffset;
+value = 350;
+},
+{
+name = superscriptYSize;
+value = 600;
+},
+);
+id = "E1238894-54FF-4BF5-8428-CDF6AE3ED177";
+metricValues = (
+{
+pos = 1018;
+},
+{
+over = 11;
+pos = 700;
+},
+{
+over = 10;
+pos = 516;
+},
+{
+over = -11;
+},
+{
+pos = -305;
+},
+{
+pos = 12;
+},
+{
+over = 10;
+pos = 727;
+},
+{
+over = -10;
+pos = -209;
+},
+);
+name = "Bold Italic";
+stemValues = (
+158,
+158,
+125,
+125,
+125,
+162,
+172,
+178,
+136,
+144,
+153,
+0,
+0,
+0,
+);
+userData = {
+layerinfo.color = "1,0.75,0,0.7";
+};
+},
+);
+glyphs = (
+{
+glyphname = A;
+kernLeft = A;
+kernRight = A;
+lastChange = "2024-10-14 19:30:53 +0000";
+layers = (
+{
+anchors = (
+{
+name = bottom;
+pos = (529,0);
+},
+{
+name = top;
+pos = (397,700);
+},
+);
+guides = (
+{
+attr = {
+userData = {
+UFO.identifier = Cx33hZyDh1;
+};
+};
+pos = (397,700);
+},
+);
+layerId = m001;
+shapes = (
+{
+closed = 1;
+nodes = (
+(28,0,l),
+(144,210,l),
+(450,210,l),
+(478,0,l),
+(529,0,l),
+(433,700,l),
+(361,700,l),
+(-31,0,l),
+);
+},
+{
+closed = 1;
+nodes = (
+(390,658,l),
+(444,252,l),
+(167,252,l),
+);
+},
+);
+width = 600;
+},
+{
+anchors = (
+{
+name = bottom;
+pos = (545,0);
+},
+{
+name = top;
+pos = (392,700);
+},
+);
+layerId = "E1238894-54FF-4BF5-8428-CDF6AE3ED177";
+shapes = (
+{
+closed = 1;
+nodes = (
+(111,0,l),
+(176,137,l),
+(369,137,l),
+(375,0,l),
+(545,0,l),
+(493,700,l),
+(295,700,l),
+(-55,0,l),
+);
+},
+{
+closed = 1;
+nodes = (
+(354,511,l),
+(364,270,l),
+(239,270,l),
+);
+},
+);
+width = 600;
+},
+{
+anchors = (
+{
+name = bottom;
+pos = (532,0);
+},
+{
+name = top;
+pos = (397,700);
+},
+);
+layerId = "73361422-4D71-4ED1-86BB-2DC193C1BE05";
+shapes = (
+{
+closed = 1;
+nodes = (
+(46,0,l),
+(151,195,l),
+(431,195,l),
+(453,0,l),
+(532,0,l),
+(447,700,l),
+(348,700,l),
+(-36,0,l),
+);
+},
+{
+closed = 1;
+nodes = (
+(381,622,l),
+(424,256,l),
+(184,256,l),
+);
+},
+);
+width = 600;
+},
+);
+unicode = 65;
+},
+{
+glyphname = C;
+kernLeft = O;
+kernRight = C;
+lastChange = "2024-10-14 19:30:53 +0000";
+layers = (
+{
+anchors = (
+{
+name = bottom;
+pos = (290,0);
+},
+{
+name = top;
+pos = (380,700);
+},
+);
+guides = (
+{
+attr = {
+userData = {
+UFO.identifier = XzmC9agYa3;
+};
+};
+pos = (186,297);
+},
+);
+layerId = m001;
+shapes = (
+{
+closed = 1;
+nodes = (
+(398,-11,o),
+(500,66,o),
+(555,198,c),
+(507,216,l),
+(459,102,o),
+(378,37,o),
+(284,37,cs),
+(181,37,o),
+(110,128,o),
+(110,277,cs),
+(110,513,o),
+(243,663,o),
+(378,663,cs),
+(470,663,o),
+(532,603,o),
+(553,490,c),
+(603,500,l),
+(580,634,o),
+(496,711,o),
+(377,711,cs),
+(223,711,o),
+(59,555,o),
+(59,276,cs),
+(59,94,o),
+(153,-11,o),
+(284,-11,cs),
+);
+},
+);
+userData = {
+com.typemytype.robofont.guideline.magnetic.Xb6nk9FEni = 5;
+com.typemytype.robofont.guideline.magnetic.fJyXOYVzbz = 5;
+com.typemytype.robofont.guideline.magnetic.vlo5H4bvfx = 5;
+};
+width = 600;
+},
+{
+anchors = (
+{
+name = bottom;
+pos = (276,0);
+},
+{
+name = top;
+pos = (365,700);
+},
+);
+guides = (
+{
+attr = {
+userData = {
+UFO.identifier = XzmC9agYa3;
+};
+};
+pos = (221,276);
+},
+);
+layerId = "E1238894-54FF-4BF5-8428-CDF6AE3ED177";
+shapes = (
+{
+closed = 1;
+nodes = (
+(415,-9,o),
+(514,91,o),
+(563,229,c),
+(413,275,l),
+(388,198,o),
+(348,143,o),
+(291,143,cs),
+(244,143,o),
+(208,183,o),
+(208,280,cs),
+(208,416,o),
+(263,557,o),
+(351,557,cs),
+(397,557,o),
+(428,516,o),
+(433,432,c),
+(601,458,l),
+(586,625,o),
+(487,709,o),
+(360,709,cs),
+(163,709,o),
+(38,495,o),
+(38,266,cs),
+(38,87,o),
+(144,-9,o),
+(278,-9,cs),
+);
+},
+);
+userData = {
+com.typemytype.robofont.guideline.magnetic.Xb6nk9FEni = 5;
+com.typemytype.robofont.guideline.magnetic.fJyXOYVzbz = 5;
+com.typemytype.robofont.guideline.magnetic.vlo5H4bvfx = 5;
+};
+width = 600;
+},
+{
+anchors = (
+{
+name = bottom;
+pos = (287,0);
+},
+{
+name = top;
+pos = (377,700);
+},
+);
+guides = (
+{
+attr = {
+userData = {
+UFO.identifier = XzmC9agYa3;
+};
+};
+pos = (164,284);
+},
+);
+layerId = "73361422-4D71-4ED1-86BB-2DC193C1BE05";
+shapes = (
+{
+closed = 1;
+nodes = (
+(412,-11,o),
+(510,69,o),
+(563,204,c),
+(492,227,l),
+(454,119,o),
+(377,59,o),
+(295,59,cs),
+(202,59,o),
+(136,144,o),
+(136,292,cs),
+(136,500,o),
+(237,641,o),
+(357,641,cs),
+(439,641,o),
+(502,581,o),
+(518,473,c),
+(593,496,l),
+(570,631,o),
+(485,711,o),
+(361,711,cs),
+(201,711,o),
+(58,546,o),
+(58,286,cs),
+(58,94,o),
+(156,-11,o),
+(291,-11,cs),
+);
+},
+);
+userData = {
+com.typemytype.robofont.guideline.magnetic.Xb6nk9FEni = 5;
+com.typemytype.robofont.guideline.magnetic.fJyXOYVzbz = 5;
+com.typemytype.robofont.guideline.magnetic.vlo5H4bvfx = 5;
+};
+width = 600;
+},
+);
+unicode = 67;
+},
+);
+instances = (
+{
+axesValues = (
+300,
+);
+id = "349352B5-95E7-41A1-A62F-59EFD1972832";
+instanceInterpolations = {
+m001 = 1;
+};
+properties = (
+{
+key = styleNames;
+values = (
+{
+language = dflt;
+value = "Light Italic";
+},
+);
+},
+);
+weightClass = 300;
+},
+{
+axesValues = (
+400,
+);
+id = "3EFD628E-527E-4B25-922B-4F3B404D14DB";
+instanceInterpolations = {
+"73361422-4D71-4ED1-86BB-2DC193C1BE05" = 1;
+};
+properties = (
+{
+key = styleNames;
+values = (
+{
+language = dflt;
+value = Italic;
+},
+);
+},
+);
+},
+{
+axesValues = (
+536,
+);
+id = "3500E468-66DC-4059-BB4D-A2E444B91EDE";
+instanceInterpolations = {
+"73361422-4D71-4ED1-86BB-2DC193C1BE05" = 0.54667;
+"E1238894-54FF-4BF5-8428-CDF6AE3ED177" = 0.45333;
+};
+properties = (
+{
+key = styleNames;
+values = (
+{
+language = dflt;
+value = "Medium Italic";
+},
+);
+},
+);
+weightClass = 500;
+},
+{
+axesValues = (
+618,
+);
+id = "64F966DD-F0C9-4196-BD28-5A08473AE4E1";
+instanceInterpolations = {
+"73361422-4D71-4ED1-86BB-2DC193C1BE05" = 0.27333;
+"E1238894-54FF-4BF5-8428-CDF6AE3ED177" = 0.72667;
+};
+properties = (
+{
+key = styleNames;
+values = (
+{
+language = dflt;
+value = "SemiBold Italic";
+},
+);
+},
+);
+weightClass = 600;
+},
+{
+axesValues = (
+700,
+);
+id = "242F017B-8D37-43B0-A97B-3223DCEFE900";
+instanceInterpolations = {
+"E1238894-54FF-4BF5-8428-CDF6AE3ED177" = 1;
+};
+isBold = 1;
+isItalic = 1;
+properties = (
+{
+key = styleNames;
+values = (
+{
+language = dflt;
+value = "Bold Italic";
+},
+);
+},
+);
+weightClass = 700;
+},
+);
+metrics = (
+{
+type = ascender;
+},
+{
+type = "cap height";
+},
+{
+type = "x-height";
+},
+{
+type = baseline;
+},
+{
+type = descender;
+},
+{
+type = "italic angle";
+},
+{
+name = "zone 1";
+},
+{
+name = "zone 2";
+},
+);
+properties = (
+{
+key = copyrights;
+values = (
+{
+language = dflt;
+value = "Copyright 2024 The Red Hat Project Authors (https://github.com/RedHatOfficial/RedHatFont)";
+},
+);
+},
+{
+key = designers;
+values = (
+{
+language = dflt;
+value = "Pentagram, MCKL";
+},
+);
+},
+{
+key = designerURL;
+value = "https://pentagram.com/,https://www.mckltype.com";
+},
+{
+key = familyNames;
+values = (
+{
+language = dflt;
+value = "Red Hat Mono";
+},
+);
+},
+{
+key = licenses;
+values = (
+{
+language = dflt;
+value = "This Font Software is licensed under the SIL Open Font License, Version 1.1. This license is available with a FAQ at: https://scripts.sil.org/OFL";
+},
+);
+},
+{
+key = licenseURL;
+value = "https://openfontlicense.org";
+},
+{
+key = manufacturers;
+values = (
+{
+language = dflt;
+value = MCKL;
+},
+);
+},
+{
+key = manufacturerURL;
+value = "https://www.mckltype.com";
+},
+{
+key = vendorID;
+value = MCKL;
+},
+);
+settings = {
+colorSpace = "apple-rgb";
+};
+stems = (
+{
+name = vStem0;
+},
+{
+name = vStem0;
+},
+{
+horizontal = 1;
+name = hStem0;
+},
+{
+horizontal = 1;
+name = hStem0;
+},
+{
+horizontal = 1;
+name = hStem0;
+},
+{
+name = vStem0;
+},
+{
+name = vStem0;
+},
+{
+name = vStem0;
+},
+{
+horizontal = 1;
+name = hStem0;
+},
+{
+horizontal = 1;
+name = hStem0;
+},
+{
+horizontal = 1;
+name = hStem0;
+},
+{
+name = vStem0;
+},
+{
+horizontal = 1;
+name = hStem0;
+},
+{
+horizontal = 1;
+name = hStem0;
+},
+);
+unitsPerEm = 1000;
+userData = {
+UFO.lib = {
+com.defcon.sortDescriptor = (
+{
+allowPseudoUnicode = 1;
+ascending = _redhatmono;
+type = characterSet;
+},
+);
+com.typemytype.robofont.compileSettings.autohint = 1;
+com.typemytype.robofont.compileSettings.checkOutlines = 0;
+com.typemytype.robofont.compileSettings.createDummyDSIG = 1;
+com.typemytype.robofont.compileSettings.decompose = 0;
+com.typemytype.robofont.compileSettings.generateFormat = 0;
+com.typemytype.robofont.compileSettings.releaseMode = 0;
+com.typemytype.robofont.generateFeaturesWithFontTools = 0;
+com.typemytype.robofont.italicSlantOffset = 0;
+com.typemytype.robofont.segmentType = curve;
+com.typemytype.robofont.shouldAddPointsInSplineConversion = 1;
+};
+UFOFormat = 3;
+UFOLayerName = foreground;
+};
+versionMajor = 1;
+versionMinor = 30;
+}

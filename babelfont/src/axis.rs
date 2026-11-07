@@ -430,35 +430,64 @@ mod ufo {
     use crate::{common::tag_from_string, BabelfontError};
 
     use super::Axis;
+
+    /// Key for the Designspace 5 axis data babelfont does not model.
+    const KEY_DESIGNSPACE_AXIS: &str = "norad.designspace.axis";
+
+    /// Designspace 5 STAT data of an axis, kept so that saving writes it back.
+    #[derive(Default, serde::Serialize, serde::Deserialize)]
+    struct DesignspaceAxisExtras {
+        #[serde(default)]
+        label_names: Vec<norad::designspace::LocalizedString>,
+        #[serde(default)]
+        axis_ordering: Option<u32>,
+        #[serde(default)]
+        axis_labels: Vec<norad::designspace::AxisLabel>,
+    }
+
     impl TryFrom<&norad::designspace::Axis> for Axis {
         type Error = BabelfontError;
         fn try_from(dsax: &norad::designspace::Axis) -> Result<Self, BabelfontError> {
             let mut ax = Axis::new(dsax.name.clone(), tag_from_string(&dsax.tag)?);
-            ax.min = dsax.minimum.map(|x| x as f64).map(UserCoord::new);
-            ax.max = dsax.maximum.map(|x| x as f64).map(UserCoord::new);
-            ax.default = Some(UserCoord::new(dsax.default as f64));
+            ax.min = dsax.minimum.map(UserCoord::new);
+            ax.max = dsax.maximum.map(UserCoord::new);
+            ax.default = Some(UserCoord::new(dsax.default));
             if let Some(values) = &dsax.values {
-                ax.values = values.iter().map(|x| UserCoord::new(*x as f64)).collect();
+                ax.values = values.iter().map(|x| UserCoord::new(*x)).collect();
             }
             if let Some(map) = &dsax.map {
                 ax.map = Some(
                     map.iter()
-                        .map(|x| {
-                            (
-                                UserCoord::new(x.input as f64),
-                                DesignCoord::new(x.output as f64),
-                            )
-                        })
+                        .map(|x| (UserCoord::new(x.input), DesignCoord::new(x.output)))
                         .collect(),
                 );
             }
             ax.hidden = dsax.hidden;
+            if !dsax.label_names.is_empty()
+                || dsax.axis_ordering.is_some()
+                || !dsax.axis_labels.is_empty()
+            {
+                let extras = DesignspaceAxisExtras {
+                    label_names: dsax.label_names.clone(),
+                    axis_ordering: dsax.axis_ordering,
+                    axis_labels: dsax.axis_labels.clone(),
+                };
+                ax.format_specific.insert(
+                    KEY_DESIGNSPACE_AXIS.to_string(),
+                    serde_json::to_value(extras)?,
+                );
+            }
             Ok(ax)
         }
     }
 
     impl From<&Axis> for norad::designspace::Axis {
         fn from(ax: &Axis) -> Self {
+            let extras: DesignspaceAxisExtras = ax
+                .format_specific
+                .get(KEY_DESIGNSPACE_AXIS)
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+                .unwrap_or_default();
             norad::designspace::Axis {
                 name: ax
                     .name
@@ -466,22 +495,24 @@ mod ufo {
                     .unwrap_or(&"Unnamed axis".to_string())
                     .clone(),
                 tag: ax.tag.to_string(),
-                minimum: ax.min.map(|x| x.to_f64() as f32),
-                maximum: ax.max.map(|x| x.to_f64() as f32),
-                default: ax.default.map(|x| x.to_f64() as f32).unwrap_or(0.0),
+                minimum: ax.min.map(|x| x.to_f64()),
+                maximum: ax.max.map(|x| x.to_f64()),
+                default: ax.default.map(|x| x.to_f64()).unwrap_or(0.0),
                 map: ax.map.as_ref().map(|mapping| {
                     mapping
                         .iter()
                         .map(|(input, output)| norad::designspace::AxisMapping {
-                            input: input.to_f64() as f32,
-                            output: output.to_f64() as f32,
+                            input: input.to_f64(),
+                            output: output.to_f64(),
                         })
                         .collect()
                 }),
                 hidden: ax.hidden,
                 values: (!ax.values.is_empty())
-                    .then(|| ax.values.iter().map(|v| v.to_f64() as f32).collect()),
-                label_names: vec![],
+                    .then(|| ax.values.iter().map(|v| v.to_f64()).collect()),
+                label_names: extras.label_names,
+                axis_ordering: extras.axis_ordering,
+                axis_labels: extras.axis_labels,
             }
         }
     }

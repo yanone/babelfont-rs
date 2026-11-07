@@ -43,6 +43,9 @@ pub(crate) const KEY_COMPONENT_LOCKED: &str = "com.schriftgestalt.Glyphs.compone
 pub(crate) const KEY_CUSTOM_PARAMETERS: &str = "com.schriftgestalt.Glyphs.customParameters.";
 pub(crate) const KEY_DISPLAY_STRINGS: &str = "com.schriftgestalt.Glyphs.displayStrings";
 pub(crate) const KEY_FORMAT_VERSION: &str = "com.schriftgestalt.Glyphs.formatVersion";
+/// The Glyphs file format version to save in, when it is not the one the
+/// font was read in ([`KEY_FORMAT_VERSION`]): 3 or 4.
+pub const KEY_SAVE_FORMAT_VERSION: &str = "com.schriftgestalt.Glyphs.saveFormatVersion";
 pub(crate) const KEY_ICON_NAME: &str = "com.schriftgestalt.Glyphs.iconName";
 pub(crate) const KEY_INSTANCE_EXPORTS: &str = "com.schriftgestalt.Glyphs.exports";
 pub(crate) const KEY_INSTANCE_EXPORT_TYPE: &str = "com.schriftgestalt.Glyphs.instance.type";
@@ -72,6 +75,129 @@ pub(crate) const KEY_NODE_HOI: &str = "com.schriftgestalt.Glyphs.node.hoi";
 pub(crate) const KEY_NUMBER_NAMES: &str = "com.schriftgestalt.Glyphs.numberNames";
 pub(crate) const KEY_NUMBER_VALUES: &str = "com.schriftgestalt.Glyphs.numberValues";
 pub(crate) const KEY_SETTINGS: &str = "com.schriftgestalt.Glyphs.settings";
+/// The order of a font's or instance's properties as read, which a Glyphs 3
+/// file keeps (Glyphs 4 sorts them).
+const KEY_PROPERTY_ORDER: &str = "com.schriftgestalt.Glyphs.propertyOrder";
+/// A font's classes and feature prefixes as read, when a name is used more
+/// than once: the font's features keep one per name.
+const KEY_REPEATED_CLASSES: &str = "com.schriftgestalt.Glyphs.repeatedClasses";
+const KEY_REPEATED_PREFIXES: &str = "com.schriftgestalt.Glyphs.repeatedPrefixes";
+
+/// Stores `entries` as read when a name repeats.
+fn stash_repeats<T: serde::Serialize>(
+    format_specific: &mut FormatSpecific,
+    key: &str,
+    entries: &[T],
+    name: impl Fn(&T) -> &str,
+) {
+    let mut seen = std::collections::HashSet::new();
+    if entries.iter().any(|entry| !seen.insert(name(entry))) {
+        format_specific.insert_json(key, &entries);
+    }
+}
+
+/// The entries as read, if the font's features still hold what they did
+/// (the last entry of each name), else `current`.
+fn restore_repeats<T: serde::de::DeserializeOwned + PartialEq + Clone>(
+    format_specific: &FormatSpecific,
+    key: &str,
+    current: Vec<T>,
+    name: impl Fn(&T) -> &str,
+) -> Vec<T> {
+    let Some(stashed) = format_specific
+        .get(key)
+        .and_then(|v| serde_json::from_value::<Vec<T>>(v.clone()).ok())
+    else {
+        return current;
+    };
+    let mut last: Vec<T> = Vec::new();
+    for entry in &stashed {
+        match last.iter_mut().find(|l| name(l) == name(entry)) {
+            Some(slot) => *slot = entry.clone(),
+            None => last.push(entry.clone()),
+        }
+    }
+    if last == current {
+        stashed
+    } else {
+        current
+    }
+}
+
+/// Properties babelfont does not model, such as
+/// `variationsPostScriptNamePrefix`, kept to be written back.
+const KEY_OTHER_PROPERTIES: &str = "com.schriftgestalt.Glyphs.otherProperties";
+/// The names of metrics that have a type as well (a filtered x-height named
+/// `smallCapHeight`), by the metric's key in the masters.
+const KEY_METRIC_NAMES: &str = "com.schriftgestalt.Glyphs.metricNames";
+
+/// A Glyphs metric's key in the masters' metrics (see `load_master`).
+fn metric_key(metric: &glyphs3::Metric) -> Option<String> {
+    let typ = crate::MetricType::from(&metric.metric_type?);
+    Some(match &metric.filter {
+        Some(filter) => format!("{} (filter {})", typ.as_str(), filter),
+        None => typ.as_str().to_string(),
+    })
+}
+
+/// Records the order of the properties as read, and the ones babelfont does
+/// not model.
+fn stash_property_order(format_specific: &mut FormatSpecific, properties: &[Property]) {
+    let order: Vec<String> = properties.iter().filter_map(Property::key_name).collect();
+    if !order.is_empty() {
+        format_specific.insert_json(KEY_PROPERTY_ORDER, &order);
+    }
+    let other: Vec<&glyphslib::Plist> = properties
+        .iter()
+        .filter_map(|p| match p {
+            Property::Junk(plist) => Some(plist),
+            _ => None,
+        })
+        .collect();
+    if !other.is_empty() {
+        format_specific.insert_json(KEY_OTHER_PROPERTIES, &other);
+    }
+}
+
+/// Puts properties back as they were read: in their order, new ones after,
+/// in the form they had (`postscriptFullNames`, localized, or the singular
+/// `postscriptFullName`), with the ones babelfont does not model.
+fn restore_property_order(
+    format_specific: &FormatSpecific,
+    names: &Names,
+    properties: &mut Vec<Property>,
+) {
+    let order: Vec<String> = format_specific.get_parse_or(KEY_PROPERTY_ORDER, Vec::new());
+    if order.iter().any(|key| key == "postscriptFullNames") {
+        for property in properties.iter_mut() {
+            if matches!(
+                property,
+                Property::SingularProperty {
+                    key: glyphs3::SingularPropertyKey::PostscriptFullName,
+                    ..
+                }
+            ) {
+                *property = Property::LocalizedProperty {
+                    key: glyphs3::LocalizedPropertyKey::PostscriptFullNames,
+                    values: (&names.full_name).into(),
+                };
+            }
+        }
+    }
+    let other: Vec<glyphslib::Plist> =
+        format_specific.get_parse_or(KEY_OTHER_PROPERTIES, Vec::new());
+    properties.extend(other.into_iter().map(Property::Junk));
+    if order.is_empty() {
+        return;
+    }
+    properties.sort_by_key(|p| {
+        p.key_name()
+            .and_then(|key| order.iter().position(|o| *o == key))
+            .unwrap_or(usize::MAX)
+    });
+}
+/// Whether a Glyphs 4 axis listed its (localized) `names`.
+const KEY_AXIS_NAMES: &str = "com.schriftgestalt.Glyphs.axisNames";
 pub(crate) const KEY_STEM_VALUES: &str = "com.schriftgestalt.Glyphs.stemValues";
 pub(crate) const KEY_STEMS: &str = "com.schriftgestalt.Glyphs.stems";
 pub(crate) const KEY_USER_DATA: &str = "com.schriftgestalt.Glyphs.userData";
@@ -86,8 +212,16 @@ fn copy_custom_parameters(
 ) {
     for cp in custom_parameters.iter() {
         if let Ok(value) = serde_json::to_value(&cp.value) {
+            // A parameter can be there more than once (several Filter ones):
+            // a repeat gets a key of its own, `Filter#2`, in its place.
+            let mut key = format!("{}{}", KEY_CUSTOM_PARAMETERS, cp.name);
+            let mut repeat = 1;
+            while format_specific.contains_key(&key) {
+                repeat += 1;
+                key = format!("{}{}#{}", KEY_CUSTOM_PARAMETERS, cp.name, repeat);
+            }
             format_specific.insert(
-                format!("{}{}", KEY_CUSTOM_PARAMETERS, cp.name.clone()),
+                key,
                 json!({
                             "value": value,
                             "disabled": cp.disabled,
@@ -95,6 +229,19 @@ fn copy_custom_parameters(
             );
         }
     }
+}
+
+/// The name of the custom parameter stored under `name`: a repeat stored as
+/// `Filter#2` is a `Filter` one.
+fn custom_parameter_name(format_specific: &FormatSpecific, name: &str) -> String {
+    if let Some((base, repeat)) = name.rsplit_once('#') {
+        if repeat.parse::<u32>().is_ok_and(|n| n >= 2)
+            && format_specific.contains_key(&format!("{}{}", KEY_CUSTOM_PARAMETERS, base))
+        {
+            return base.to_string();
+        }
+    }
+    name.to_string()
 }
 
 fn get_cp<'a>(format_specific: &'a FormatSpecific, name: &str) -> Option<&'a serde_json::Value> {
@@ -108,7 +255,10 @@ fn serialize_custom_parameters(
         .iter()
         .filter_map(|(key, value)| {
             if key.starts_with(KEY_CUSTOM_PARAMETERS) {
-                let name = key.trim_start_matches(KEY_CUSTOM_PARAMETERS).to_string();
+                let name = custom_parameter_name(
+                    format_specific,
+                    key.trim_start_matches(KEY_CUSTOM_PARAMETERS),
+                );
                 Some(glyphslib::common::CustomParameter {
                     name,
                     value: value
@@ -137,11 +287,13 @@ pub(crate) fn color_from_json(value: &serde_json::Value) -> Option<glyphslib::co
         return Some(glyphslib::common::Color::ColorInt(index as u8));
     }
     let array = value.as_array()?;
-    // Glyphs 4 palette reference.
+    // A palette reference. Its alpha is stored like a tuple's components,
+    // as Glyphs 3 writes it (0..255); fonts stored before that hold 0..1.
     if array.first().and_then(|v| v.as_str()) == Some("p") {
+        let alpha = array.get(2).and_then(|v| v.as_f64()).unwrap_or(255.0);
         return Some(glyphslib::common::Color::ColorPaletteIndex {
             index: array.get(1).and_then(|v| v.as_u64()).unwrap_or(0) as u16,
-            alpha: array.get(2).and_then(|v| v.as_f64()).unwrap_or(1.0),
+            alpha: if alpha > 1.0 { alpha / 255.0 } else { alpha },
         });
     }
     // A colour tuple. It was stored scaled to 0..255, so unscale it.
@@ -194,6 +346,95 @@ pub fn load_package_entries(
     _load(&glyphs_font, path)
 }
 
+/// What [`save_package_entries`] writes.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct PackageSaveRequest<'a> {
+    /// Write only the files of these glyphs, plus the font-level files when
+    /// `font_level` is set. A named glyph the font no longer has is listed
+    /// in [`PackageEntries::removed`]. `None` writes the whole package.
+    pub glyphs: Option<&'a [String]>,
+    /// In a partial save, also write `fontinfo.plist`, `order.plist` and
+    /// `UIState.plist`, and in a Glyphs 4 package `kerning.plist`, `note.md`
+    /// and `features/*.fea`.
+    pub font_level: bool,
+}
+
+/// `.glyphspackage` files as text, by path relative to the package.
+#[derive(Debug, Default, Clone, serde::Serialize)]
+pub struct PackageEntries {
+    /// Files to write.
+    pub files: BTreeMap<String, String>,
+    /// In a partial save, files that should no longer exist. A full save
+    /// lists none: anything it does not write is stale.
+    pub removed: Vec<String>,
+}
+
+/// Save a font as `.glyphspackage` file entries, the whole package or the
+/// files of some glyphs. A glyph file comes out the same either way.
+pub fn save_package_entries(
+    font: &Font,
+    request: PackageSaveRequest,
+) -> Result<PackageEntries, BabelfontError> {
+    let package = font.as_glyphslib()?;
+    let to_error = |e: Box<dyn std::error::Error>| BabelfontError::General(e.to_string());
+    let mut entries = PackageEntries::default();
+    let Some(names) = request.glyphs else {
+        entries.files = package.to_package_entries().map_err(to_error)?;
+        return Ok(entries);
+    };
+    for name in names {
+        match package.package_glyph_entry(name).map_err(to_error)? {
+            Some((path, text)) => {
+                entries.files.insert(path, text);
+            }
+            None => entries.removed.push(glyphslib::package_glyph_path(name)),
+        }
+    }
+    if request.font_level {
+        for (path, text) in package.to_package_entries().map_err(to_error)? {
+            if !path.starts_with("glyphs/") {
+                entries.files.insert(path, text);
+            }
+        }
+        // Files a package only has when there is something to put in them.
+        for file in ["UIState.plist", "kerning.plist", "note.md"] {
+            if !entries.files.contains_key(file) {
+                entries.removed.push(file.to_string());
+            }
+        }
+    }
+    Ok(entries)
+}
+
+/// Loads glyphs from their `.glyphspackage` files alone, with the font
+/// context of the package's `fontinfo.plist`, to pick up a change to a few
+/// glyph files without reading the whole package.
+///
+/// `glyph_files` holds `glyphs/<file>.glyph` contents by path. The result is
+/// a font with just those glyphs, and kerning groups only for them.
+pub fn load_package_glyphs(
+    fontinfo: &str,
+    glyph_files: &HashMap<String, String>,
+) -> Result<Font, BabelfontError> {
+    let mut names = vec![];
+    for (path, text) in glyph_files {
+        let plist = glyphslib::Plist::parse(text)
+            .map_err(|e| BabelfontError::PlistParse(format!("{path}: {e}")))?;
+        let name = plist
+            .get("glyphname")
+            .and_then(|n| n.as_str())
+            .ok_or_else(|| BabelfontError::PlistParse(format!("{path} has no glyphname")))?;
+        names.push(glyphslib::Plist::String(name.to_string()));
+    }
+    let mut entries: HashMap<String, String> = glyph_files.clone();
+    entries.insert("fontinfo.plist".to_string(), fontinfo.to_string());
+    entries.insert(
+        "order.plist".to_string(),
+        glyphslib::Plist::Array(names).to_string(),
+    );
+    load_package_entries(PathBuf::from("glyphs.glyphspackage"), &entries)
+}
+
 fn _load(glyphs_font: &glyphslib::Font, path: PathBuf) -> Result<Font, BabelfontError> {
     let mut font = Font::new();
     let glyphs2 = glyphs_font.as_glyphs2();
@@ -214,13 +455,16 @@ fn _load(glyphs_font: &glyphslib::Font, path: PathBuf) -> Result<Font, Babelfont
         serde_json::json!(source_format_version),
     );
     let mut upgraded = glyphs_font.clone();
-    let glyphs_font = if glyphs_font.as_glyphs2().is_some() {
+    if glyphs_font.as_glyphs2().is_some() {
         upgraded.upgrade_in_place();
-        upgraded.as_glyphs3()
-    } else {
-        glyphs_font.as_glyphs3()
     }
-    .ok_or(BabelfontError::WrongConvertor { path })?;
+    // Smart Glyph properties are read the Glyphs 3 way.
+    if let glyphslib::Font::Glyphs3(glyphs3) = &mut upgraded {
+        glyphs3.convert_smart_glyphs(3);
+    }
+    let glyphs_font = upgraded
+        .as_glyphs3()
+        .ok_or(BabelfontError::WrongConvertor { path })?;
     // App version
     font.format_specific.insert(
         KEY_APP_VERSION.into(),
@@ -235,11 +479,22 @@ fn _load(glyphs_font: &glyphslib::Font, path: PathBuf) -> Result<Font, Babelfont
     font.axes = glyphs_font
         .axes
         .iter()
-        .map(|axis| Axis {
-            tag: Tag::from_str(&axis.tag).unwrap_or_else(|_| Tag::new(b"????")),
-            name: axis.name.clone().into(),
-            hidden: axis.hidden,
-            ..Default::default()
+        .map(|axis| {
+            let mut out = Axis {
+                tag: Tag::from_str(&axis.tag).unwrap_or_else(|_| Tag::new(b"????")),
+                name: axis.name.clone().into(),
+                hidden: axis.hidden,
+                ..Default::default()
+            };
+            // Glyphs 4 can name an axis in several languages.
+            if !axis.names.is_empty() {
+                for name in &axis.names {
+                    out.name.insert(name.language.clone(), name.value.clone());
+                }
+                out.format_specific
+                    .insert(KEY_AXIS_NAMES.into(), serde_json::Value::Bool(true));
+            }
+            out
         })
         .collect();
     let axes_order = font.axes.iter().map(|a| a.tag).collect::<Vec<Tag>>();
@@ -249,6 +504,18 @@ fn _load(glyphs_font: &glyphslib::Font, path: PathBuf) -> Result<Font, Babelfont
         .iter()
         .map(|c| (SmolStr::new(&c.name), c.into()))
         .collect();
+    stash_repeats(
+        &mut font.format_specific,
+        KEY_REPEATED_CLASSES,
+        &glyphs_font.classes,
+        |c| &c.name,
+    );
+    stash_repeats(
+        &mut font.format_specific,
+        KEY_REPEATED_PREFIXES,
+        &glyphs_font.feature_prefixes,
+        |p| &p.name,
+    );
     // Custom parameters
     copy_custom_parameters(&mut font.format_specific, &glyphs_font.custom_parameters);
     // Date
@@ -269,6 +536,17 @@ fn _load(glyphs_font: &glyphslib::Font, path: PathBuf) -> Result<Font, Babelfont
         font.features
             .features
             .push((SmolStr::new(&feature.tag), feature.into()));
+    }
+    // Names of metrics that have a type as well
+    let metric_names: BTreeMap<String, String> = glyphs_font
+        .metrics
+        .iter()
+        .filter(|m| !m.name.is_empty())
+        .filter_map(|m| Some((metric_key(m)?, m.name.clone())))
+        .collect();
+    if !metric_names.is_empty() {
+        font.format_specific
+            .insert_json(KEY_METRIC_NAMES, &metric_names);
     }
     // Masters
     font.masters = glyphs_font
@@ -308,11 +586,12 @@ fn _load(glyphs_font: &glyphslib::Font, path: PathBuf) -> Result<Font, Babelfont
         &mut font.custom_ot_values,
         &glyphs_font.properties,
     );
-    // Settings
-    font.format_specific.insert(
-        KEY_SETTINGS.into(),
-        serde_json::to_value(&glyphs_font.settings).unwrap_or(serde_json::Value::Null),
-    );
+    stash_property_order(&mut font.format_specific, &glyphs_font.properties);
+    // Settings, all of them: some are only written to Glyphs 4 files.
+    font.format_specific.insert(KEY_SETTINGS.into(), {
+        let _all_settings = glyphslib::common::with_format_version(4);
+        serde_json::to_value(&glyphs_font.settings).unwrap_or(serde_json::Value::Null)
+    });
 
     // Stems
     if !glyphs_font.stems.is_empty() {
@@ -417,6 +696,19 @@ fn load_instance(font: &Font, instance: &glyphs3::Instance) -> crate::Instance {
         &mut custom_ot_values, // XXX
         &instance.properties,
     );
+    stash_property_order(&mut format_specific, &instance.properties);
+    // Glyphs 4 keeps the instance's name as the dflt style name; it is the
+    // name, not a localization of it.
+    if names.typographic_subfamily.0.len() == 1
+        && names.typographic_subfamily.get_default() == Some(&instance.name)
+        && font
+            .format_specific
+            .get(KEY_FORMAT_VERSION)
+            .and_then(|v| v.as_i64())
+            .is_some_and(|v| v >= 4)
+    {
+        names.typographic_subfamily = Default::default();
+    }
     // There may be a familyName custom parameter
     if names.family_name.is_empty() {
         if let Some(family_name) =
@@ -436,7 +728,30 @@ fn load_instance(font: &Font, instance: &glyphs3::Instance) -> crate::Instance {
     }
 }
 
+/// A Glyphs 4 instance id: the instance's own, unless it is just the
+/// instance's name (as for an instance from Glyphs 3, a designspace or a
+/// UFO). Then a UUID, as Glyphs makes them, derived from the name and the
+/// instance's position, so that it is unique and the same on every save.
+fn glyphs4_instance_id(index: usize, instance: &crate::Instance) -> String {
+    let id = instance.id.as_str();
+    if instance.name.get_default().map(String::as_str) != Some(id) {
+        return id.to_string();
+    }
+    use std::hash::{Hash, Hasher};
+    let mut bytes = [0u8; 16];
+    for (half, salt) in [(0usize, "babelfont"), (8, "instance")] {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        (salt, index, id).hash(&mut hasher);
+        bytes[half..half + 8].copy_from_slice(&hasher.finish().to_le_bytes());
+    }
+    uuid::Builder::from_random_bytes(bytes)
+        .into_uuid()
+        .to_string()
+        .to_uppercase()
+}
+
 fn save_instance(
+    index: usize,
     instance: &crate::Instance,
     axes: &[Axis],
     weight_class: Option<i32>,
@@ -459,7 +774,7 @@ fn save_instance(
     let format_specific = &instance.format_specific;
     glyphs3::Instance {
         id: if format_version > 3 {
-            Some(instance.id.clone())
+            Some(glyphs4_instance_id(index, instance))
         } else {
             None
         },
@@ -501,7 +816,53 @@ fn save_instance(
         is_bold: instance.format_specific.get_bool_or(KEY_IS_BOLD, false),
         is_italic: instance.format_specific.get_bool_or(KEY_IS_ITALIC, false),
         manual_interpolation: format_specific.get_bool(KEY_INSTANCE_MANUAL_INTERPOLATION),
-        properties: save_properties(&instance.custom_names, &CustomOTValues::default()),
+        properties: {
+            let mut properties =
+                save_properties(&instance.custom_names, &CustomOTValues::default(), true);
+            // A family name that came from the familyName custom parameter
+            // stays there alone.
+            let from_parameter = enabled_cp_value(format_specific, "familyName")
+                .and_then(|v| v.as_str())
+                .is_some_and(|name| {
+                    instance.custom_names.family_name.is_single()
+                        && instance
+                            .custom_names
+                            .family_name
+                            .get_default()
+                            .map(String::as_str)
+                            == Some(name)
+                });
+            if from_parameter {
+                properties.retain(|p| {
+                    !matches!(
+                        p,
+                        glyphs3::Property::LocalizedProperty {
+                            key: glyphs3::LocalizedPropertyKey::FamilyNames,
+                            ..
+                        }
+                    )
+                });
+            }
+            restore_property_order(format_specific, &instance.custom_names, &mut properties);
+            // Glyphs 3 has the name; style names that only repeat it go, as
+            // Glyphs 4 leaves them out of a Glyphs 3 file.
+            if format_version < 4 {
+                let name = instance.name.get_default().cloned().unwrap_or_default();
+                for property in properties.iter_mut() {
+                    if let glyphs3::Property::LocalizedProperty {
+                        key: glyphs3::LocalizedPropertyKey::StyleNames,
+                        values,
+                    } = property
+                    {
+                        values.retain(|v| v.value != name);
+                    }
+                }
+                properties.retain(|p| {
+                    !matches!(p, glyphs3::Property::LocalizedProperty { values, .. } if values.is_empty())
+                });
+            }
+            properties
+        },
         export_type: format_specific
             .get_parse_opt::<glyphslib::glyphs3::ExportType>(KEY_INSTANCE_EXPORT_TYPE)
             .unwrap_or(if instance.variable {
@@ -565,7 +926,12 @@ fn load_properties(
                     );
                 }
                 match key {
-                    glyphs3::LocalizedPropertyKey::FamilyNames => names.family_name = value,
+                    // Added to the name from `familyName`, which is the default.
+                    glyphs3::LocalizedPropertyKey::FamilyNames => {
+                        for (language, name) in value.0 {
+                            names.family_name.insert(language, name);
+                        }
+                    }
                     glyphs3::LocalizedPropertyKey::Copyrights => names.copyright = value,
                     glyphs3::LocalizedPropertyKey::Designers => names.designer = value,
                     glyphs3::LocalizedPropertyKey::Manufacturers => names.manufacturer = value,
@@ -582,14 +948,18 @@ fn load_properties(
                     glyphs3::LocalizedPropertyKey::PostscriptFullNames => names.full_name = value,
                 }
             }
-            glyphs3::Property::Junk(plist) => {
-                log::warn!("Ignoring junk property in Glyphs3 font: {:?}", plist);
-            }
+            // Kept as read (see `stash_property_order`).
+            glyphs3::Property::Junk(_) => {}
         }
     }
 }
 
-fn save_properties(names: &Names, custom_ot_values: &CustomOTValues) -> Vec<glyphs3::Property> {
+/// The Glyphs properties of `names`; an instance's are `for_instance`.
+fn save_properties(
+    names: &Names,
+    custom_ot_values: &CustomOTValues,
+    for_instance: bool,
+) -> Vec<glyphs3::Property> {
     let mut properties: Vec<glyphs3::Property> = vec![];
 
     // Macro for singular-only properties (no localized variant). These
@@ -640,12 +1010,17 @@ fn save_properties(names: &Names, custom_ot_values: &CustomOTValues) -> Vec<glyp
     );
 
     // Localized-only properties
-    // Only do family name if there's more than one language
-    if !names.family_name.is_single() {
+    // The font's family name has a key of its own (familyName), so only its
+    // other languages go here; an instance's lives only here.
+    if for_instance {
         push_localized!(
             names.family_name,
             glyphs3::LocalizedPropertyKey::FamilyNames
         );
+    } else {
+        let mut others = names.family_name.clone();
+        others.0.shift_remove("dflt");
+        push_localized!(others, glyphs3::LocalizedPropertyKey::FamilyNames);
     }
 
     push_localized!(names.license, glyphs3::LocalizedPropertyKey::Licenses);
@@ -696,7 +1071,8 @@ fn save_properties(names: &Names, custom_ot_values: &CustomOTValues) -> Vec<glyp
     if let Some(vendor_id) = custom_ot_values.os2_vendor_id {
         properties.push(glyphs3::Property::SingularProperty {
             key: glyphs3::SingularPropertyKey::VendorID,
-            value: vendor_id.to_string(),
+            // Glyphs writes it without the padding to four characters.
+            value: vendor_id.to_string().trim_end().to_string(),
         });
     }
     push_singular!(names.version, glyphs3::SingularPropertyKey::VersionString);
@@ -1394,11 +1770,75 @@ fn interpret_axes(font: &mut Font) -> Result<(), BabelfontError> {
         });
     }
 
-    // The mapping now lives in `axis.map`; drop the stashed custom parameter
-    font.format_specific
-        .remove(&format!("{}{}", KEY_CUSTOM_PARAMETERS, "Axis Mappings"));
+    // The mapping now lives in `axis.map`. The custom parameter stays, to be
+    // written back as it was while it still says the same (see
+    // `stashed_axis_mappings_hold`).
 
     Ok(())
+}
+
+/// The first Glyphs build that reads `Axis Mappings` as written.
+const FIRST_BUILD_KEEPING_AXIS_MAPPINGS: u32 = 3168;
+
+/// The `.appVersion` to write. Glyphs swaps the keys and values of `Axis
+/// Mappings` when it opens a file whose build is 3167 or earlier, or is
+/// empty or not a number. Babelfont, like fontc and glyphsLib, reads the
+/// mapping as written, so a file that carries one gets a build at which
+/// Glyphs reads it the same way. Comparing Glyphs 4.1.1's saves of 119 old
+/// Glyphs 3 sources with and without a raised build showed no other change.
+fn app_version_for_axis_mappings(
+    app_version: String,
+    custom_parameters: &[glyphslib::common::CustomParameter],
+) -> String {
+    let has_axis_mappings = custom_parameters
+        .iter()
+        .any(|cp| cp.name == "Axis Mappings");
+    let old_build = app_version
+        .trim()
+        .parse::<u32>()
+        .map_or(true, |build| build < FIRST_BUILD_KEEPING_AXIS_MAPPINGS);
+    if has_axis_mappings && old_build {
+        FIRST_BUILD_KEEPING_AXIS_MAPPINGS.to_string()
+    } else {
+        app_version
+    }
+}
+
+/// Whether the font's `Axis Mappings` custom parameter, as read, still says
+/// what the axes' maps say, or is disabled and so says nothing. Then it is
+/// written back unchanged, in its place.
+fn stashed_axis_mappings_hold(font: &Font) -> bool {
+    let key = format!("{}{}", KEY_CUSTOM_PARAMETERS, "Axis Mappings");
+    let Some(stashed) = font.format_specific.get(&key) else {
+        return false;
+    };
+    let Some(mappings) = enabled_cp_value(&font.format_specific, "Axis Mappings") else {
+        // Disabled: it does not decide the mapping.
+        return stashed.is_object();
+    };
+    let sorted = |mut pairs: Vec<(f64, f64)>| {
+        pairs.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        pairs
+    };
+    let is_identity = |pairs: &[(f64, f64)]| pairs.iter().all(|(u, d)| u == d);
+    font.axes.iter().all(|axis| {
+        let ours = sorted(
+            axis.map
+                .iter()
+                .flatten()
+                .map(|(user, design)| (user.to_f64(), design.to_f64()))
+                .collect(),
+        );
+        let theirs = sorted(explicit_axis_mapping(mappings, axis.tag).unwrap_or_default());
+        if is_identity(&ours) && is_identity(&theirs) {
+            return true;
+        }
+        ours.len() == theirs.len()
+            && ours
+                .iter()
+                .zip(&theirs)
+                .all(|(a, b)| (a.0 - b.0).abs() < 1e-6 && (a.1 - b.1).abs() < 1e-6)
+    })
 }
 
 /// If the axis mapping is not derivable from the masters and instances,
@@ -1571,19 +2011,21 @@ fn restore_glyphs2_component_transforms(font: &mut Font, glyphs2: &glyphslib::gl
 pub(crate) fn as_glyphs3(font: &Font) -> Result<glyphs3::Glyphs3, BabelfontError> {
     // Do some cleanups.
     let mut font = font.clone();
-    // The Glyphs file format version to write. We remember the version we read
-    // (see `_load`); fonts we build ourselves default to Glyphs 3. Glyphs 2 is
-    // never written, because a Glyphs 2 font is upgraded on load.
-    let format_version = font
-        .format_specific
-        .get(KEY_FORMAT_VERSION)
-        .and_then(|v| {
-            v.as_i64()
-                .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
-        })
-        .map(|v| v as i32)
-        .unwrap_or(3)
-        .max(3);
+    // The Glyphs file format version to write: the one asked for, else the
+    // version we read (see `_load`); fonts we build ourselves default to
+    // Glyphs 3. Glyphs 2 is never written, because a Glyphs 2 font is upgraded
+    // on load.
+    let version_of = |key: &str| {
+        font.format_specific
+            .get(key)
+            .and_then(|v| {
+                v.as_i64()
+                    .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+            })
+            .map(|v| (v as i32).max(3))
+    };
+    let read_version = version_of(KEY_FORMAT_VERSION).unwrap_or(3);
+    let format_version = version_of(KEY_SAVE_FORMAT_VERSION).unwrap_or(read_version);
     // Express the native vertical metrics in Glyphs terms.
     babelfont_vertical_metrics_to_glyphs(&mut font);
     // #[allow(clippy::unwrap_used)] // Surely this can't fail
@@ -1594,10 +2036,15 @@ pub(crate) fn as_glyphs3(font: &Font) -> Result<glyphs3::Glyphs3, BabelfontError
         .axes
         .iter()
         .map(|ax| glyphs3::Axis {
+            default: None,
             hidden: ax.hidden,
             name: ax.name(),
             tag: ax.tag.to_string(),
-            names: if format_version > 3 {
+            // Glyphs 4 lists them where the font did, or where there is more
+            // than the name itself.
+            names: if format_version > 3
+                && (ax.format_specific.get_bool_or(KEY_AXIS_NAMES, false) || !ax.name.is_single())
+            {
                 (&ax.name).into()
             } else {
                 vec![]
@@ -1637,18 +2084,26 @@ pub(crate) fn as_glyphs3(font: &Font) -> Result<glyphs3::Glyphs3, BabelfontError
     let display_strings: Vec<String> = font
         .format_specific
         .get_parse_or(KEY_DISPLAY_STRINGS, Vec::new());
-    let classes = font
-        .features
-        .classes
-        .iter()
-        .map(|(name, members)| members.to_featureclass(name))
-        .collect();
-    let feature_prefixes = font
-        .features
-        .prefixes
-        .iter()
-        .map(|(name, code)| code.to_featureprefix(name))
-        .collect();
+    let classes = restore_repeats(
+        &font.format_specific,
+        KEY_REPEATED_CLASSES,
+        font.features
+            .classes
+            .iter()
+            .map(|(name, members)| members.to_featureclass(name))
+            .collect(),
+        |c: &glyphslib::common::FeatureClass| &c.name,
+    );
+    let feature_prefixes = restore_repeats(
+        &font.format_specific,
+        KEY_REPEATED_PREFIXES,
+        font.features
+            .prefixes
+            .iter()
+            .map(|(name, code)| code.to_featureprefix(name))
+            .collect(),
+        |p: &glyphslib::common::FeaturePrefix| &p.name,
+    );
     let features = font
         .features
         .features
@@ -1660,10 +2115,13 @@ pub(crate) fn as_glyphs3(font: &Font) -> Result<glyphs3::Glyphs3, BabelfontError
     let mut custom_parameters = serialize_custom_parameters(&font.format_specific);
     // Now overlay any font-level custom parameters in the font structure (custom_ot_values etc)
     export_font_level_cps(&mut custom_parameters, &mut font)?;
-    // Drop the font's Axis Mappings in favour of the authoritative axis.map
-    custom_parameters.retain(|cp| cp.name != "Axis Mappings");
-    if let Some(axis_mappings) = axis_mappings_custom_parameter(&font) {
-        custom_parameters.push(axis_mappings);
+    // The font's Axis Mappings as read, while it still says what axis.map
+    // says; otherwise one from the authoritative axis.map, if it is needed.
+    if !stashed_axis_mappings_hold(&font) {
+        custom_parameters.retain(|cp| cp.name != "Axis Mappings");
+        if let Some(axis_mappings) = axis_mappings_custom_parameter(&font) {
+            custom_parameters.push(axis_mappings);
+        }
     }
 
     let family_name = font
@@ -1722,7 +2180,8 @@ pub(crate) fn as_glyphs3(font: &Font) -> Result<glyphs3::Glyphs3, BabelfontError
 
     let axes_order = font.axes.iter().map(|a| a.tag).collect::<Vec<_>>();
 
-    let properties = save_properties(&font.names, &font.custom_ot_values);
+    let mut properties = save_properties(&font.names, &font.custom_ot_values, false);
+    restore_property_order(&font.format_specific, &font.names, &mut properties);
     let mut glyph_to_first_kern_group = HashMap::new();
     let mut glyph_to_second_kern_group = HashMap::new();
     for (group, glyph) in font.first_kern_groups.iter() {
@@ -1749,7 +2208,8 @@ pub(crate) fn as_glyphs3(font: &Font) -> Result<glyphs3::Glyphs3, BabelfontError
             glyph_to_second_kern_group.insert(glyph_name.clone(), group.clone());
         }
     }
-    let glyphs_font = glyphs3::Glyphs3 {
+    let app_version = app_version_for_axis_mappings(app_version, &custom_parameters);
+    let mut glyphs_font = glyphs3::Glyphs3 {
         app_version,
         format_version,
         display_strings,
@@ -1776,8 +2236,10 @@ pub(crate) fn as_glyphs3(font: &Font) -> Result<glyphs3::Glyphs3, BabelfontError
         instances: font
             .instances
             .iter()
-            .map(|x| {
+            .enumerate()
+            .map(|(index, x)| {
                 save_instance(
+                    index,
                     x,
                     &font.axes,
                     font.custom_ot_values.os2_us_weight_class.map(|w| w as i32),
@@ -1797,7 +2259,21 @@ pub(crate) fn as_glyphs3(font: &Font) -> Result<glyphs3::Glyphs3, BabelfontError
             .format_specific
             .get_parse_or(KEY_KERNING_VERTICAL, BTreeMap::new()),
         masters,
-        metrics: our_metrics.iter().map(Into::into).collect(),
+        metrics: {
+            let names: BTreeMap<String, String> = font
+                .format_specific
+                .get_parse_or(KEY_METRIC_NAMES, BTreeMap::new());
+            our_metrics
+                .iter()
+                .map(|m| {
+                    let mut metric: glyphs3::Metric = m.into();
+                    if let Some(name) = metric_key(&metric).and_then(|key| names.get(&key)) {
+                        metric.name = name.clone();
+                    }
+                    metric
+                })
+                .collect()
+        },
         note: font.note.clone().unwrap_or_default(),
         numbers,
         properties,
@@ -1814,6 +2290,17 @@ pub(crate) fn as_glyphs3(font: &Font) -> Result<glyphs3::Glyphs3, BabelfontError
             .and_then(|x| serde_json::from_value::<UserData>(x.clone()).ok())
             .unwrap_or_default(),
     };
+    // Path attributes are kept as read; some mean something else in the
+    // other version.
+    glyphs_font.convert_format_version(read_version, format_version);
+    // The Smart Glyph properties, kept the Glyphs 3 way (see `_load`).
+    if format_version >= 4 {
+        glyphs_font.convert_smart_glyphs(4);
+    }
+    // Glyphs 4 states the color space of a font it upgrades.
+    if read_version < 4 && format_version >= 4 && glyphs_font.settings.color_space.is_none() {
+        glyphs_font.settings.color_space = Some("apple-rgb".to_string());
+    }
     Ok(glyphs_font)
 }
 
@@ -1899,6 +2386,125 @@ fn save_master(
     }
 }
 
+#[cfg(test)]
+mod package_entry_tests {
+    #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
+    use super::*;
+    use crate::convertors::ufo::tests::read_tree;
+
+    const PACKAGE: &str = "resources/NotoSans.glyphspackage";
+
+    fn load(entries: &HashMap<String, String>) -> Font {
+        load_package_entries(PathBuf::from("NotoSans.glyphspackage"), entries).unwrap()
+    }
+
+    #[test]
+    fn package_round_trips_and_is_stable() {
+        let original = read_tree(PACKAGE);
+        let font = load(&original);
+        let saved = save_package_entries(&font, PackageSaveRequest::default()).unwrap();
+        assert!(saved.removed.is_empty());
+        for path in original.keys().filter(|p| p.starts_with("glyphs/")) {
+            assert!(saved.files.contains_key(path), "{path} missing");
+        }
+        let reloaded = load(&saved.files.clone().into_iter().collect());
+        assert_eq!(reloaded.glyphs.len(), font.glyphs.len());
+        for (reloaded, glyph) in reloaded.glyphs.iter().zip(font.glyphs.iter()) {
+            assert_eq!(reloaded, glyph, "{} differs", glyph.name);
+        }
+        assert_eq!(reloaded.masters, font.masters);
+        assert_eq!(reloaded.first_kern_groups, font.first_kern_groups);
+        assert_eq!(reloaded.features.to_fea(), font.features.to_fea());
+        let again = save_package_entries(&reloaded, PackageSaveRequest::default()).unwrap();
+        assert_eq!(again.files, saved.files);
+    }
+
+    #[test]
+    fn partial_package_save_matches_a_full_save() {
+        let mut font = load(&read_tree(PACKAGE));
+        font.glyphs.get_mut("A").unwrap().layers[0].width += 10.0;
+        let full = save_package_entries(&font, PackageSaveRequest::default()).unwrap();
+        let names = ["A".to_string(), "no-such-glyph".to_string()];
+        let partial = save_package_entries(
+            &font,
+            PackageSaveRequest {
+                glyphs: Some(&names),
+                font_level: false,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            partial.files.keys().collect::<Vec<_>>(),
+            ["glyphs/A_.glyph"]
+        );
+        assert_eq!(
+            partial.files["glyphs/A_.glyph"],
+            full.files["glyphs/A_.glyph"]
+        );
+        assert_eq!(partial.removed, ["glyphs/no-such-glyph.glyph"]);
+
+        let partial = save_package_entries(
+            &font,
+            PackageSaveRequest {
+                glyphs: Some(&names[..1]),
+                font_level: true,
+            },
+        )
+        .unwrap();
+        for file in ["fontinfo.plist", "order.plist"] {
+            assert_eq!(partial.files[file], full.files[file], "{file}");
+        }
+    }
+
+    #[test]
+    fn glyphs4_package_round_trips() {
+        let mut glyphs = glyphslib::Font::load_package_entries(&read_tree(PACKAGE)).unwrap();
+        if let glyphslib::Font::Glyphs3(glyphs3) = &mut glyphs {
+            glyphs3.format_version = 4;
+            glyphs3.note = "A note".to_string();
+        }
+        let package: HashMap<String, String> =
+            glyphs.to_package_entries().unwrap().into_iter().collect();
+        assert!(package.keys().any(|p| p.starts_with("features/")));
+        assert!(package.contains_key("kerning.plist"));
+
+        let font = load(&package);
+        assert_eq!(font.note.as_deref(), Some("A note"));
+        let saved = save_package_entries(&font, PackageSaveRequest::default()).unwrap();
+        let mut saved_paths: Vec<_> = saved.files.keys().collect();
+        let mut package_paths: Vec<_> = package.keys().collect();
+        saved_paths.sort();
+        package_paths.sort();
+        assert_eq!(saved_paths, package_paths);
+        for path in saved
+            .files
+            .keys()
+            .filter(|p| !p.ends_with("fontinfo.plist"))
+        {
+            assert_eq!(saved.files[path], package[path], "{path} differs");
+        }
+        let reloaded = load(&saved.files.clone().into_iter().collect());
+        assert_eq!(reloaded.glyphs, font.glyphs);
+        assert_eq!(reloaded.features.to_fea(), font.features.to_fea());
+        assert_eq!(reloaded.masters, font.masters);
+    }
+
+    #[test]
+    fn glyphs_load_from_their_package_files_alone() {
+        let original = read_tree(PACKAGE);
+        let font = load(&original);
+        let files: HashMap<String, String> = ["glyphs/A_.glyph", "glyphs/a.glyph"]
+            .iter()
+            .map(|p| (p.to_string(), original[*p].clone()))
+            .collect();
+        let partial = load_package_glyphs(&original["fontinfo.plist"], &files).unwrap();
+        assert_eq!(partial.glyphs.len(), 2);
+        for glyph in partial.glyphs.iter() {
+            assert_eq!(glyph, font.glyphs.get(&glyph.name).unwrap());
+        }
+    }
+}
+
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 #[cfg(test)]
 mod tests {
@@ -1919,7 +2525,7 @@ mod tests {
         font.names
             .manufacturer_url
             .insert("ENG".to_string(), "http://example.com/m".to_string());
-        let props = super::save_properties(&font.names, &font.custom_ot_values);
+        let props = super::save_properties(&font.names, &font.custom_ot_values, false);
         let singulars: Vec<_> = props
             .iter()
             .filter_map(|p| match p {
@@ -2168,6 +2774,135 @@ mod tests {
         if diff.ratio() < 1.0 {
             panic!("Roundtrip produced different output");
         }
+    }
+
+    /// Fustat, cut down to a few glyphs, as Glyphs 3 and Glyphs 4 saved it.
+    /// Saving one in the other's file format version gives what Glyphs wrote,
+    /// apart from the app version and the ids Glyphs made up for instances.
+    #[rstest]
+    #[case(
+        "resources/FustatG4-subset.glyphs",
+        3,
+        "resources/Fustat-subset.glyphs"
+    )]
+    #[case(
+        "resources/Fustat-subset.glyphs",
+        4,
+        "resources/FustatG4-subset.glyphs"
+    )]
+    fn test_save_in_other_format_version(
+        #[case] source: &str,
+        #[case] version: i64,
+        #[case] expected: &str,
+    ) {
+        let mut font = load(source.into()).unwrap();
+        font.format_specific
+            .insert(KEY_SAVE_FORMAT_VERSION.into(), serde_json::json!(version));
+        let saved = glyphslib::Font::Glyphs3(as_glyphs3(&font).unwrap());
+        assert_eq!(saved.as_glyphs3().unwrap().format_version, version as i32);
+        let normalize = |text: String| -> Vec<String> {
+            text.lines()
+                .filter(|l| !l.starts_with(".appVersion"))
+                // Glyphs 3 wrote some of these as strings.
+                .map(|l| l.replace("strokePos = \"1\";", "strokePos = 1;"))
+                // Instance ids Glyphs 4 made up; ours are derived.
+                .filter(|l| !(l.starts_with("id = \"") && l.len() == 44))
+                .collect()
+        };
+        let expected = glyphslib::Font::load_str(&fs::read_to_string(expected).unwrap()).unwrap();
+        let ours = normalize(saved.to_string().unwrap());
+        let theirs = normalize(expected.to_string().unwrap());
+        let (theirs, ours) = (theirs.join("\n"), ours.join("\n"));
+        let diff = TextDiff::from_lines(&theirs, &ours);
+        assert!(
+            diff.ratio() == 1.0,
+            "differs from what Glyphs wrote:\n{}",
+            diff.unified_diff()
+        );
+        // Every instance has its own id in Glyphs 4.
+        if version >= 4 {
+            let ids: std::collections::HashSet<_> = saved
+                .as_glyphs3()
+                .unwrap()
+                .instances
+                .iter()
+                .map(|i| i.id.clone().unwrap())
+                .collect();
+            assert_eq!(ids.len(), saved.as_glyphs3().unwrap().instances.len());
+        }
+    }
+
+    /// Excerpts of fonts from Google Fonts' sources as Glyphs 4.1.1 saved
+    /// them in both file format versions (`-3`, `-4`), and its own conversion
+    /// of the Glyphs 4 file back to version 3 (`-4to3`). Together they hold
+    /// what the versions write differently: Smart Glyphs (VT323, aoboshi,
+    /// Marmelad), ghost and cap hints (Yuyu, aoboshi), gradients, colors and
+    /// color palettes (KalniaGlaze), user data of components and guides
+    /// (Estedad, RedHatMono-Italic), stroke positions (BBH-Bogle), localized
+    /// and instance names (aoboshi, Gabarito, Yuyu), repeated classes and
+    /// `:true` settings (NotoSansSamaritan), line caps, which the versions
+    /// number differently (VendSans), node names (Kufam) and a master's
+    /// color palettes (CoralPixels).
+    #[rstest]
+    fn test_save_in_other_format_version_like_glyphs(
+        #[values(
+            "VT323",
+            "aoboshi",
+            "Yuyu",
+            "KalniaGlaze",
+            "Estedad",
+            "RedHatMono-Italic",
+            "NotoSansSamaritan",
+            "Marmelad",
+            "BBH-Bogle",
+            "Gabarito",
+            "VendSans",
+            "Kufam_Latin_Italic_Master",
+            "CoralPixels"
+        )]
+        font: &str,
+        #[values(("3", 4, "4"), ("4", 3, "4to3"), ("3", 3, "3"), ("4", 4, "4"))] case: (
+            &str,
+            i64,
+            &str,
+        ),
+    ) {
+        let (source, version, expected) = case;
+        let path = |tag: &str| format!("resources/glyphs-versions/{font}-{tag}.glyphs");
+        let mut ours = load(path(source).into()).unwrap();
+        ours.format_specific
+            .insert(KEY_SAVE_FORMAT_VERSION.into(), serde_json::json!(version));
+        let ours = glyphslib::Font::Glyphs3(as_glyphs3(&ours).unwrap());
+        let theirs =
+            glyphslib::Font::load_str(&fs::read_to_string(path(expected)).unwrap()).unwrap();
+        // What Glyphs makes up anew on every conversion, and a master's
+        // icon, which Glyphs leaves out where it matches an icon it derives
+        // (`GSFontMaster.defaultIconName`).
+        let made_up = |l: &&str| {
+            l.starts_with(".appVersion")
+                || l.starts_with("lastChange = ")
+                || l.starts_with("iconName = ")
+                || (l.starts_with("id = \"") && l.len() == 44)
+        };
+        let normalize = |font: &glyphslib::Font| -> String {
+            font.to_string()
+                .unwrap()
+                .lines()
+                .filter(|l| !made_up(l))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        let (mut theirs, ours) = (normalize(&theirs), normalize(&ours));
+        // Glyphs 4 gives Yuyu's instance an English style name of its own.
+        if font == "Yuyu" && source == "3" && version == 4 {
+            theirs = theirs.replace("{\nlanguage = ENG;\nvalue = Regular;\n},\n", "");
+        }
+        let diff = TextDiff::from_lines(&theirs, &ours);
+        assert!(
+            diff.ratio() == 1.0,
+            "{font} {source} -> {version} differs from what Glyphs wrote:\n{}",
+            diff.unified_diff()
+        );
     }
 
     #[test]
@@ -3099,9 +3834,112 @@ instances = ();
 
         // The mapping is folded into the native field...
         assert_eq!(axis_map(&font.axes[0]), vec![(300.0, 1.0), (900.0, 199.0)]);
-        // ...and the custom parameter stash is cleared, so `axis.map` is the
-        // single source of truth for any later export.
-        assert!(super::get_cp(&font.format_specific, "Axis Mappings").is_none());
+        // ...and the custom parameter stays, to be written back as it was
+        // while `axis.map` says the same.
+        assert!(super::get_cp(&font.format_specific, "Axis Mappings").is_some());
+        let saved = as_glyphs3(&font).unwrap();
+        let written: Vec<_> = saved
+            .custom_parameters
+            .iter()
+            .filter(|cp| cp.name == "Axis Mappings")
+            .collect();
+        assert_eq!(written.len(), 1);
+        assert_eq!(
+            serde_json::to_value(&written[0].value).unwrap(),
+            super::get_cp(&font.format_specific, "Axis Mappings").unwrap()["value"]
+        );
+    }
+
+    /// A Glyphs 3 file with the given `.appVersion` line (or none) and,
+    /// optionally, an `Axis Mappings` custom parameter.
+    fn app_version_test_source(app_version_line: &str, axis_mappings: bool) -> String {
+        let custom_parameters = if axis_mappings {
+            "customParameters = (\n{\nname = \"Axis Mappings\";\nvalue = {\nwght = {\n300 = 1;\n900 = 199;\n};\n};\n}\n);\n"
+        } else {
+            ""
+        };
+        format!(
+            "{{\n.formatVersion = 3;\n{app_version_line}familyName = AppVersionTest;\n\
+             date = \"2024-05-08 05:56:55 +0000\";\nunitsPerEm = 1000;\nversionMajor = 1;\n\
+             versionMinor = 0;\naxes = (\n{{\nname = Weight;\ntag = wght;\n}}\n);\n\
+             {custom_parameters}metrics = ();\nfontMaster = (\n{{\nid = m01;\nname = Light;\n\
+             axesValues = (1);\nmetricValues = ();\n}},\n{{\nid = m02;\nname = Black;\n\
+             axesValues = (199);\nmetricValues = ();\n}}\n);\nglyphs = ();\ninstances = ();\n}}\n"
+        )
+    }
+
+    fn written_app_version_and_mapping(source: &str) -> (String, Option<serde_json::Value>) {
+        let saved = as_glyphs3(&load_test_font(source)).unwrap();
+        let mapping = saved
+            .custom_parameters
+            .iter()
+            .find(|cp| cp.name == "Axis Mappings")
+            .map(|cp| serde_json::to_value(&cp.value).unwrap());
+        (saved.app_version, mapping)
+    }
+
+    #[test]
+    fn axis_mappings_from_an_old_build_are_written_for_a_build_that_keeps_them() {
+        // Glyphs swaps the keys and values of Axis Mappings in files from build
+        // 3167 or earlier, or without a build number. Babelfont reads the
+        // mapping as written, so the file it writes must say a build at which
+        // Glyphs reads it the same way.
+        for line in [".appVersion = \"3151\";\n", ".appVersion = \"\";\n", ""] {
+            let (app_version, mapping) =
+                written_app_version_and_mapping(&app_version_test_source(line, true));
+            assert_eq!(app_version, "3168", "for {line:?}");
+            assert_eq!(
+                mapping,
+                Some(serde_json::json!({ "wght": { "300": 1, "900": 199 } })),
+                "the mapping must be written as read, for {line:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn app_version_is_kept_when_glyphs_reads_the_file_as_written() {
+        // A new enough build, with a mapping.
+        let (app_version, _) = written_app_version_and_mapping(&app_version_test_source(
+            ".appVersion = \"3260\";\n",
+            true,
+        ));
+        assert_eq!(app_version, "3260");
+        // An old build without a mapping: nothing for Glyphs to convert.
+        let (app_version, mapping) = written_app_version_and_mapping(&app_version_test_source(
+            ".appVersion = \"3151\";\n",
+            false,
+        ));
+        assert_eq!(app_version, "3151");
+        assert_eq!(mapping, None);
+    }
+
+    #[test]
+    fn a_font_from_another_format_gets_a_build_that_keeps_its_axis_mappings() {
+        // A font that never was a Glyphs file has no build number, which
+        // Glyphs reads as old.
+        let mut font = Font::new();
+        let mut weight = Axis::new("Weight", Tag::new(b"wght"));
+        weight.min = Some(UserCoord::new(300.0));
+        weight.max = Some(UserCoord::new(900.0));
+        weight.default = Some(UserCoord::new(300.0));
+        weight.map = Some(vec![
+            (UserCoord::new(300.0), DesignCoord::new(1.0)),
+            (UserCoord::new(900.0), DesignCoord::new(199.0)),
+        ]);
+        font.axes.push(weight);
+        for (name, id, value) in [("Light", "m01", 1.0), ("Black", "m02", 199.0)] {
+            font.masters.push(Master::new(
+                name,
+                id,
+                DesignLocation::from(vec![(Tag::new(b"wght"), DesignCoord::new(value))]),
+            ));
+        }
+        let glyphs = as_glyphs3(&font).unwrap();
+        assert!(glyphs
+            .custom_parameters
+            .iter()
+            .any(|cp| cp.name == "Axis Mappings"));
+        assert_eq!(glyphs.app_version, "3168");
     }
 
     #[test]

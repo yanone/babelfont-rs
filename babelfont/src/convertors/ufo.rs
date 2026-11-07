@@ -7,9 +7,10 @@ use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
 use fontdrasil::{coords::Location, types::Tag};
 use indexmap::IndexMap;
 use paste::paste;
+use serde::{Deserialize, Serialize};
 use smol_str::{SmolStr, ToSmolStr};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     fs,
     path::{Path as FsPath, PathBuf},
     str::FromStr,
@@ -38,6 +39,175 @@ pub const KEY_IDENTIFIER: &str = "ufo.identifier";
 pub const KEY_ORIGINAL_GUIDE: &str = "ufo.originalGuide";
 /// The glyph lib key holding the y coordinate of a glyph's vertical origin
 pub const KEY_VERTICAL_ORIGIN: &str = "public.verticalOrigin";
+/// Key for a UFO's feature files as authored, see [`FeatureSources`].
+pub const KEY_FEATURE_SOURCES: &str = "norad.featureSources";
+const KEY_GLYPH_ORDER: &str = "public.glyphOrder";
+
+/// Key for the `fontinfo.plist` of the UFO a master comes from. Saving starts
+/// from it, so that the fields babelfont does not model survive.
+pub const KEY_FONTINFO: &str = "norad.fontinfo";
+
+/// The id of a UFO's one master. It is fixed, so that loading a UFO again
+/// gives its master and layers the same ids.
+pub const UFO_MASTER_ID: &str = "ufo-master";
+
+/// A UFO's `features.fea` and the files it `include()`s, as written.
+///
+/// Babelfont works on the flattened features. Saving writes these files back
+/// unchanged, includes and all, as long as the font's features still flatten
+/// to what was loaded; once they are edited, the flattened code is written.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct FeatureSources {
+    root: String,
+    #[serde(default)]
+    includes: BTreeMap<String, String>,
+    fingerprint: String,
+}
+
+/// A stable fingerprint of the flattened feature code (FNV-1a, 64 bit).
+fn features_fingerprint(features: &Features) -> String {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for byte in features.to_fea().bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("{hash:016x}")
+}
+
+/// A UFO's feature files as authored (see [`FeatureSources`]), fingerprinted
+/// against `features`, the font's flattened features they belong with.
+pub(crate) fn feature_sources_for(
+    ufo: &norad::Font,
+    features: &Features,
+) -> Option<serde_json::Value> {
+    if ufo.features.is_empty() && ufo.feature_files.is_empty() {
+        return None;
+    }
+    serde_json::to_value(FeatureSources {
+        root: ufo.features.clone(),
+        includes: ufo
+            .feature_files
+            .iter()
+            .map(|(path, text)| (path.to_string_lossy().replace('\\', "/"), text.clone()))
+            .collect(),
+        fingerprint: features_fingerprint(features),
+    })
+    .ok()
+}
+
+/// The directory and file names of an existing UFO, read from its
+/// `layercontents.plist` and each layer's `contents.plist`, so that saving
+/// over it keeps them instead of deriving new ones.
+#[derive(Debug, Default, Clone)]
+pub struct UfoLayout {
+    /// Layer name and directory, in `layercontents.plist` order.
+    layers: Vec<(String, String)>,
+    /// Glyph name to `.glif` file name, per layer directory.
+    files: HashMap<String, BTreeMap<String, String>>,
+}
+
+impl UfoLayout {
+    /// Reads the layout from UFO file entries keyed by path relative to the
+    /// UFO. Only `layercontents.plist` and the layers' `contents.plist` are
+    /// used; without a `layercontents.plist` the layout is empty.
+    pub fn from_entries(entries: &HashMap<String, String>) -> Result<Self, BabelfontError> {
+        let Some(layer_contents) = entries.get("layercontents.plist") else {
+            return Ok(Self::default());
+        };
+        let layers: Vec<(String, String)> = plist::from_bytes(layer_contents.as_bytes())
+            .map_err(|e| BabelfontError::UfoLoad(format!("layercontents.plist: {e}")))?;
+        let mut files = HashMap::new();
+        for (_, dir) in &layers {
+            let contents_path = format!("{dir}/contents.plist");
+            let contents: BTreeMap<String, String> = match entries.get(&contents_path) {
+                Some(text) => plist::from_bytes(text.as_bytes())
+                    .map_err(|e| BabelfontError::UfoLoad(format!("{contents_path}: {e}")))?,
+                None => BTreeMap::new(),
+            };
+            files.insert(dir.clone(), contents);
+        }
+        Ok(Self { layers, files })
+    }
+
+    /// The layers' names and directories, in `layercontents.plist` order.
+    pub fn layers(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.layers
+            .iter()
+            .map(|(name, dir)| (name.as_str(), dir.as_str()))
+    }
+
+    pub(crate) fn file_name(&self, dir: &str, glyph: &str) -> Option<&str> {
+        self.files.get(dir)?.get(glyph).map(String::as_str)
+    }
+
+    fn has_layer_dir(&self, dir: &str) -> bool {
+        self.files.contains_key(dir)
+    }
+
+    /// The `.glif` paths of `glyph` in every layer, relative to the UFO.
+    pub fn glyph_paths(&self, glyph: &str) -> Vec<String> {
+        self.layers
+            .iter()
+            .filter_map(|(_, dir)| Some(format!("{dir}/{}", self.file_name(dir, glyph)?)))
+            .collect()
+    }
+
+    /// The glyph stored at `path` (`<layer dir>/<file>.glif`), if any.
+    pub fn glyph_at(&self, path: &str) -> Option<&str> {
+        let (dir, file) = path.split_once('/')?;
+        self.files
+            .get(dir)?
+            .iter()
+            .find(|(_, f)| f.as_str() == file)
+            .map(|(glyph, _)| glyph.as_str())
+    }
+}
+
+/// Glyphs number names (font) and values (master), as babelfont keeps them
+/// for a Glyphs source. A UFO has no such thing; they ride in its lib so
+/// that feature code using `$name` compiles the same.
+const KEY_NUMBER_NAMES: &str = "com.schriftgestalt.Glyphs.numberNames";
+const KEY_NUMBER_VALUES: &str = "com.schriftgestalt.Glyphs.numberValues";
+
+/// Writes the font's number names and `master`'s values into a UFO lib.
+pub(crate) fn save_number_values(lib: &mut norad::Plist, font: &Font, master: &Master) {
+    let as_plist = |value: Option<&serde_json::Value>| {
+        value
+            .filter(|v| v.as_array().is_some_and(|a| !a.is_empty()))
+            .and_then(|v| serde_json::from_value::<plist::Value>(v.clone()).ok())
+    };
+    match as_plist(font.format_specific.get(KEY_NUMBER_NAMES)) {
+        Some(names) => {
+            lib.insert(KEY_NUMBER_NAMES.into(), names);
+            match as_plist(master.format_specific.get(KEY_NUMBER_VALUES)) {
+                Some(values) => lib.insert(KEY_NUMBER_VALUES.into(), values),
+                None => lib.remove(KEY_NUMBER_VALUES),
+            };
+        }
+        None => {
+            lib.remove(KEY_NUMBER_NAMES);
+            lib.remove(KEY_NUMBER_VALUES);
+        }
+    }
+}
+
+/// Reads number names and values back from a UFO lib: the names into the
+/// font, if `font` is given, and the values into the master.
+pub(crate) fn load_number_values(
+    lib: &norad::Plist,
+    font: Option<&mut crate::common::FormatSpecific>,
+    master: &mut Master,
+) {
+    let json = |key: &str| lib.get(key).and_then(|v| serde_json::to_value(v).ok());
+    if let (Some(font), Some(names)) = (font, json(KEY_NUMBER_NAMES)) {
+        font.insert(KEY_NUMBER_NAMES.into(), names);
+    }
+    if let Some(values) = json(KEY_NUMBER_VALUES) {
+        master
+            .format_specific
+            .insert(KEY_NUMBER_VALUES.into(), values);
+    }
+}
 
 pub(crate) fn stash_lib(lib: Option<&norad::Plist>) -> crate::common::FormatSpecific {
     let mut fs = crate::common::FormatSpecific::default();
@@ -119,7 +289,7 @@ pub(crate) fn load_norad_from_entries(
     norad::Font::load_from_source(&norad::DataRequest::all(), &source).map_err(Into::into)
 }
 
-fn font_from_norad(
+pub(crate) fn font_from_norad(
     path: &FsPath,
     created_time: Option<DateTime<Utc>>,
     ufo: norad::Font,
@@ -133,10 +303,12 @@ fn font_from_norad(
         info.family_name
             .as_ref()
             .unwrap_or(&"Unnamed master".to_string()),
-        uuid::Uuid::new_v4().to_string(),
+        UFO_MASTER_ID,
         Location::new(),
     );
     load_master_info(&mut master, info);
+    stash_font_info(&mut master, info);
+    load_number_values(&ufo.lib, Some(&mut font.format_specific), &mut master);
     load_kerning(&mut master, &ufo.kerning);
     (font.first_kern_groups, font.second_kern_groups) = load_kern_groups(&ufo.groups);
 
@@ -150,6 +322,10 @@ fn font_from_norad(
     }
     let expanded_features = ufo.features_expanded()?;
     font.features = Features::from_fea(&expanded_features);
+    if let Some(sources) = feature_sources_for(&ufo, &font.features) {
+        font.format_specific
+            .insert(KEY_FEATURE_SOURCES.into(), sources);
+    }
     font.features.include_paths.push(
         path.parent()
             .unwrap_or_else(|| std::path::Path::new("."))
@@ -183,71 +359,149 @@ fn normalize_virtual_path(path: &str) -> Option<String> {
 ///
 /// This is currently unfinished and may not preserve all data.
 pub fn as_norad(font: &Font, master_ix: usize) -> Result<norad::Font, BabelfontError> {
-    let mut ufo = norad::Font::new();
-    // Move some things into lib key before serializing it:
-    let mut lib = font
-        .format_specific
-        .get(KEY_LIB)
-        .unwrap_or_default()
-        .as_object()
-        .unwrap_or(&serde_json::Map::new())
-        .clone();
-    // exports
-    // categories
-    let categories = font
-        .glyphs
-        .iter()
-        .flat_map(|g| match &g.category {
-            GlyphCategory::Base => Some((g.name.to_string(), "base")),
-            GlyphCategory::Ligature => Some((g.name.to_string(), "ligature")),
-            GlyphCategory::Mark => Some((g.name.to_string(), "mark")),
-            GlyphCategory::Unknown => None,
-            GlyphCategory::Custom(x) => Some((g.name.to_string(), x.as_str())),
-        })
-        .collect::<HashMap<_, _>>();
-    let any_non_bases = categories.values().any(|&v| v != "base");
-    if lib.contains_key(KEY_CATEGORIES) || any_non_bases {
-        lib.insert(KEY_CATEGORIES.into(), serde_json::to_value(&categories)?);
-    }
+    as_norad_with_layout(font, master_ix, &[], &UfoLayout::default(), None)
+}
 
-    ufo.lib = serde_json::from_value::<norad::Plist>(lib.into())?;
-    save_uvs_sequences(font, &mut ufo.lib);
+/// Where a converted glyph goes in the UFO.
+enum TargetLayer {
+    Default,
+    Named(String),
+}
+
+/// [`as_norad`], keeping the directory and `.glif` file names of `layout`.
+///
+/// The UFO holds master `master_ix` in its default layer and each master of
+/// `sparse_masters` in the layer named with it, as a Designspace source with a
+/// `layer` has it. A master that keeps its own UFO's lib, features or
+/// fontinfo (a Designspace master other than the default) writes those. With
+/// `only_glyphs`, the layers hold just those glyphs.
+pub(crate) fn as_norad_with_layout(
+    font: &Font,
+    master_ix: usize,
+    sparse_masters: &[(usize, String)],
+    layout: &UfoLayout,
+    only_glyphs: Option<&HashSet<&str>>,
+) -> Result<norad::Font, BabelfontError> {
+    let mut ufo = norad::Font::new();
     let first_master = font
         .masters
         .first()
         .ok_or(BabelfontError::NoDefaultMaster)?;
     let target_master = font.masters.get(master_ix).unwrap_or(first_master);
-    for g in font.glyphs.iter() {
-        for layer in g.layers.iter() {
-            // Backgrounds belong to whichever layer points at them.
-            let owner = if layer.is_background {
-                g.layers
-                    .iter()
-                    .find(|l| l.background_layer_id.is_some() && l.background_layer_id == layer.id)
-            } else {
-                Some(layer)
-            };
-            let Some(owner) = owner else { continue };
-            let belongs_to_master = match &owner.master {
-                LayerType::DefaultForMaster(id) => id == &target_master.id,
-                LayerType::AssociatedWithMaster(_) => {
-                    owner.id.as_deref() == Some(target_master.id.as_str())
-                }
-                LayerType::FreeFloating => master_ix == 0 && !layer.is_background,
-            };
-            if !belongs_to_master {
-                continue;
+    let plist = |value: Option<&serde_json::Value>| {
+        value.and_then(|x| serde_json::from_value::<norad::Plist>(x.clone()).ok())
+    };
+    // Move some things into lib key before serializing it:
+    // exports
+    // categories
+    let font_lib = plist(font.format_specific.get(KEY_LIB)).unwrap_or_default();
+    let updates = glyph_lib_updates(font, &font_lib);
+    match plist(target_master.format_specific.get(KEY_LIB)) {
+        // A master's own UFO lib only changes where the font's glyph
+        // metadata did.
+        Some(master_lib) => ufo.lib = master_lib,
+        None => {
+            ufo.lib = font_lib;
+            save_uvs_sequences(font, &mut ufo.lib);
+        }
+    }
+    apply_lib_updates(&mut ufo.lib, updates);
+    save_number_values(&mut ufo.lib, font, target_master);
+
+    // Keep the existing layers, in their order and directories.
+    for (name, dir) in &layout.layers {
+        if dir == "glyphs" {
+            if name != ufo.default_layer().name().as_str() {
+                let default_name = ufo.default_layer().name().to_string();
+                ufo.layers.rename_layer(&default_name, name, false)?;
             }
-            let norad_layer = babelfont_layer_to_norad_glyph(g, layer)?;
-            let target = if layer.is_background {
-                ufo.layers.get_or_create_layer("public.background")?
-            } else if matches!(owner.master, LayerType::DefaultForMaster(_)) {
-                ufo.default_layer_mut()
-            } else {
-                ufo.layers
-                    .get_or_create_layer(layer.name.as_deref().unwrap_or("public.default"))?
+        } else {
+            ufo.layers.new_layer_at(name, dir.as_str())?;
+        }
+    }
+
+    let mut placed: Vec<(TargetLayer, norad::Glyph)> = vec![];
+    let masters: Vec<(&Master, TargetLayer)> =
+        std::iter::once((target_master, TargetLayer::Default))
+            .chain(sparse_masters.iter().filter_map(|(ix, layer)| {
+                Some((font.masters.get(*ix)?, TargetLayer::Named(layer.clone())))
+            }))
+            .collect();
+    for g in font.glyphs.iter() {
+        if only_glyphs.is_some_and(|only| !only.contains(g.name.as_str())) {
+            continue;
+        }
+        for (layer_master, default_target) in &masters {
+            let is_main = std::ptr::eq(*layer_master, target_master);
+            for layer in g.layers.iter() {
+                // Backgrounds belong to whichever layer points at them.
+                let owner = if layer.is_background {
+                    g.layers.iter().find(|l| {
+                        l.background_layer_id.is_some() && l.background_layer_id == layer.id
+                    })
+                } else {
+                    Some(layer)
+                };
+                let Some(owner) = owner else { continue };
+                let belongs_to_master = match &owner.master {
+                    LayerType::DefaultForMaster(id) => id == &layer_master.id,
+                    // Older UFO imports kept the master's id as the layer id.
+                    LayerType::AssociatedWithMaster(id) => {
+                        is_main
+                            && (id == &layer_master.id
+                                || owner.id.as_deref() == Some(layer_master.id.as_str()))
+                    }
+                    LayerType::FreeFloating => is_main && master_ix == 0 && !layer.is_background,
+                };
+                // A sparse master's layer holds its outlines alone.
+                if !belongs_to_master || (!is_main && layer.is_background) {
+                    continue;
+                }
+                let mut norad_layer = babelfont_layer_to_norad_glyph(g, layer)?;
+                let target = if layer.is_background {
+                    TargetLayer::Named("public.background".to_string())
+                } else if matches!(owner.master, LayerType::DefaultForMaster(_)) {
+                    match default_target {
+                        TargetLayer::Default => TargetLayer::Default,
+                        TargetLayer::Named(name) => TargetLayer::Named(name.clone()),
+                    }
+                } else {
+                    TargetLayer::Named(
+                        layer
+                            .name
+                            .as_deref()
+                            .unwrap_or("public.default")
+                            .to_string(),
+                    )
+                };
+                // Codepoints belong to the glyph, which its default layer states.
+                if !matches!(target, TargetLayer::Default) {
+                    norad_layer.codepoints = norad::Codepoints::default();
+                }
+                placed.push((target, norad_layer));
+            }
+        }
+    }
+    // Glyphs that keep an existing file name go in first, so that a name
+    // derived for a new glyph never takes one of theirs.
+    let (mut ordered, derived): (Vec<_>, Vec<_>) =
+        placed.into_iter().partition(|(target, glyph)| {
+            let dir = match target {
+                TargetLayer::Default => Some("glyphs".to_string()),
+                TargetLayer::Named(name) => ufo.layers.get(name).map(|l| path_string(l.path())),
             };
-            target.insert_glyph(norad_layer);
+            dir.is_some_and(|dir| layout.file_name(&dir, glyph.name()).is_some())
+        });
+    ordered.extend(derived);
+    for (target, glyph) in ordered {
+        let layer = match target {
+            TargetLayer::Default => ufo.default_layer_mut(),
+            TargetLayer::Named(name) => ufo.layers.get_or_create_layer(&name)?,
+        };
+        let dir = path_string(layer.path());
+        match layout.file_name(&dir, glyph.name()) {
+            Some(file) => layer.insert_glyph_at(glyph, file)?,
+            None => layer.insert_glyph(glyph),
         }
     }
 
@@ -256,7 +510,12 @@ pub fn as_norad(font: &Font, master_ix: usize) -> Result<norad::Font, BabelfontE
         .into_iter()
         .collect();
     save_kerning(&mut ufo.kerning, &merged)?;
-    save_info(&mut ufo.font_info, font);
+    ufo.font_info = target_master
+        .format_specific
+        .get(KEY_FONTINFO)
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default();
+    save_info(&mut ufo.font_info, font, target_master);
     let (swapped_first, swapped_second) = font.kern_groups_with_rtl_swaps();
     save_kern_groups(&mut ufo.groups, &swapped_first, &swapped_second)?;
     // Insert non-kerning groups into ufo.groups
@@ -277,8 +536,186 @@ pub fn as_norad(font: &Font, master_ix: usize) -> Result<norad::Font, BabelfontE
         }
     }
 
-    ufo.features = font.features.to_fea();
+    match target_master
+        .format_specific
+        .get(KEY_FEATURE_SOURCES)
+        .or_else(|| font.format_specific.get(KEY_FEATURE_SOURCES))
+        .and_then(|v| serde_json::from_value::<FeatureSources>(v.clone()).ok())
+    {
+        Some(sources) if sources.fingerprint == features_fingerprint(&font.features) => {
+            ufo.features = sources.root;
+            ufo.feature_files = sources
+                .includes
+                .into_iter()
+                .map(|(path, text)| (PathBuf::from(path), text))
+                .collect();
+        }
+        _ => ufo.features = font.features.to_fea(),
+    }
     Ok(ufo)
+}
+
+fn path_string(path: &FsPath) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+/// Writes the glyph order, OpenType categories, production names and
+/// non-exporting glyphs into the font lib, where UFO keeps them. A key is only
+/// rewritten when the font differs from what loading the lib gives, so an
+/// untouched lib is saved as it was.
+fn glyph_lib_updates(font: &Font, lib: &norad::Plist) -> Vec<(&'static str, serde_json::Value)> {
+    let as_json = |key: &str| lib.get(key).and_then(|v| serde_json::to_value(v).ok());
+    let string_map =
+        |value: Option<serde_json::Value>| -> serde_json::Map<String, serde_json::Value> {
+            value
+                .and_then(|v| v.as_object().cloned())
+                .unwrap_or_default()
+        };
+    let string_list = |value: Option<serde_json::Value>| -> Vec<String> {
+        value
+            .and_then(|v| v.as_array().cloned())
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|v| v.as_str().map(str::to_string))
+            .collect()
+    };
+    let old_order = string_list(as_json(KEY_GLYPH_ORDER));
+    let old_categories = string_map(as_json(KEY_CATEGORIES));
+    let old_names = string_map(as_json(KEY_PSNAMES));
+    let old_skipped: HashSet<String> = string_list(as_json(KEY_SKIP_EXPORT)).into_iter().collect();
+
+    let names: Vec<String> = font.glyphs.iter().map(|g| g.name.to_string()).collect();
+    let mut updates: Vec<(&'static str, serde_json::Value)> = vec![];
+    if load_glyph_order(&old_order, &names) != names {
+        updates.push((KEY_GLYPH_ORDER, serde_json::json!(names)));
+    }
+
+    let unknown_category = |name: &str| {
+        #[cfg(feature = "glyphs")]
+        let category = crate::filters::glyphsdata::data_category(name);
+        #[cfg(not(feature = "glyphs"))]
+        let category = None;
+        category.unwrap_or(GlyphCategory::Base)
+    };
+    let loaded_category = |name: &str| match old_categories.get(name).and_then(|v| v.as_str()) {
+        Some("mark") => GlyphCategory::Mark,
+        Some("ligature") => GlyphCategory::Ligature,
+        _ => GlyphCategory::Base,
+    };
+    if font
+        .glyphs
+        .iter()
+        .any(|g| g.category != loaded_category(&g.name))
+    {
+        let mut categories = serde_json::Map::new();
+        for glyph in font.glyphs.iter() {
+            let existing = old_categories
+                .get(glyph.name.as_str())
+                .and_then(|v| v.as_str());
+            // A UFO has no unknown category: loading makes Base of a missing
+            // entry. Write the one compiling would give such a glyph.
+            let resolved;
+            let category = match &glyph.category {
+                GlyphCategory::Unknown => {
+                    resolved = unknown_category(&glyph.name);
+                    &resolved
+                }
+                category => category,
+            };
+            let category = match category {
+                GlyphCategory::Mark => Some("mark"),
+                GlyphCategory::Ligature => Some("ligature"),
+                // Only these are UFO categories; a Glyphs one such as
+                // "Letter" is a base.
+                GlyphCategory::Custom(custom)
+                    if matches!(
+                        custom.as_str(),
+                        "base" | "ligature" | "mark" | "component" | "unassigned"
+                    ) =>
+                {
+                    Some(custom.as_str())
+                }
+                // Loading makes Base of a missing entry and of "component",
+                // so keep those.
+                GlyphCategory::Base | GlyphCategory::Custom(_) => match existing {
+                    Some("mark") | Some("ligature") => Some("base"),
+                    other => other,
+                },
+                GlyphCategory::Unknown => None,
+            };
+            if let Some(category) = category {
+                categories.insert(glyph.name.to_string(), category.into());
+            }
+        }
+        updates.push((KEY_CATEGORIES, serde_json::Value::Object(categories)));
+    }
+
+    if font.glyphs.iter().any(|g| {
+        g.production_name.as_deref() != old_names.get(g.name.as_str()).and_then(|v| v.as_str())
+    }) {
+        let production_names: serde_json::Map<String, serde_json::Value> = font
+            .glyphs
+            .iter()
+            .filter_map(|g| {
+                Some((
+                    g.name.to_string(),
+                    g.production_name.as_ref()?.to_string().into(),
+                ))
+            })
+            .collect();
+        updates.push((KEY_PSNAMES, serde_json::Value::Object(production_names)));
+    }
+
+    if font
+        .glyphs
+        .iter()
+        .any(|g| g.exported == old_skipped.contains(g.name.as_str()))
+    {
+        let skipped: Vec<String> = font
+            .glyphs
+            .iter()
+            .filter(|g| !g.exported)
+            .map(|g| g.name.to_string())
+            .collect();
+        updates.push((KEY_SKIP_EXPORT, serde_json::json!(skipped)));
+    }
+    updates
+}
+
+/// Write [`glyph_lib_updates`] into a lib.
+fn apply_lib_updates(lib: &mut norad::Plist, updates: Vec<(&'static str, serde_json::Value)>) {
+    for (key, value) in updates {
+        let is_empty = value.as_array().is_some_and(Vec::is_empty)
+            || value.as_object().is_some_and(serde_json::Map::is_empty);
+        if is_empty {
+            lib.remove(key);
+            continue;
+        }
+        if let Ok(mut entry) =
+            serde_json::from_value::<norad::Plist>(serde_json::json!({ key: value }))
+        {
+            if let Some(value) = entry.remove(key) {
+                lib.insert(key.to_string(), value);
+            }
+        }
+    }
+}
+
+/// The glyph order loading gives for glyphs `names` and a lib order of
+/// `lib_order`: `.notdef` first, then the lib's order, then the rest sorted.
+fn load_glyph_order(lib_order: &[String], names: &[String]) -> Vec<String> {
+    let mut rest: std::collections::BTreeSet<&str> = names.iter().map(String::as_str).collect();
+    let mut order = vec![];
+    if rest.remove(".notdef") {
+        order.push(".notdef".to_string());
+    }
+    for name in lib_order {
+        if rest.remove(name.as_str()) {
+            order.push(name.clone());
+        }
+    }
+    order.extend(rest.into_iter().map(str::to_string));
+    order
 }
 
 pub(crate) fn save_ufo<T: AsRef<std::path::Path>>(
@@ -293,32 +730,195 @@ pub(crate) fn save_ufo<T: AsRef<std::path::Path>>(
     ufo.save(path).map_err(|e| e.into())
 }
 
+/// What [`save_entries`] writes.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct UfoSaveRequest<'a> {
+    /// The layout of the UFO being saved over; its names are kept.
+    pub layout: Option<&'a UfoLayout>,
+    /// Write only the `.glif` files of these glyphs, plus the font-level
+    /// files when `font_level` is set. `None` writes the whole UFO.
+    pub glyphs: Option<&'a [String]>,
+    /// In a partial save, also write the top-level files: `metainfo.plist`,
+    /// `fontinfo.plist`, `lib.plist`, `groups.plist`, `kerning.plist` and the
+    /// feature files.
+    pub font_level: bool,
+}
+
+/// UFO files as text, by path relative to the UFO.
+#[derive(Debug, Default, Clone, Serialize)]
+pub struct UfoEntries {
+    /// Files to write.
+    pub files: BTreeMap<String, String>,
+    /// In a partial save with `font_level`, the top-level files the font no
+    /// longer has, which should be removed. A full save lists none: anything
+    /// it does not write is stale.
+    pub removed: Vec<String>,
+}
+
+/// The result of [`save_entries`].
+#[derive(Debug, Clone)]
+pub enum UfoSave {
+    /// The files to write.
+    Entries(UfoEntries),
+    /// A partial save cannot express the change, because it would alter the
+    /// UFO's glyph set or layers (and so its `contents.plist` files); save
+    /// the whole UFO instead.
+    NeedsFullSave(String),
+}
+
 /// Save a UFO font to in-memory entries keyed by relative path.
 ///
-/// Returns a `HashMap<String, String>` mapping UFO-relative paths (e.g.
-/// `"metainfo.plist"`, `"glyphs/contents.plist"`) to their file contents.
-pub fn save_entries(font: &Font) -> Result<HashMap<String, String>, BabelfontError> {
+/// Only single-master fonts can be saved.
+pub fn save_entries(font: &Font, request: UfoSaveRequest) -> Result<UfoSave, BabelfontError> {
     if font.masters.len() > 1 {
         return Err(BabelfontError::MultipleMastersNotSupported);
     }
-    let ufo = as_norad(font, 0)?;
+    save_master_entries(font, 0, &[], request)
+}
 
-    let written = Mutex::new(HashMap::<String, Vec<u8>>::new());
-    let mut sink = |path: &FsPath, data: &[u8]| -> Result<(), std::io::Error> {
-        let key = normalize_virtual_path(&path.to_string_lossy())
-            .unwrap_or_else(|| path.to_string_lossy().to_string());
-        written.lock().unwrap().insert(key, data.to_vec());
+/// [`save_entries`] for the UFO of master `master_ix`, with `sparse_masters`
+/// in its named layers (see [`as_norad_with_layout`]).
+pub(crate) fn save_master_entries(
+    font: &Font,
+    master_ix: usize,
+    sparse_masters: &[(usize, String)],
+    request: UfoSaveRequest,
+) -> Result<UfoSave, BabelfontError> {
+    let default_layout = UfoLayout::default();
+    let layout = request.layout.unwrap_or(&default_layout);
+    let only: Option<HashSet<&str>> = request
+        .glyphs
+        .map(|names| names.iter().map(String::as_str).collect());
+    if let Some(only) = &only {
+        if let Some(missing) = only.iter().find(|name| font.glyphs.get(name).is_none()) {
+            return Ok(UfoSave::NeedsFullSave(format!(
+                "glyph {missing} was removed"
+            )));
+        }
+    }
+    let ufo = as_norad_with_layout(font, master_ix, sparse_masters, layout, only.as_ref())?;
+
+    let mut glyph_files = HashSet::new();
+    if let Some(only) = &only {
+        for layer in ufo.iter_layers() {
+            let dir = path_string(layer.path());
+            if !layout.has_layer_dir(&dir) && !layer.is_empty() {
+                return Ok(UfoSave::NeedsFullSave(format!(
+                    "new layer {}",
+                    layer.name()
+                )));
+            }
+            for name in only {
+                match (layer.get_path(name), layout.file_name(&dir, name)) {
+                    (Some(path), Some(_)) => {
+                        glyph_files.insert(format!("{dir}/{}", path_string(path)));
+                    }
+                    (None, None) => {}
+                    _ => {
+                        return Ok(UfoSave::NeedsFullSave(format!(
+                            "glyph {name} changed layers"
+                        )))
+                    }
+                }
+            }
+        }
+    }
+    let layer_dirs: HashSet<String> = ufo.iter_layers().map(|l| path_string(l.path())).collect();
+
+    let written = Mutex::new(BTreeMap::<String, Vec<u8>>::new());
+    let sink = |path: &FsPath, data: &[u8]| -> Result<(), std::io::Error> {
+        written
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(path_string(path), data.to_vec());
         Ok(())
     };
-    ufo.save_with_sink(&norad::WriteOptions::default(), &mut sink)
-        .map_err(BabelfontError::from)?;
+    ufo.save_to_sink(&sink, &norad::WriteOptions::default())?;
 
-    Ok(written
-        .into_inner()
-        .unwrap()
-        .into_iter()
-        .map(|(k, v)| (k, String::from_utf8(v).unwrap_or_else(|_| String::new())))
-        .collect())
+    let mut entries = UfoEntries::default();
+    for (path, bytes) in written.into_inner().unwrap_or_else(|e| e.into_inner()) {
+        if only.is_some() {
+            let in_layer = path
+                .split_once('/')
+                .is_some_and(|(dir, _)| layer_dirs.contains(dir));
+            let wanted = if in_layer {
+                glyph_files.contains(&path)
+            } else {
+                request.font_level && path != "layercontents.plist"
+            };
+            if !wanted {
+                continue;
+            }
+        }
+        let text = String::from_utf8(bytes)
+            .map_err(|_| BabelfontError::UfoSave(format!("{path} is not UTF-8")))?;
+        entries.files.insert(path, text);
+    }
+    if only.is_some() && request.font_level {
+        for file in [
+            "fontinfo.plist",
+            "lib.plist",
+            "groups.plist",
+            "kerning.plist",
+            "features.fea",
+        ] {
+            if !entries.files.contains_key(file) {
+                entries.removed.push(file.to_string());
+            }
+        }
+    }
+    Ok(UfoSave::Entries(entries))
+}
+
+/// Loads glyphs from their `.glif` files alone, to pick up a change to a few
+/// files without reading the whole UFO.
+///
+/// `layout` says which files hold each glyph; `glifs` holds those files by
+/// path relative to the UFO. Layers belong to the master `master_id`. Only the
+/// glyph data stored in `.glif` files is meaningful in the result: layers and
+/// codepoints.
+pub fn load_glyphs_from_glifs(
+    layout: &UfoLayout,
+    glifs: &HashMap<String, String>,
+    glyph_names: &[String],
+    master_id: &str,
+) -> Result<Vec<Glyph>, BabelfontError> {
+    let master = Master::new(master_id, master_id, Location::new());
+    let mut layers = norad::LayerContents::default();
+    for (name, dir) in &layout.layers {
+        if dir == "glyphs" {
+            let default_name = layers.default_layer().name().to_string();
+            if name != &default_name {
+                layers.rename_layer(&default_name, name, false)?;
+            }
+        } else {
+            layers.new_layer_at(name, dir.as_str())?;
+        }
+    }
+    let mut glyphs = vec![];
+    for name in glyph_names {
+        let mut glyph = Glyph::new(name);
+        for layer in layers.iter() {
+            let dir = path_string(layer.path());
+            let Some(file) = layout.file_name(&dir, name) else {
+                continue;
+            };
+            let path = format!("{dir}/{file}");
+            let text = glifs
+                .get(&path)
+                .ok_or_else(|| BabelfontError::UfoLoad(format!("missing {path}")))?;
+            let norad_glyph = norad::Glyph::parse_raw(text.as_bytes())
+                .map_err(|e| BabelfontError::UfoLoad(format!("{path}: {e}")))?;
+            if layer.is_default() {
+                glyph.codepoints = norad_glyph.codepoints.iter().map(|c| c as u32).collect();
+            }
+            glyph
+                .layers
+                .push(norad_glyph_to_babelfont_layer(&norad_glyph, layer, &master));
+        }
+        glyphs.push(glyph);
+    }
+    Ok(glyphs)
 }
 
 fn babelfont_layer_to_norad_glyph(
@@ -391,16 +991,35 @@ pub(crate) fn norad_glyph_to_babelfont_layer(
     layer: &norad::Layer,
     master: &Master,
 ) -> Layer {
+    glyph_to_layer(
+        glyph,
+        (!layer.is_default()).then(|| layer.name().as_str()),
+        master,
+    )
+}
+
+/// A babelfont layer from a `.glif` in the named UFO layer of `master`, or in
+/// its default layer for `None`.
+pub(crate) fn glyph_to_layer(
+    glyph: &norad::Glyph,
+    layer_name: Option<&str>,
+    master: &Master,
+) -> Layer {
     let master_id = master.id.as_str();
     let mut l = Layer::new(glyph.width as f32);
-    if layer.is_default() {
-        l.name = None;
-        l.master = LayerType::DefaultForMaster(master_id.to_string());
-    } else {
-        l.name = Some(layer.name().to_string());
-        l.master = LayerType::AssociatedWithMaster(layer.name().to_string());
+    match layer_name {
+        None => {
+            l.name = None;
+            l.master = LayerType::DefaultForMaster(master_id.to_string());
+            l.id = Some(master_id.to_string());
+        }
+        Some(name) => {
+            l.name = Some(name.to_string());
+            l.master = LayerType::AssociatedWithMaster(master_id.to_string());
+            // Unique within the glyph, and the same on every load.
+            l.id = Some(format!("{master_id}.{name}"));
+        }
     }
-    l.id = Some(master_id.to_string());
     if !glyph.lib.is_empty() {
         l.format_specific = stash_lib(Some(&glyph.lib));
     }
@@ -566,23 +1185,59 @@ pub(crate) fn save_kern_groups(
     Ok(())
 }
 
-pub(crate) fn save_info(info: &mut norad::FontInfo, font: &Font) {
-    let get_metric = |mt: MetricType| {
-        font.masters
-            .first()
-            .and_then(|m| m.metrics.get(&mt))
-            .map(|&v| v as f64)
-    };
+/// Keep a UFO's style names, which belong to the font for a UFO and to each
+/// master in a designspace.
+pub(crate) fn stash_style_names(
+    format_specific: &mut crate::common::FormatSpecific,
+    info: &norad::FontInfo,
+) {
+    if let Some(smfn) = &info.style_map_family_name {
+        format_specific.insert(
+            KEY_STYLE_MAP_FAMILY_NAME.into(),
+            serde_json::to_value(smfn).unwrap_or_default(),
+        );
+    }
+    if let Some(smsn) = &info.style_map_style_name {
+        format_specific.insert(
+            KEY_STYLE_MAP_STYLE_NAME.into(),
+            match smsn {
+                norad::fontinfo::StyleMapStyle::Regular => "Regular",
+                norad::fontinfo::StyleMapStyle::Bold => "Bold",
+                norad::fontinfo::StyleMapStyle::Italic => "Italic",
+                norad::fontinfo::StyleMapStyle::BoldItalic => "Bold Italic",
+            }
+            .into(),
+        );
+    }
+    if let Some(stylename) = &info.style_name {
+        format_specific.insert(KEY_STYLE_NAME.into(), stylename.clone().into());
+    }
+}
+
+/// Keep a UFO's `fontinfo.plist` on the master it gives, see [`KEY_FONTINFO`].
+pub(crate) fn stash_font_info(master: &mut Master, info: &norad::FontInfo) {
+    if let Ok(value) = serde_json::to_value(info) {
+        master.format_specific.insert(KEY_FONTINFO.into(), value);
+    }
+}
+
+/// Write the font's and `master`'s info into a UFO's fontinfo.
+pub(crate) fn save_info(info: &mut norad::FontInfo, font: &Font, master: &Master) {
+    let get_metric = |mt: MetricType| master.metrics.get(&mt).map(|&v| v as f64);
     info.ascender = get_metric(MetricType::Ascender);
     info.cap_height = get_metric(MetricType::CapHeight);
-    info.copyright = font.names.copyright.get_default().map(|x| x.to_string());
+    info.copyright = font
+        .names
+        .copyright
+        .get_default_or_fallback()
+        .map(|x| x.to_string());
     info.descender = get_metric(MetricType::Descender);
-    info.family_name = font.names.family_name.get_default().map(|x| x.to_string());
-    let guides: Vec<_> = font
-        .masters
-        .first()
-        .map(|m| m.guides.iter().flat_map(|g| g.try_into()).collect())
-        .unwrap_or_default();
+    info.family_name = font
+        .names
+        .family_name
+        .get_default_or_fallback()
+        .map(|x| x.to_string());
+    let guides: Vec<_> = master.guides.iter().flat_map(|g| g.try_into()).collect();
     info.guidelines = (!guides.is_empty()).then_some(guides);
     // Written back in the UFO's post convention: see load_master_info.
     info.italic_angle = get_metric(MetricType::ItalicAngle).map(|v| -v);
@@ -610,51 +1265,87 @@ pub(crate) fn save_info(info: &mut norad::FontInfo, font: &Font) {
         get_metric(MetricType::VheaCaretSlopeRun).map(|x| x as i32);
     info.open_type_vhea_caret_offset = get_metric(MetricType::VheaCaretOffset).map(|x| x as i32);
     // opentype name compatible full name
-    info.open_type_name_description = font.names.description.get_default().map(|x| x.to_string());
-    info.open_type_name_designer_url = font.names.designer_url.get_default().map(|x| x.to_string());
-    info.open_type_name_designer = font.names.designer.get_default().map(|x| x.to_string());
-    info.open_type_name_license = font.names.license.get_default().map(|x| x.to_string());
-    info.open_type_name_license_url = font.names.license_url.get_default().map(|x| x.to_string());
-    info.open_type_name_manufacturer = font.names.manufacturer.get_default().map(|x| x.to_string());
+    info.open_type_name_description = font
+        .names
+        .description
+        .get_default_or_fallback()
+        .map(|x| x.to_string());
+    info.open_type_name_designer_url = font
+        .names
+        .designer_url
+        .get_default_or_fallback()
+        .map(|x| x.to_string());
+    info.open_type_name_designer = font
+        .names
+        .designer
+        .get_default_or_fallback()
+        .map(|x| x.to_string());
+    info.open_type_name_license = font
+        .names
+        .license
+        .get_default_or_fallback()
+        .map(|x| x.to_string());
+    info.open_type_name_license_url = font
+        .names
+        .license_url
+        .get_default_or_fallback()
+        .map(|x| x.to_string());
+    info.open_type_name_manufacturer = font
+        .names
+        .manufacturer
+        .get_default_or_fallback()
+        .map(|x| x.to_string());
     info.open_type_name_manufacturer_url = font
         .names
         .manufacturer_url
-        .get_default()
+        .get_default_or_fallback()
         .map(|x| x.to_string());
     // UFO's "preferred" names are the typographic ones (IDs 16 and 17)
     info.open_type_name_preferred_family_name = font
         .names
         .typographic_family
-        .get_default()
+        .get_default_or_fallback()
         .map(|x| x.to_string());
     info.open_type_name_preferred_subfamily_name = font
         .names
         .typographic_subfamily
-        .get_default()
+        .get_default_or_fallback()
         .map(|x| x.to_string());
     info.open_type_name_wws_family_name = font
         .names
         .wws_family_name
-        .get_default()
+        .get_default_or_fallback()
         .map(|x| x.to_string());
     info.open_type_name_wws_subfamily_name = font
         .names
         .wws_subfamily_name
-        .get_default()
+        .get_default_or_fallback()
         .map(|x| x.to_string());
     info.open_type_name_compatible_full_name = font
         .names
         .compatible_full_name
-        .get_default()
+        .get_default_or_fallback()
         .map(|x| x.to_string());
-    info.open_type_name_sample_text = font.names.sample_text.get_default().map(|x| x.to_string());
-    info.open_type_name_unique_id = font.names.unique_id.get_default().map(|x| x.to_string());
-    info.open_type_name_version = font.names.version.get_default().map(|x| x.to_string());
+    info.open_type_name_sample_text = font
+        .names
+        .sample_text
+        .get_default_or_fallback()
+        .map(|x| x.to_string());
+    info.open_type_name_unique_id = font
+        .names
+        .unique_id
+        .get_default_or_fallback()
+        .map(|x| x.to_string());
+    info.open_type_name_version = font
+        .names
+        .version
+        .get_default_or_fallback()
+        .map(|x| x.to_string());
     // XXX lots more
     info.postscript_font_name = font
         .names
         .postscript_name
-        .get_default()
+        .get_default_or_fallback()
         .map(|x| x.to_string());
     // and more
     let codepage_ranges: Vec<u8> =
@@ -675,6 +1366,23 @@ pub(crate) fn save_info(info: &mut norad::FontInfo, font: &Font) {
     info.open_type_os2_typo_ascender = get_metric(MetricType::TypoAscender).map(|x| x as i32);
     info.open_type_os2_typo_descender = get_metric(MetricType::TypoDescender).map(|x| x as i32);
     info.open_type_os2_typo_line_gap = get_metric(MetricType::TypoLineGap).map(|x| x as i32);
+    info.open_type_os2_strikeout_position =
+        get_metric(MetricType::StrikeoutPosition).map(|x| x as i32);
+    info.open_type_os2_strikeout_size = get_metric(MetricType::StrikeoutSize).map(|x| x as i32);
+    info.open_type_os2_subscript_x_offset =
+        get_metric(MetricType::SubscriptXOffset).map(|x| x as i32);
+    info.open_type_os2_subscript_x_size = get_metric(MetricType::SubscriptXSize).map(|x| x as i32);
+    info.open_type_os2_subscript_y_offset =
+        get_metric(MetricType::SubscriptYOffset).map(|x| x as i32);
+    info.open_type_os2_subscript_y_size = get_metric(MetricType::SubscriptYSize).map(|x| x as i32);
+    info.open_type_os2_superscript_x_offset =
+        get_metric(MetricType::SuperscriptXOffset).map(|x| x as i32);
+    info.open_type_os2_superscript_x_size =
+        get_metric(MetricType::SuperscriptXSize).map(|x| x as i32);
+    info.open_type_os2_superscript_y_offset =
+        get_metric(MetricType::SuperscriptYOffset).map(|x| x as i32);
+    info.open_type_os2_superscript_y_size =
+        get_metric(MetricType::SuperscriptYSize).map(|x| x as i32);
     let mut bit_array = vec![];
     let unicode_range_1 = font.custom_ot_values.os2_unicode_range1.unwrap_or(0) as u64;
     bit_array.extend(to_bitarray(unicode_range_1));
@@ -713,14 +1421,17 @@ pub(crate) fn save_info(info: &mut norad::FontInfo, font: &Font) {
     info.postscript_family_other_blues = font.custom_ot_values.cff_family_other_blues.clone();
     info.postscript_stem_snap_h = font.custom_ot_values.cff_stem_snap_h.clone();
     info.postscript_stem_snap_v = font.custom_ot_values.cff_stem_snap_v.clone();
-    info.style_map_family_name = font
-        .format_specific
-        .get(KEY_STYLE_MAP_FAMILY_NAME)
+    // A master's own style names (a designspace master's) win.
+    let style_key = |key: &str| {
+        master
+            .format_specific
+            .get(key)
+            .or_else(|| font.format_specific.get(key))
+    };
+    info.style_map_family_name = style_key(KEY_STYLE_MAP_FAMILY_NAME)
         .and_then(|x| x.as_str())
         .map(|x| x.to_string());
-    info.style_map_style_name = font
-        .format_specific
-        .get(KEY_STYLE_MAP_STYLE_NAME)
+    info.style_map_style_name = style_key(KEY_STYLE_MAP_STYLE_NAME)
         .and_then(|x| x.as_str())
         .map(|x| match x {
             "Regular" => norad::fontinfo::StyleMapStyle::Regular,
@@ -729,12 +1440,14 @@ pub(crate) fn save_info(info: &mut norad::FontInfo, font: &Font) {
             "Bold Italic" => norad::fontinfo::StyleMapStyle::BoldItalic,
             _ => norad::fontinfo::StyleMapStyle::Regular,
         });
-    info.style_name = font
-        .format_specific
-        .get(KEY_STYLE_NAME)
+    info.style_name = style_key(KEY_STYLE_NAME)
         .and_then(|x| x.as_str())
         .map(|x| x.to_string());
-    info.trademark = font.names.trademark.get_default().map(|x| x.to_string());
+    info.trademark = font
+        .names
+        .trademark
+        .get_default_or_fallback()
+        .map(|x| x.to_string());
     info.units_per_em = Some((font.upm as u32).into());
     info.version_major = Some(font.version.0 as i32);
     info.version_minor = Some(font.version.1 as u32);
@@ -815,6 +1528,66 @@ pub(crate) fn load_master_info(master: &mut Master, info: &norad::FontInfo) {
         metrics,
         open_type_os2_win_descent,
         MetricType::WinDescent
+    );
+    load_metric!(
+        info,
+        metrics,
+        open_type_os2_strikeout_position,
+        MetricType::StrikeoutPosition
+    );
+    load_metric!(
+        info,
+        metrics,
+        open_type_os2_strikeout_size,
+        MetricType::StrikeoutSize
+    );
+    load_metric!(
+        info,
+        metrics,
+        open_type_os2_subscript_x_offset,
+        MetricType::SubscriptXOffset
+    );
+    load_metric!(
+        info,
+        metrics,
+        open_type_os2_subscript_x_size,
+        MetricType::SubscriptXSize
+    );
+    load_metric!(
+        info,
+        metrics,
+        open_type_os2_subscript_y_offset,
+        MetricType::SubscriptYOffset
+    );
+    load_metric!(
+        info,
+        metrics,
+        open_type_os2_subscript_y_size,
+        MetricType::SubscriptYSize
+    );
+    load_metric!(
+        info,
+        metrics,
+        open_type_os2_superscript_x_offset,
+        MetricType::SuperscriptXOffset
+    );
+    load_metric!(
+        info,
+        metrics,
+        open_type_os2_superscript_x_size,
+        MetricType::SuperscriptXSize
+    );
+    load_metric!(
+        info,
+        metrics,
+        open_type_os2_superscript_y_offset,
+        MetricType::SuperscriptYOffset
+    );
+    load_metric!(
+        info,
+        metrics,
+        open_type_os2_superscript_y_size,
+        MetricType::SuperscriptYSize
     );
     load_metric!(
         info,
@@ -982,28 +1755,7 @@ pub(crate) fn load_font_info(
     copy_name!(font, info, sample_text);
     copy_name!(font, info, unique_id);
     copy_name!(font, info, version);
-    if let Some(smfn) = &info.style_map_family_name {
-        font.format_specific.insert(
-            KEY_STYLE_MAP_FAMILY_NAME.into(),
-            serde_json::to_value(smfn).unwrap_or_default(),
-        );
-    }
-    if let Some(smsn) = &info.style_map_style_name {
-        font.format_specific.insert(
-            KEY_STYLE_MAP_STYLE_NAME.into(),
-            match smsn {
-                norad::fontinfo::StyleMapStyle::Regular => "Regular",
-                norad::fontinfo::StyleMapStyle::Bold => "Bold",
-                norad::fontinfo::StyleMapStyle::Italic => "Italic",
-                norad::fontinfo::StyleMapStyle::BoldItalic => "Bold Italic",
-            }
-            .into(),
-        );
-    }
-    if let Some(stylename) = &info.style_name {
-        font.format_specific
-            .insert(KEY_STYLE_NAME.into(), stylename.clone().into());
-    }
+    stash_style_names(&mut font.format_specific, info);
     // UFO's "preferred" names are the typographic ones (IDs 16 and 17), not
     // WWS names or the legacy subfamily (ID 2)
     if let Some(v) = info.open_type_name_preferred_family_name.as_ref() {
@@ -1506,5 +2258,244 @@ pub(crate) mod tests {
         assert_eq!(backagain.data, once_more.data);
         assert_eq!(backagain.images, once_more.images);
         assert_eq!(backagain.font_info, once_more.font_info);
+    }
+
+    /// Every text file below `root`, by path relative to it.
+    pub(crate) fn read_tree(root: &str) -> HashMap<String, String> {
+        fn walk(root: &FsPath, dir: &FsPath, out: &mut HashMap<String, String>) {
+            for entry in fs::read_dir(dir).unwrap().flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    walk(root, &path, out);
+                } else if let Ok(text) = fs::read_to_string(&path) {
+                    let relative = path.strip_prefix(root).unwrap();
+                    out.insert(path_string(relative), text);
+                }
+            }
+        }
+        let mut out = HashMap::new();
+        walk(FsPath::new(root), FsPath::new(root), &mut out);
+        out
+    }
+
+    fn full_save(font: &Font, layout: &UfoLayout) -> UfoEntries {
+        let request = UfoSaveRequest {
+            layout: Some(layout),
+            ..Default::default()
+        };
+        match save_entries(font, request).unwrap() {
+            UfoSave::Entries(entries) => entries,
+            UfoSave::NeedsFullSave(reason) => panic!("full save refused: {reason}"),
+        }
+    }
+
+    fn as_map(entries: &UfoEntries) -> HashMap<String, String> {
+        entries.files.clone().into_iter().collect()
+    }
+
+    const BOLD: &str = "resources/IbarraRealNova-Bold.ufo";
+
+    #[test]
+    fn save_entries_round_trip_keeps_file_names_and_is_stable() {
+        let original = read_tree(BOLD);
+        let layout = UfoLayout::from_entries(&original).unwrap();
+        let font = load_entries(PathBuf::from("Bold.ufo"), &original).unwrap();
+        let saved = full_save(&font, &layout);
+
+        // Every glyph file, background layer included, keeps its path.
+        for path in original.keys().filter(|p| p.ends_with(".glif")) {
+            assert!(saved.files.contains_key(path), "{path} was renamed");
+        }
+        assert_eq!(
+            saved.files.keys().filter(|p| p.ends_with(".glif")).count(),
+            original.keys().filter(|p| p.ends_with(".glif")).count()
+        );
+
+        // Reloading gives the same font...
+        let reloaded = load_entries(PathBuf::from("Bold.ufo"), &as_map(&saved)).unwrap();
+        assert_eq!(reloaded.glyphs, font.glyphs);
+        assert_eq!(reloaded.features.to_fea(), font.features.to_fea());
+        assert_eq!(reloaded.masters[0].kerning, font.masters[0].kerning);
+        assert_eq!(reloaded.first_kern_groups, font.first_kern_groups);
+        assert_eq!(reloaded.names, font.names);
+
+        // ...and saving that again writes the same bytes.
+        let layout = UfoLayout::from_entries(&as_map(&saved)).unwrap();
+        assert_eq!(full_save(&reloaded, &layout).files, saved.files);
+    }
+
+    #[test]
+    fn a_glyphs_layers_have_their_own_ids() {
+        let font = load_entries(PathBuf::from("Bold.ufo"), &read_tree(BOLD)).unwrap();
+        let glyph = font.glyphs.iter().find(|g| g.layers.len() > 1).unwrap();
+        let ids: HashSet<_> = glyph.layers.iter().map(|l| l.id.clone()).collect();
+        assert_eq!(ids.len(), glyph.layers.len(), "{}", glyph.name);
+        for layer in &glyph.layers {
+            let master = match &layer.master {
+                LayerType::DefaultForMaster(id) | LayerType::AssociatedWithMaster(id) => id,
+                LayerType::FreeFloating => panic!("{} has a free layer", glyph.name),
+            };
+            assert_eq!(master, UFO_MASTER_ID);
+        }
+    }
+
+    #[test]
+    fn untouched_lib_and_features_are_saved_as_they_were() {
+        let original = read_tree(BOLD);
+        let layout = UfoLayout::from_entries(&original).unwrap();
+        let font = load_entries(PathBuf::from("Bold.ufo"), &original).unwrap();
+        let saved = full_save(&font, &layout);
+        assert_eq!(saved.files["features.fea"], original["features.fea"]);
+        let lib = |text: &str| plist::from_bytes::<norad::Plist>(text.as_bytes());
+        assert_eq!(
+            lib(&saved.files["lib.plist"]).unwrap(),
+            lib(&original["lib.plist"]).unwrap()
+        );
+    }
+
+    #[test]
+    fn glyph_metadata_edits_reach_the_lib() {
+        let original = read_tree(BOLD);
+        let layout = UfoLayout::from_entries(&original).unwrap();
+        let mut font = load_entries(PathBuf::from("Bold.ufo"), &original).unwrap();
+        // Not .notdef, which loading always puts first.
+        let first = font.glyphs[1].name.clone();
+        let glyph = font.glyphs.get_mut(&first).unwrap();
+        glyph.production_name = Some("uniE000".into());
+        glyph.exported = false;
+        glyph.category = GlyphCategory::Mark;
+        let moved = font.glyphs.remove(1);
+        font.glyphs.push(moved);
+
+        let saved = full_save(&font, &layout);
+        let reloaded = load_entries(PathBuf::from("Bold.ufo"), &as_map(&saved)).unwrap();
+        let glyph = reloaded.glyphs.get(&first).unwrap();
+        assert_eq!(glyph.production_name.as_deref(), Some("uniE000"));
+        assert!(!glyph.exported);
+        assert_eq!(glyph.category, GlyphCategory::Mark);
+        assert_eq!(reloaded.glyphs.last().unwrap().name, first);
+    }
+
+    #[test]
+    fn partial_save_writes_only_the_glyph_and_matches_a_full_save() {
+        let original = read_tree(BOLD);
+        let layout = UfoLayout::from_entries(&original).unwrap();
+        let mut font = load_entries(PathBuf::from("Bold.ufo"), &original).unwrap();
+        let name = "A".to_string();
+        font.glyphs.get_mut("A").unwrap().layers[0].width += 10.0;
+
+        let full = full_save(&font, &layout);
+        let request = UfoSaveRequest {
+            layout: Some(&layout),
+            glyphs: Some(std::slice::from_ref(&name)),
+            font_level: false,
+        };
+        let UfoSave::Entries(partial) = save_entries(&font, request).unwrap() else {
+            panic!("partial save refused");
+        };
+        let mut expected: Vec<String> = layout.glyph_paths("A");
+        expected.sort();
+        assert_eq!(partial.files.keys().cloned().collect::<Vec<_>>(), expected);
+        for (path, text) in &partial.files {
+            assert_eq!(text, &full.files[path]);
+        }
+        assert!(partial.removed.is_empty());
+
+        // With font-level files, the top-level files come too, as in a full save.
+        let request = UfoSaveRequest {
+            font_level: true,
+            ..request
+        };
+        let UfoSave::Entries(partial) = save_entries(&font, request).unwrap() else {
+            panic!("partial save refused");
+        };
+        for file in [
+            "metainfo.plist",
+            "fontinfo.plist",
+            "lib.plist",
+            "features.fea",
+        ] {
+            assert_eq!(partial.files[file], full.files[file], "{file}");
+        }
+        assert!(!partial.files.contains_key("layercontents.plist"));
+    }
+
+    #[test]
+    fn partial_save_refuses_glyph_set_changes() {
+        let original = read_tree(BOLD);
+        let layout = UfoLayout::from_entries(&original).unwrap();
+        let mut font = load_entries(PathBuf::from("Bold.ufo"), &original).unwrap();
+        let mut added = font.glyphs.get("A").unwrap().clone();
+        added.name = "A.new".into();
+        font.glyphs.push(added);
+        for name in ["A.new", "no-such-glyph"] {
+            let names = [name.to_string()];
+            let request = UfoSaveRequest {
+                layout: Some(&layout),
+                glyphs: Some(&names),
+                font_level: false,
+            };
+            assert!(matches!(
+                save_entries(&font, request).unwrap(),
+                UfoSave::NeedsFullSave(_)
+            ));
+        }
+    }
+
+    #[test]
+    fn feature_includes_survive_until_the_features_are_edited() {
+        let mut entries = read_tree(BOLD);
+        entries.insert(
+            "features.fea".into(),
+            "include(features/classes.fea);\nfeature liga {\n    sub f i by fi;\n} liga;\n".into(),
+        );
+        entries.insert(
+            "features/classes.fea".into(),
+            "@letters = [a b c];\n".into(),
+        );
+        let layout = UfoLayout::from_entries(&entries).unwrap();
+        let mut font = load_entries(PathBuf::from("Bold.ufo"), &entries).unwrap();
+        assert!(font.features.to_fea().contains("@letters"));
+
+        let saved = full_save(&font, &layout);
+        assert_eq!(saved.files["features.fea"], entries["features.fea"]);
+        assert_eq!(
+            saved.files["features/classes.fea"],
+            entries["features/classes.fea"]
+        );
+
+        font.features = Features::from_fea("@letters = [a b];\n");
+        let saved = full_save(&font, &layout);
+        assert!(!saved.files["features.fea"].contains("include"));
+        assert!(saved.files["features.fea"].contains("@letters = [a b]"));
+        assert!(!saved.files.contains_key("features/classes.fea"));
+    }
+
+    #[test]
+    fn glyphs_load_from_their_glifs_alone() {
+        let original = read_tree(BOLD);
+        let layout = UfoLayout::from_entries(&original).unwrap();
+        let font = load_entries(PathBuf::from("Bold.ufo"), &original).unwrap();
+        let master_id = font.masters[0].id.clone();
+        let with_background = font
+            .glyphs
+            .iter()
+            .find(|g| g.layers.len() > 1)
+            .unwrap()
+            .name
+            .to_string();
+        let names = vec!["A".to_string(), with_background];
+        let glifs: HashMap<String, String> = names
+            .iter()
+            .flat_map(|name| layout.glyph_paths(name))
+            .map(|path| (path.clone(), original[&path].clone()))
+            .collect();
+        let glyphs = load_glyphs_from_glifs(&layout, &glifs, &names, &master_id).unwrap();
+        for glyph in glyphs {
+            let full = font.glyphs.get(&glyph.name).unwrap();
+            assert_eq!(glyph.layers, full.layers, "{}", glyph.name);
+            assert_eq!(glyph.codepoints, full.codepoints);
+        }
+        assert_eq!(layout.glyph_at(&layout.glyph_paths("A")[0]), Some("A"));
     }
 }

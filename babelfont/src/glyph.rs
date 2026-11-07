@@ -182,7 +182,8 @@ pub(crate) mod glyphs {
     use glyphslib::glyphs3::Glyph as G3Glyph;
     use indexmap::IndexMap;
 
-    /// A ligature's Glyphs category where it is not Letter
+    /// The Glyphs category as read, where the glyph's category alone would
+    /// not give it back: a ligature's other than Letter, a non-attaching Mark
     const KEY_GLYPHS_CATEGORY: &str = "com.schriftgestalt.Glyphs.category";
 
     pub(crate) fn from_glyphs(val: &G3Glyph, axes_order: &[Tag]) -> Result<Glyph, BabelfontError> {
@@ -230,6 +231,8 @@ pub(crate) mod glyphs {
                     ) {
                         GlyphCategory::Mark
                     } else {
+                        // kept for writing it back
+                        format_specific.insert_json(KEY_GLYPHS_CATEGORY, cat);
                         GlyphCategory::Base
                     }
                 }
@@ -240,6 +243,13 @@ pub(crate) mod glyphs {
             GlyphCategory::Unknown
         };
         copy_user_data(&mut format_specific, &val.user_data);
+        // A glyph that lists its Smart Glyph properties both ways keeps both.
+        if !val.axes.is_empty() && !val.smart_component_settings.is_empty() {
+            format_specific.insert(
+                KEY_GLYPH_AXES_AND_PARTS.into(),
+                serde_json::Value::Bool(true),
+            );
+        }
         let mut layers = vec![];
         let mut component_axes: Vec<Axis> = val
             .smart_component_settings
@@ -369,17 +379,15 @@ pub(crate) mod glyphs {
 
         let subcategory = val.format_specific.get_optionstring("subcategory");
         // a ligature of a category other than Letter, as it was read
-        let ligature_category =
+        let read_category =
             GlyphCategory::Custom(val.format_specific.get_string(KEY_GLYPHS_CATEGORY));
+        let has_read_category = !val
+            .format_specific
+            .get_string(KEY_GLYPHS_CATEGORY)
+            .is_empty();
         let category = match subcategory.as_deref() {
-            Some("Ligature")
-                if val.category == GlyphCategory::Ligature
-                    && !val
-                        .format_specific
-                        .get_string(KEY_GLYPHS_CATEGORY)
-                        .is_empty() =>
-            {
-                &ligature_category
+            Some("Ligature") if val.category == GlyphCategory::Ligature && has_read_category => {
+                &read_category
             }
             Some(s)
                 if (s == "Spacing" || s == "Spacing Combining")
@@ -387,6 +395,7 @@ pub(crate) mod glyphs {
             {
                 &GlyphCategory::Mark
             }
+            _ if val.category == GlyphCategory::Base && has_read_category => &read_category,
             _ => &val.category,
         };
         // Glyphs reads a mark only from a Nonspacing or Spacing Combining subcategory and
@@ -405,17 +414,27 @@ pub(crate) mod glyphs {
         G3Glyph {
             name: val.name.to_string(),
             production: val.production_name.as_ref().map(|p| p.to_string()),
-            axes: val
-                .component_axes
-                .iter()
-                .map(|x| glyphslib::glyphs3::Axis {
-                    hidden: x.hidden,
-                    name: x.name(),
-                    names: (&x.name).into(),
-                    tag: x.tag.to_string(),
-                    user_data: x.format_specific.get_json(KEY_USER_DATA),
-                })
-                .collect(),
+            // Glyphs 4 writes the Smart Glyph properties as glyph axes; they
+            // are made from `partsSettings` when saving one (see
+            // `Glyphs3::convert_smart_glyphs`), unless the glyph had both.
+            axes: if val
+                .format_specific
+                .get_bool_or(KEY_GLYPH_AXES_AND_PARTS, false)
+            {
+                val.component_axes
+                    .iter()
+                    .map(|x| glyphslib::glyphs3::Axis {
+                        default: None,
+                        hidden: x.hidden,
+                        name: x.name(),
+                        names: (&x.name).into(),
+                        tag: x.tag.to_string(),
+                        user_data: x.format_specific.get_json(KEY_USER_DATA),
+                    })
+                    .collect()
+            } else {
+                vec![]
+            },
             unicode: val.codepoints.clone(),
             layers: g3_layers,
             export: val.exported,
@@ -459,9 +478,18 @@ pub(crate) mod glyphs {
         }
     }
 
+    /// The unused names of a smart component property's values, kept for
+    /// writing a Glyphs 3 file back.
+    const KEY_PART_BOTTOM_NAME: &str = "com.schriftgestalt.Glyphs.partBottomName";
+    const KEY_PART_TOP_NAME: &str = "com.schriftgestalt.Glyphs.partTopName";
+
+    /// Whether a Glyphs glyph listed its Smart Glyph properties both as
+    /// `partsSettings` and as glyph axes.
+    const KEY_GLYPH_AXES_AND_PARTS: &str = "com.schriftgestalt.Glyphs.axesAndParts";
+
     impl From<&glyphslib::common::SmartComponentSetting> for Axis {
         fn from(val: &glyphslib::common::SmartComponentSetting) -> Self {
-            Axis {
+            let mut axis = Axis {
                 name: crate::I18NDictionary::from(&val.name),
                 tag: Tag::new(b"VARC"), // placeholder
                 // We assume that the default is the minimum value.
@@ -470,7 +498,17 @@ pub(crate) mod glyphs {
                 min: Some(UserCoord::new(val.bottom_value as f64)),
                 max: Some(UserCoord::new(val.top_value as f64)),
                 ..Default::default()
+            };
+            for (key, name) in [
+                (KEY_PART_BOTTOM_NAME, &val.bottom_name),
+                (KEY_PART_TOP_NAME, &val.top_name),
+            ] {
+                if let Some(name) = name {
+                    axis.format_specific
+                        .insert(key.into(), serde_json::Value::String(name.clone()));
+                }
             }
+            axis
         }
     }
 
@@ -484,6 +522,16 @@ pub(crate) mod glyphs {
                     .get_default()
                     .unwrap_or(&"Unnamed Axis".to_string())
                     .to_string(),
+                bottom_name: val
+                    .format_specific
+                    .get(KEY_PART_BOTTOM_NAME)
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string),
+                top_name: val
+                    .format_specific
+                    .get(KEY_PART_TOP_NAME)
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string),
             }
         }
     }

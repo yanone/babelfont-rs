@@ -1,0 +1,849 @@
+{
+.appVersion = "926";
+.formatVersion = 3;
+axes = (
+{
+name = Weight;
+tag = wght;
+}
+);
+customParameters = (
+{
+name = isFixedPitch;
+value = 1;
+},
+{
+name = fsType;
+value = (
+);
+},
+{
+name = "Use Typo Metrics";
+value = 1;
+}
+);
+date = "2016-07-06 08:15:39 +0000";
+familyName = VT323;
+featurePrefixes = (
+{
+automatic = 1;
+code = "languagesystem DFLT dflt;
+languagesystem latn dflt;
+languagesystem latn CAT;
+languagesystem latn ROM;
+languagesystem latn MOL;
+languagesystem latn KAZ;
+languagesystem latn TAT;
+languagesystem latn TRK;
+languagesystem latn CRT;
+languagesystem latn AZE;
+";
+name = Languagesystems;
+}
+);
+features = (
+{
+automatic = 1;
+code = "feature ccmp;
+feature locl;
+feature sups;
+feature frac;
+feature ordn;
+feature zero;
+";
+tag = aalt;
+},
+{
+automatic = 1;
+code = "lookup ccmp_Other_1 {
+	@CombiningTopAccents = [acutecomb brevecomb breveinvertedcomb caroncomb circumflexcomb commaturnedabovecomb dblgravecomb dieresiscomb dotaccentcomb gravecomb hookabovecomb hungarumlautcomb macroncomb ringcomb tildecomb];
+	@CombiningNonTopAccents = [brevebelowcomb cedillacomb dieresisbelowcomb dotbelowcomb macronbelowcomb ogonekcomb horncomb];
+	sub [i j]' @CombiningTopAccents by [idotless jdotless];
+	sub [i j]' @CombiningNonTopAccents @CombiningTopAccents by [idotless jdotless];
+} ccmp_Other_1;
+
+lookup ccmp_latn_1 {
+	script latn;
+	lookupflag 0;
+	sub brevecomb acutecomb by brevecomb_acutecomb;
+	sub brevecomb gravecomb by brevecomb_gravecomb;
+	sub brevecomb hookabovecomb by brevecomb_hookabovecomb;
+	sub brevecomb tildecomb by brevecomb_tildecomb;
+	sub circumflexcomb acutecomb by circumflexcomb_acutecomb;
+	sub circumflexcomb gravecomb by circumflexcomb_gravecomb;
+	sub circumflexcomb hookabovecomb by circumflexcomb_hookabovecomb;
+	sub circumflexcomb tildecomb by circumflexcomb_tildecomb;
+} ccmp_latn_1;
+";
+tag = ccmp;
+},
+{
+automatic = 1;
+code = "script latn;
+language CAT;
+sub l periodcentered' l by periodcentered.loclCAT;
+sub L periodcentered' L by periodcentered.loclCAT;
+language ROM;
+sub Scedilla by Scommaaccent;
+sub scedilla by scommaaccent;
+sub Tcedilla by Tcommaaccent;
+sub tcedilla by tcommaaccent;
+language MOL;
+sub Scedilla by Scommaaccent;
+sub scedilla by scommaaccent;
+sub Tcedilla by Tcommaaccent;
+sub tcedilla by tcommaaccent;
+language KAZ;
+sub i by idotaccent;
+language TAT;
+sub i by idotaccent;
+language TRK;
+sub i by idotaccent;
+language CRT;
+sub i by idotaccent;
+language AZE;
+sub i by idotaccent;
+";
+tag = locl;
+},
+{
+automatic = 1;
+code = "sub one by onesuperior;
+sub two by twosuperior;
+sub three by threesuperior;
+sub four by foursuperior;
+";
+tag = sups;
+},
+{
+automatic = 1;
+code = "sub one slash four by onequarter;
+sub one slash two by onehalf;
+sub three slash four by threequarters;
+";
+tag = frac;
+},
+{
+automatic = 1;
+code = "sub [zero one two three four five six seven eight nine] [A a]' by ordfeminine;
+sub [zero one two three four five six seven eight nine] [O o]' by ordmasculine;
+sub N o period by numero;
+";
+tag = ordn;
+},
+{
+automatic = 1;
+code = "sub f i by f_i;
+sub f l by f_l;
+";
+tag = dlig;
+},
+{
+automatic = 1;
+code = "sub f i by fi;
+sub f f by f_f;
+sub f l by fl;
+";
+tag = liga;
+},
+{
+automatic = 1;
+code = "sub zero by zero.zero;
+";
+tag = zero;
+}
+);
+fontMaster = (
+{
+axesValues = (
+100
+);
+customParameters = (
+{
+name = typoAscender;
+value = 800;
+},
+{
+name = typoDescender;
+value = -200;
+},
+{
+name = typoLineGap;
+value = 0;
+},
+{
+name = winAscent;
+value = 1040;
+},
+{
+name = winDescent;
+value = 240;
+},
+{
+name = hheaAscender;
+value = 800;
+},
+{
+name = hheaDescender;
+value = -200;
+},
+{
+name = underlinePosition;
+value = -149;
+},
+{
+name = underlineThickness;
+value = 50;
+},
+{
+name = hheaLineGap;
+value = 0;
+}
+);
+guides = (
+{
+angle = 90;
+pos = (40,40);
+},
+{
+angle = 90;
+pos = (120,40);
+},
+{
+angle = 90;
+pos = (200,40);
+},
+{
+angle = 90;
+pos = (280,40);
+},
+{
+angle = 90;
+pos = (360,40);
+},
+{
+pos = (88,80);
+},
+{
+pos = (88,160);
+},
+{
+pos = (88,240);
+},
+{
+pos = (88,320);
+},
+{
+pos = (88,480);
+},
+{
+pos = (88,-80);
+},
+{
+pos = (326,640);
+}
+);
+id = "DA6254B3-9514-4A47-8309-1A9185AEAC97";
+metricValues = (
+{
+pos = 800;
+},
+{
+pos = 560;
+},
+{
+pos = 400;
+},
+{
+},
+{
+pos = -200;
+},
+{
+}
+);
+name = Regular;
+}
+);
+glyphs = (
+{
+glyphname = Q;
+lastChange = "2016-08-03 13:30:16 +0000";
+layers = (
+{
+anchors = (
+{
+name = bottom;
+pos = (200,0);
+},
+{
+name = top;
+pos = (200,560);
+}
+);
+background = {
+shapes = (
+{
+pos = (30,80);
+ref = _part.pixel;
+},
+{
+pos = (0,160);
+ref = _part.pixel;
+},
+{
+pos = (30,400);
+ref = _part.pixel;
+},
+{
+piece = {
+};
+pos = (160,80);
+ref = _part.pixeldbl;
+},
+{
+pos = (210,400);
+ref = _part.pixel;
+},
+{
+piece = {
+};
+pos = (80,0);
+ref = _part.pixeldbl;
+},
+{
+piece = {
+};
+pos = (80,480);
+ref = _part.pixeldbl;
+},
+{
+pos = (240,160);
+ref = _part.pixel;
+},
+{
+pos = (0,240);
+ref = _part.pixel;
+},
+{
+pos = (240,240);
+ref = _part.pixel;
+},
+{
+pos = (0,320);
+ref = _part.pixel;
+},
+{
+pos = (240,320);
+ref = _part.pixel;
+},
+{
+piece = {
+};
+pos = (140,160);
+ref = _part.pixel;
+},
+{
+piece = {
+};
+pos = (210,-80);
+ref = _part.pixel;
+},
+{
+piece = {
+};
+pos = (240,-160);
+ref = _part.pixel;
+}
+);
+};
+layerId = "DA6254B3-9514-4A47-8309-1A9185AEAC97";
+shapes = (
+{
+pos = (30,80);
+ref = _part.pixel;
+},
+{
+pos = (0,160);
+ref = _part.pixel;
+},
+{
+pos = (30,400);
+ref = _part.pixel;
+},
+{
+pos = (210,400);
+ref = _part.pixel;
+},
+{
+piece = {
+"Pixel width" = 159.748;
+};
+pos = (80,0);
+ref = _part.pixeldbl;
+},
+{
+piece = {
+"Pixel width" = 159.748;
+};
+pos = (80,480);
+ref = _part.pixeldbl;
+},
+{
+pos = (240,160);
+ref = _part.pixel;
+},
+{
+pos = (0,240);
+ref = _part.pixel;
+},
+{
+pos = (240,240);
+ref = _part.pixel;
+},
+{
+pos = (0,320);
+ref = _part.pixel;
+},
+{
+pos = (240,320);
+ref = _part.pixel;
+},
+{
+pos = (210,80);
+ref = _part.pixel;
+},
+{
+pos = (200,-80);
+ref = _part.pixel;
+},
+{
+pos = (240,-160);
+ref = _part.pixel;
+}
+);
+width = 400;
+}
+);
+unicode = 81;
+},
+{
+color = 4;
+export = 0;
+glyphname = _part.pixel;
+lastChange = "2016-08-03 13:29:55 +0000";
+layers = (
+{
+background = {
+shapes = (
+{
+closed = 1;
+nodes = (
+(236,66,o),
+(235,20,o),
+(239,4,cs),
+(240,0,l),
+(281,0,ls),
+(308,0,o),
+(321,0,o),
+(321,1,cs),
+(321,2,o),
+(323,4,o),
+(323,7,c),
+(323,8,o),
+(324,14,o),
+(326,16,c),
+(327,24,o),
+(327,36,o),
+(327,51,cs),
+(327,78,o),
+(335,80,o),
+(281,80,cs),
+(241,80,l),
+(240,77,l)
+);
+},
+{
+closed = 1;
+nodes = (
+(40,80,l),
+(40,53,o),
+(40,27,o),
+(40,0,c),
+(120,0,l),
+(123,13,o),
+(124,29,o),
+(124,40,cs),
+(124,51,o),
+(123,68,o),
+(120,80,c)
+);
+}
+);
+};
+layerId = "DA6254B3-9514-4A47-8309-1A9185AEAC97";
+partSelection = {
+Pixelwidth = 1;
+};
+shapes = (
+{
+closed = 1;
+nodes = (
+(37,68,o),
+(36,51,o),
+(36,40,cs),
+(36,29,o),
+(37,13,o),
+(40,0,c),
+(120,0,l),
+(123,13,o),
+(124,29,o),
+(124,40,cs),
+(124,51,o),
+(123,68,o),
+(120,80,c),
+(40,80,l)
+);
+}
+);
+width = 400;
+},
+{
+associatedMasterId = "DA6254B3-9514-4A47-8309-1A9185AEAC97";
+background = {
+shapes = (
+{
+closed = 1;
+nodes = (
+(236,66,o),
+(235,20,o),
+(239,4,cs),
+(240,0,l),
+(281,0,ls),
+(308,0,o),
+(321,0,o),
+(321,1,cs),
+(321,2,o),
+(323,4,o),
+(323,7,c),
+(323,8,o),
+(324,14,o),
+(326,16,c),
+(327,24,o),
+(327,36,o),
+(327,51,cs),
+(327,78,o),
+(335,80,o),
+(281,80,cs),
+(241,80,l),
+(240,77,l)
+);
+},
+{
+closed = 1;
+nodes = (
+(40,80,l),
+(40,53,o),
+(40,27,o),
+(40,0,c),
+(120,0,l),
+(123,13,o),
+(124,29,o),
+(124,40,cs),
+(124,51,o),
+(123,68,o),
+(120,80,c)
+);
+}
+);
+};
+layerId = "0AE8E92D-5F1F-46EC-AD9D-9F5B891ACBBC";
+name = "Pixel 80";
+partSelection = {
+Pixelwidth = 2;
+};
+shapes = (
+{
+closed = 1;
+nodes = (
+(37,68,o),
+(36,51,o),
+(36,40,cs),
+(36,29,o),
+(37,13,o),
+(40,0,c),
+(120,0,l),
+(123,13,o),
+(124,29,o),
+(124,40,cs),
+(124,51,o),
+(123,68,o),
+(120,80,c),
+(40,80,l)
+);
+}
+);
+width = 400;
+},
+{
+associatedMasterId = "DA6254B3-9514-4A47-8309-1A9185AEAC97";
+attr = {
+coordinates = (
+40
+);
+};
+background = {
+shapes = (
+{
+closed = 1;
+nodes = (
+(236,66,o),
+(235,20,o),
+(239,4,cs),
+(240,0,l),
+(281,0,ls),
+(308,0,o),
+(321,0,o),
+(321,1,cs),
+(321,2,o),
+(323,4,o),
+(323,7,c),
+(323,8,o),
+(324,14,o),
+(326,16,c),
+(327,24,o),
+(327,36,o),
+(327,51,cs),
+(327,78,o),
+(335,80,o),
+(281,80,cs),
+(241,80,l),
+(240,77,l)
+);
+},
+{
+closed = 1;
+nodes = (
+(40,80,l),
+(40,53,o),
+(40,27,o),
+(40,0,c),
+(120,0,l),
+(123,13,o),
+(124,29,o),
+(124,40,cs),
+(124,51,o),
+(123,68,o),
+(120,80,c)
+);
+}
+);
+};
+layerId = "1A51644A-2B73-4016-BE13-468EE1D6FBFC";
+name = "Pixel 40";
+shapes = (
+{
+closed = 1;
+nodes = (
+(37,68,o),
+(36,51,o),
+(36,40,cs),
+(36,29,o),
+(37,13,o),
+(40,0,c),
+(80,0,l),
+(83,13,o),
+(84,29,o),
+(84,40,cs),
+(84,51,o),
+(83,68,o),
+(80,80,c),
+(40,80,l)
+);
+}
+);
+width = 400;
+}
+);
+partsSettings = (
+{
+bottomValue = 0;
+name = Pixelwidth;
+topValue = 80;
+}
+);
+},
+{
+color = 4;
+export = 0;
+glyphname = _part.pixeldbl;
+lastChange = "2016-08-03 13:29:55 +0000";
+layers = (
+{
+layerId = "DA6254B3-9514-4A47-8309-1A9185AEAC97";
+partSelection = {
+"Pixel width" = 1;
+};
+shapes = (
+{
+closed = 1;
+nodes = (
+(37,68,o),
+(36,51,o),
+(36,40,cs),
+(36,29,o),
+(37,13,o),
+(40,0,c),
+(120,0,l),
+(123,13,o),
+(124,29,o),
+(124,40,cs),
+(124,51,o),
+(123,68,o),
+(120,80,c),
+(40,80,l)
+);
+}
+);
+width = 400;
+},
+{
+associatedMasterId = "DA6254B3-9514-4A47-8309-1A9185AEAC97";
+attr = {
+coordinates = (
+80
+);
+};
+layerId = "7F3A5FDF-E8BF-4747-B339-D8E49260D6DE";
+name = "Pixel 80";
+shapes = (
+{
+closed = 1;
+nodes = (
+(37,68,o),
+(36,51,o),
+(36,40,cs),
+(36,29,o),
+(37,13,o),
+(40,0,c),
+(120,0,l),
+(123,13,o),
+(124,29,o),
+(124,40,cs),
+(124,51,o),
+(123,68,o),
+(120,80,c),
+(40,80,l)
+);
+}
+);
+width = 400;
+},
+{
+associatedMasterId = "DA6254B3-9514-4A47-8309-1A9185AEAC97";
+layerId = "52FCF1C6-B5D0-4115-83E3-7560590BEE91";
+name = "Pixel 160";
+partSelection = {
+"Pixel width" = 2;
+};
+shapes = (
+{
+closed = 1;
+nodes = (
+(37,68,o),
+(36,51,o),
+(36,40,cs),
+(36,29,o),
+(37,13,o),
+(40,0,c),
+(200,0,l),
+(203,13,o),
+(204,29,o),
+(204,40,cs),
+(204,51,o),
+(203,68,o),
+(200,80,c),
+(40,80,l)
+);
+}
+);
+width = 400;
+}
+);
+partsSettings = (
+{
+bottomValue = 0;
+name = "Pixel width";
+topValue = 160;
+}
+);
+},
+);
+instances = (
+{
+axesValues = (
+100
+);
+instanceInterpolations = {
+"DA6254B3-9514-4A47-8309-1A9185AEAC97" = 1;
+};
+name = Regular;
+}
+);
+metrics = (
+{
+type = ascender;
+},
+{
+type = "cap height";
+},
+{
+type = "x-height";
+},
+{
+type = baseline;
+},
+{
+type = descender;
+},
+{
+type = "italic angle";
+}
+);
+properties = (
+{
+key = copyrights;
+values = (
+{
+language = dflt;
+value = "Copyright 2011, The VT323 Project Authors (peter.hull@oikoi.com)";
+}
+);
+},
+{
+key = designers;
+values = (
+{
+language = dflt;
+value = "Peter Hull";
+}
+);
+},
+{
+key = licenses;
+values = (
+{
+language = dflt;
+value = "This Font Software is licensed under the SIL Open Font License, Version 1.1. This license is available with a FAQ at: http://scripts.sil.org/OFL";
+}
+);
+},
+{
+key = licenseURL;
+value = "http://scripts.sil.org/OFL";
+}
+);
+unitsPerEm = 1000;
+versionMajor = 2;
+versionMinor = 0;
+}

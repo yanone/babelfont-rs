@@ -1,0 +1,1125 @@
+{
+.appVersion = "1342";
+.formatVersion = 3;
+axes = (
+{
+name = Weight;
+tag = wght;
+}
+);
+customParameters = (
+{
+name = fsType;
+value = (
+);
+}
+);
+date = "2020-03-15 14:06:21 +0000";
+familyName = "Aoboshi One";
+featurePrefixes = (
+{
+automatic = 1;
+code = "languagesystem DFLT dflt;
+";
+name = Languagesystems;
+}
+);
+features = (
+{
+automatic = 1;
+code = "feature sups;
+feature frac;
+feature ordn;
+feature onum;
+feature fwid;
+feature vert;
+feature vkna;
+feature vrt2;
+feature salt;
+feature ss01;
+";
+tag = aalt;
+},
+{
+automatic = 1;
+code = "lookup ccmp_Other_1 {
+	@CombiningTopAccents = [acutecomb circumflexcomb dieresiscomb dotaccentcomb gravecomb ringcomb tildecomb];
+	@CombiningNonTopAccents = [cedillacomb];
+	sub [i]' @CombiningTopAccents by [idotless];
+	sub [i]' @CombiningNonTopAccents @CombiningTopAccents by [idotless];
+} ccmp_Other_1;
+";
+tag = ccmp;
+},
+{
+automatic = 1;
+code = "sub one by onesuperior;
+sub two by twosuperior;
+sub three by threesuperior;
+sub four by foursuperior;
+";
+tag = sups;
+},
+{
+automatic = 1;
+code = "sub one slash four by onequarter;
+sub one slash two by onehalf;
+sub three slash four by threequarters;
+";
+tag = frac;
+},
+{
+automatic = 1;
+code = "sub [zero one two three four five six seven eight nine] [A a]' by ordfeminine;
+sub [zero one two three four five six seven eight nine] [O o]' by ordmasculine;
+";
+tag = ordn;
+},
+{
+automatic = 1;
+code = "sub zero by zero.osf;
+sub one by one.osf;
+sub two by two.osf;
+sub three by three.osf;
+sub four by four.osf;
+sub five by five.osf;
+sub six by six.osf;
+sub seven by seven.osf;
+sub eight by eight.osf;
+sub nine by nine.osf;
+";
+tag = onum;
+},
+{
+automatic = 1;
+code = "lookupflag IgnoreMarks;
+sub f f i by f_f_i;
+sub f f l by f_f_l;
+sub f f by f_f;
+sub f i by f_i;
+sub f l by f_l;
+";
+tag = liga;
+},
+{
+automatic = 1;
+code = "sub space by emspace;
+sub A by A.full;
+sub B by B.full;
+sub C by C.full;
+sub D by D.full;
+sub E by E.full;
+sub F by F.full;
+sub G by G.full;
+sub H by H.full;
+sub I by I.full;
+sub J by J.full;
+sub K by K.full;
+sub L by L.full;
+sub M by M.full;
+sub N by N.full;
+sub O by O.full;
+sub P by P.full;
+sub Q by Q.full;
+sub R by R.full;
+sub S by S.full;
+sub T by T.full;
+sub U by U.full;
+sub V by V.full;
+sub W by W.full;
+sub X by X.full;
+sub Y by Y.full;
+sub Z by Z.full;
+sub a by a.full;
+sub b by b.full;
+sub c by c.full;
+sub d by d.full;
+sub e by e.full;
+sub f by f.full;
+sub g by g.full;
+sub h by h.full;
+sub i by i.full;
+sub j by j.full;
+sub k by k.full;
+sub l by l.full;
+sub m by m.full;
+sub n by n.full;
+sub o by o.full;
+sub p by p.full;
+sub q by q.full;
+sub r by r.full;
+sub s by s.full;
+sub t by t.full;
+sub u by u.full;
+sub v by v.full;
+sub w by w.full;
+sub x by x.full;
+sub y by y.full;
+sub z by z.full;
+sub zero by zero.full;
+sub one by one.full;
+sub two by two.full;
+sub three by three.full;
+sub four by four.full;
+sub five by five.full;
+sub six by six.full;
+sub seven by seven.full;
+sub eight by eight.full;
+sub nine by nine.full;
+sub ampersand by ampersand.full;
+sub asterisk by asterisk.full;
+sub at by at.full;
+sub exclam by exclam.full;
+sub percent by percent.full;
+sub question by question.full;
+sub slash by slash.full;
+sub underscore by underscore.full;
+sub bracketleft by bracketleft.full;
+sub bracketright by bracketright.full;
+sub parenleft by parenleft.full;
+sub parenright by parenright.full;
+sub yen by yen.full;
+sub asciitilde by asciitilde.full;
+";
+tag = fwid;
+},
+{
+automatic = 1;
+code = "sub asmall-hira by asmall-hira.vert;
+sub ismall-hira by ismall-hira.vert;
+sub usmall-hira by usmall-hira.vert;
+sub esmall-hira by esmall-hira.vert;
+sub osmall-hira by osmall-hira.vert;
+sub tusmall-hira by tusmall-hira.vert;
+sub yasmall-hira by yasmall-hira.vert;
+sub yusmall-hira by yusmall-hira.vert;
+sub yosmall-hira by yosmall-hira.vert;
+sub wasmall-hira by wasmall-hira.vert;
+sub asmall-kata by asmall-kata.vert;
+sub ismall-kata by ismall-kata.vert;
+sub usmall-kata by usmall-kata.vert;
+sub esmall-kata by esmall-kata.vert;
+sub osmall-kata by osmall-kata.vert;
+sub kasmall-kata by kasmall-kata.vert;
+sub kesmall-kata by kesmall-kata.vert;
+sub tusmall-kata by tusmall-kata.vert;
+sub yasmall-kata by yasmall-kata.vert;
+sub yusmall-kata by yusmall-kata.vert;
+sub yosmall-kata by yosmall-kata.vert;
+sub wasmall-kata by wasmall-kata.vert;
+sub ellipsis by ellipsis.vert;
+sub cornerbracketleft by cornerbracketleft.vert;
+sub cornerbracketright by cornerbracketright.vert;
+sub parenleft.full by parenleft.full.vert;
+sub parenright.full by parenright.full.vert;
+sub wavedash by wavedash.vert;
+sub comma-han by comma-han.vert;
+sub period-han by period-han.vert;
+sub prolonged-kana by prolonged-kana.vert;
+";
+tag = vert;
+},
+{
+automatic = 1;
+code = "sub asmall-hira by asmall-hira.vert;
+sub ismall-hira by ismall-hira.vert;
+sub usmall-hira by usmall-hira.vert;
+sub esmall-hira by esmall-hira.vert;
+sub osmall-hira by osmall-hira.vert;
+sub tusmall-hira by tusmall-hira.vert;
+sub yasmall-hira by yasmall-hira.vert;
+sub yusmall-hira by yusmall-hira.vert;
+sub yosmall-hira by yosmall-hira.vert;
+sub wasmall-hira by wasmall-hira.vert;
+sub asmall-kata by asmall-kata.vert;
+sub ismall-kata by ismall-kata.vert;
+sub usmall-kata by usmall-kata.vert;
+sub esmall-kata by esmall-kata.vert;
+sub osmall-kata by osmall-kata.vert;
+sub kasmall-kata by kasmall-kata.vert;
+sub kesmall-kata by kesmall-kata.vert;
+sub tusmall-kata by tusmall-kata.vert;
+sub yasmall-kata by yasmall-kata.vert;
+sub yusmall-kata by yusmall-kata.vert;
+sub yosmall-kata by yosmall-kata.vert;
+sub wasmall-kata by wasmall-kata.vert;
+";
+tag = vkna;
+},
+{
+automatic = 1;
+code = "sub asmall-hira by asmall-hira.vert;
+sub ismall-hira by ismall-hira.vert;
+sub usmall-hira by usmall-hira.vert;
+sub esmall-hira by esmall-hira.vert;
+sub osmall-hira by osmall-hira.vert;
+sub tusmall-hira by tusmall-hira.vert;
+sub yasmall-hira by yasmall-hira.vert;
+sub yusmall-hira by yusmall-hira.vert;
+sub yosmall-hira by yosmall-hira.vert;
+sub wasmall-hira by wasmall-hira.vert;
+sub asmall-kata by asmall-kata.vert;
+sub ismall-kata by ismall-kata.vert;
+sub usmall-kata by usmall-kata.vert;
+sub esmall-kata by esmall-kata.vert;
+sub osmall-kata by osmall-kata.vert;
+sub kasmall-kata by kasmall-kata.vert;
+sub kesmall-kata by kesmall-kata.vert;
+sub tusmall-kata by tusmall-kata.vert;
+sub yasmall-kata by yasmall-kata.vert;
+sub yusmall-kata by yusmall-kata.vert;
+sub yosmall-kata by yosmall-kata.vert;
+sub wasmall-kata by wasmall-kata.vert;
+sub ellipsis by ellipsis.vert;
+sub cornerbracketleft by cornerbracketleft.vert;
+sub cornerbracketright by cornerbracketright.vert;
+sub parenleft.full by parenleft.full.vert;
+sub parenright.full by parenright.full.vert;
+sub wavedash by wavedash.vert;
+sub comma-han by comma-han.vert;
+sub period-han by period-han.vert;
+sub prolonged-kana by prolonged-kana.vert;
+";
+tag = vrt2;
+},
+{
+automatic = 1;
+code = "sub a by a.ss01;
+sub aacute by aacute.ss01;
+sub acircumflex by acircumflex.ss01;
+sub adieresis by adieresis.ss01;
+sub agrave by agrave.ss01;
+sub aring by aring.ss01;
+sub atilde by atilde.ss01;
+";
+tag = salt;
+},
+{
+automatic = 1;
+code = "sub a by a.ss01;
+sub aacute by aacute.ss01;
+sub acircumflex by acircumflex.ss01;
+sub adieresis by adieresis.ss01;
+sub agrave by agrave.ss01;
+sub aring by aring.ss01;
+sub atilde by atilde.ss01;
+";
+tag = ss01;
+}
+);
+fontMaster = (
+{
+axesValues = (
+100
+);
+customParameters = (
+{
+name = "CJK Guide";
+value = "93";
+},
+{
+name = typoAscender;
+value = 880;
+},
+{
+name = typoDescender;
+value = -120;
+},
+{
+name = typoLineGap;
+value = 0;
+},
+{
+name = winAscent;
+value = 1160;
+},
+{
+name = winDescent;
+value = 288;
+},
+{
+name = hheaAscender;
+value = 1160;
+},
+{
+name = hheaDescender;
+value = -288;
+},
+{
+name = hheaLineGap;
+value = 0;
+}
+);
+iconName = SemiBold;
+id = "D36B0F94-A848-4C2C-9ADF-F92FCBE7F4F5";
+metricValues = (
+{
+pos = 880;
+},
+{
+pos = 750;
+},
+{
+pos = 460;
+},
+{
+},
+{
+pos = -120;
+},
+{
+}
+);
+name = Regular;
+userData = {
+GSCornerRadius = 300;
+GSOffsetHorizontal = 20;
+GSOffsetKeepCompatible = 1;
+GSOffsetProportional = 1;
+GSOffsetVertical = 5;
+};
+}
+);
+glyphs = (
+{
+glyphname = A;
+lastChange = "2020-03-13 12:35:02 +0000";
+layers = (
+{
+hints = (
+{
+name = _cap.serf2;
+options = 8;
+origin = (0,4);
+scale = (1.1508,1);
+target = (0,5);
+type = Cap;
+},
+{
+name = _corner.serfLeft2;
+options = 1;
+origin = (0,0);
+scale = (0.8,1);
+type = Corner;
+},
+{
+name = _corner.serfRight2;
+origin = (0,2);
+scale = (1.1,1);
+type = Corner;
+},
+{
+name = _corner.serfLeft0;
+options = 1;
+origin = (0,3);
+type = Corner;
+},
+{
+name = _corner.serfRight0;
+origin = (0,6);
+type = Corner;
+}
+);
+layerId = "D36B0F94-A848-4C2C-9ADF-F92FCBE7F4F5";
+shapes = (
+{
+closed = 1;
+nodes = (
+(173,0,l),
+(406,594,l),
+(639,0,l),
+(795,0,l),
+(479,750,l),
+(334,750,l),
+(22,0,l)
+);
+},
+{
+closed = 1;
+nodes = (
+(615,178,l),
+(615,293,l),
+(180,293,l),
+(180,178,l)
+);
+}
+);
+width = 817;
+},
+{
+associatedMasterId = "D36B0F94-A848-4C2C-9ADF-F92FCBE7F4F5";
+hints = (
+{
+name = _cap.serf2;
+options = 8;
+origin = (1,4);
+scale = (1.1508,1);
+target = (1,5);
+type = Cap;
+},
+{
+name = _corner.serfLeft2;
+options = 1;
+origin = (1,0);
+scale = (0.8,1);
+type = Corner;
+},
+{
+name = _corner.serfRight2;
+origin = (1,2);
+scale = (1.1,1);
+type = Corner;
+},
+{
+name = _corner.serfLeft0;
+options = 1;
+origin = (1,3);
+type = Corner;
+},
+{
+name = _corner.serfRight0;
+origin = (1,6);
+type = Corner;
+}
+);
+layerId = "39F6D4F3-C839-423F-913E-26F04471A492";
+name = "Feb 15 20, 17:24";
+shapes = (
+{
+closed = 1;
+nodes = (
+(660,188,l),
+(660,303,l),
+(225,303,l),
+(225,188,l)
+);
+},
+{
+closed = 1;
+nodes = (
+(178,0,l),
+(450,585,l),
+(724,0,l),
+(880,0,l),
+(526,750,l),
+(381,750,l),
+(27,0,l)
+);
+}
+);
+width = 907;
+}
+);
+unicode = 65;
+},
+{
+export = 0;
+glyphname = uni4E00;
+lastChange = "2020-12-01 22:15:19 +0000";
+layers = (
+{
+layerId = "D36B0F94-A848-4C2C-9ADF-F92FCBE7F4F5";
+shapes = (
+{
+alignment = -1;
+piece = {
+Haba = 540;
+Takasa = 595;
+};
+ref = _part.Yoko;
+}
+);
+width = 1000;
+}
+);
+unicode = 19968;
+},
+{
+export = 0;
+glyphname = _part.Hane;
+lastChange = "2019-01-12 09:51:33 +0000";
+layers = (
+{
+hints = (
+{
+name = _corner.serfRight;
+origin = (0,0);
+type = Corner;
+},
+{
+name = _corner.serfLeft;
+origin = (0,1);
+type = Corner;
+},
+{
+name = _corner.serfRight;
+origin = (0,2);
+type = Corner;
+},
+{
+name = _corner.serfLeft;
+origin = (0,3);
+type = Corner;
+},
+{
+name = _corner.serfLeft;
+origin = (1,0);
+type = Corner;
+},
+{
+name = _corner.serfRight;
+origin = (1,3);
+type = Corner;
+}
+);
+layerId = "D36B0F94-A848-4C2C-9ADF-F92FCBE7F4F5";
+partSelection = {
+Takasa = 2;
+Haba = 2;
+HaneHaba = 2;
+HaneTakasa = 2;
+};
+shapes = (
+{
+closed = 1;
+nodes = (
+(571,826,l),
+(429,826,l),
+(429,-74,l),
+(571,-74,l)
+);
+},
+{
+closed = 1;
+nodes = (
+(296,-74,l),
+(571,-74,l),
+(571,51,l),
+(296,51,l)
+);
+}
+);
+width = 1000;
+},
+{
+associatedMasterId = "D36B0F94-A848-4C2C-9ADF-F92FCBE7F4F5";
+hints = (
+{
+name = _corner.serfRight;
+origin = (0,0);
+type = Corner;
+},
+{
+name = _corner.serfLeft;
+origin = (0,1);
+type = Corner;
+},
+{
+name = _corner.serfRight;
+origin = (0,2);
+type = Corner;
+},
+{
+name = _corner.serfLeft;
+origin = (0,3);
+type = Corner;
+},
+{
+name = _corner.serfLeft;
+origin = (1,0);
+type = Corner;
+},
+{
+name = _corner.serfRight;
+origin = (1,3);
+type = Corner;
+}
+);
+layerId = "A86906CE-B011-493A-80A1-EC8B0513ACB1";
+name = Takasa;
+partSelection = {
+Takasa = 1;
+};
+shapes = (
+{
+closed = 1;
+nodes = (
+(571,460,l),
+(429,460,l),
+(429,366,l),
+(571,366,l)
+);
+},
+{
+closed = 1;
+nodes = (
+(296,366,l),
+(571,366,l),
+(571,491,l),
+(296,491,l)
+);
+}
+);
+width = 1000;
+},
+{
+associatedMasterId = "D36B0F94-A848-4C2C-9ADF-F92FCBE7F4F5";
+hints = (
+{
+name = _corner.serfRight;
+origin = (0,0);
+type = Corner;
+},
+{
+name = _corner.serfLeft;
+origin = (0,1);
+type = Corner;
+},
+{
+name = _corner.serfRight;
+origin = (0,2);
+type = Corner;
+},
+{
+name = _corner.serfLeft;
+origin = (0,3);
+type = Corner;
+},
+{
+name = _corner.serfLeft;
+origin = (1,0);
+type = Corner;
+},
+{
+name = _corner.serfRight;
+origin = (1,3);
+type = Corner;
+}
+);
+layerId = "D4F41B9D-281E-4E9F-8E3D-F4B5AE312BDC";
+name = Haba;
+partSelection = {
+Haba = 1;
+};
+shapes = (
+{
+closed = 1;
+nodes = (
+(516,826,l),
+(484,826,l),
+(484,-74,l),
+(516,-74,l)
+);
+},
+{
+closed = 1;
+nodes = (
+(296,-74,l),
+(516,-74,l),
+(516,51,l),
+(296,51,l)
+);
+}
+);
+width = 1000;
+},
+{
+associatedMasterId = "D36B0F94-A848-4C2C-9ADF-F92FCBE7F4F5";
+hints = (
+{
+name = _corner.serfRight;
+origin = (0,0);
+type = Corner;
+},
+{
+name = _corner.serfLeft;
+origin = (0,1);
+type = Corner;
+},
+{
+name = _corner.serfRight;
+origin = (0,2);
+type = Corner;
+},
+{
+name = _corner.serfLeft;
+origin = (0,3);
+type = Corner;
+},
+{
+name = _corner.serfLeft;
+origin = (1,0);
+type = Corner;
+},
+{
+name = _corner.serfRight;
+origin = (1,3);
+type = Corner;
+}
+);
+layerId = "047690AB-FA58-4271-ACB7-118CC3FF53E0";
+name = HaneTakasa;
+partSelection = {
+HaneTakasa = 1;
+};
+shapes = (
+{
+closed = 1;
+nodes = (
+(571,826,l),
+(429,826,l),
+(429,-74,l),
+(571,-74,l)
+);
+},
+{
+closed = 1;
+nodes = (
+(296,-74,l),
+(571,-74,l),
+(571,-49,l),
+(296,-49,l)
+);
+}
+);
+width = 1000;
+},
+{
+associatedMasterId = "D36B0F94-A848-4C2C-9ADF-F92FCBE7F4F5";
+hints = (
+{
+name = _corner.serfRight;
+origin = (0,0);
+type = Corner;
+},
+{
+name = _corner.serfLeft;
+origin = (0,1);
+type = Corner;
+},
+{
+name = _corner.serfRight;
+origin = (0,2);
+scale = (0.01,0);
+type = Corner;
+},
+{
+name = _corner.serfLeft;
+origin = (0,3);
+type = Corner;
+},
+{
+name = _corner.serfLeft;
+origin = (1,0);
+type = Corner;
+},
+{
+name = _corner.serfRight;
+origin = (1,3);
+type = Corner;
+}
+);
+layerId = "72742E80-665B-45E4-B180-3D80AAE37D17";
+name = HaneHaba;
+partSelection = {
+HaneHaba = 1;
+};
+shapes = (
+{
+closed = 1;
+nodes = (
+(571,826,l),
+(429,826,l),
+(429,-74,l),
+(571,-74,l)
+);
+},
+{
+closed = 1;
+nodes = (
+(396,-74,l),
+(571,-74,l),
+(571,51,l),
+(396,51,l)
+);
+}
+);
+width = 1000;
+}
+);
+partsSettings = (
+{
+bottomValue = 0;
+name = Takasa;
+topValue = 600;
+},
+{
+bottomValue = 0;
+name = Haba;
+topValue = 600;
+},
+{
+bottomValue = 0;
+name = HaneHaba;
+topValue = 200;
+},
+{
+bottomValue = 0;
+name = HaneTakasa;
+topValue = 200;
+}
+);
+},
+{
+export = 0;
+glyphname = "_part.Hen-Te";
+lastChange = "2019-01-15 05:41:46 +0000";
+layers = (
+{
+hints = (
+{
+name = _corner.serfRight;
+origin = (0,0);
+type = Corner;
+},
+{
+name = _corner.serfLeft;
+origin = (0,1);
+type = Corner;
+},
+{
+name = _corner.serfRight;
+origin = (0,2);
+type = Corner;
+},
+{
+name = _corner.serfLeft;
+origin = (0,3);
+type = Corner;
+},
+{
+name = _corner.serfLeft;
+origin = (1,0);
+type = Corner;
+},
+{
+name = _corner.serfRight;
+origin = (1,3);
+type = Corner;
+},
+{
+name = _corner.serfRight;
+origin = (2,1);
+type = Corner;
+},
+{
+name = _corner.serfRight;
+origin = (2,3);
+type = Corner;
+},
+{
+name = _corner.serfLeft;
+origin = (2,2);
+type = Corner;
+},
+{
+name = _corner.serfLeft;
+origin = (2,0);
+type = Corner;
+},
+{
+name = _corner.serfLeft;
+origin = (3,7);
+type = Corner;
+},
+{
+name = _corner.serfLeft;
+origin = (3,3);
+type = Corner;
+},
+{
+name = _corner.serfRight;
+origin = (3,2);
+type = Corner;
+},
+{
+name = _corner.serfRight;
+origin = (3,6);
+type = Corner;
+}
+);
+layerId = "D36B0F94-A848-4C2C-9ADF-F92FCBE7F4F5";
+shapes = (
+{
+closed = 1;
+nodes = (
+(341,826,l),
+(212,826,l),
+(212,-74,l),
+(341,-74,l)
+);
+},
+{
+closed = 1;
+nodes = (
+(87,-74,l),
+(341,-74,l),
+(341,44,l),
+(87,44,l)
+);
+},
+{
+closed = 1;
+nodes = (
+(66,526,l),
+(441,526,l),
+(441,655,l),
+(66,655,l)
+);
+},
+{
+closed = 1;
+nodes = (
+(206,208,o),
+(342,249,o),
+(465,294,c),
+(419,421,l),
+(307,381,o),
+(175,341,o),
+(46,304,c),
+(87,172,l)
+);
+}
+);
+width = 1000;
+}
+);
+partsSettings = (
+{
+bottomValue = 600;
+name = Takasa;
+topValue = 600;
+},
+{
+bottomValue = 600;
+name = Haba;
+topValue = 600;
+},
+{
+bottomValue = 200;
+name = HaneHaba;
+topValue = 200;
+},
+{
+bottomValue = 200;
+name = HaneTakasa;
+topValue = 200;
+}
+);
+},
+);
+instances = (
+{
+axesValues = (
+100
+);
+instanceInterpolations = {
+"D36B0F94-A848-4C2C-9ADF-F92FCBE7F4F5" = 1;
+};
+name = Regular;
+}
+);
+metrics = (
+{
+type = ascender;
+},
+{
+type = "cap height";
+},
+{
+type = "x-height";
+},
+{
+type = baseline;
+},
+{
+type = descender;
+},
+{
+type = "italic angle";
+}
+);
+properties = (
+{
+key = copyrights;
+values = (
+{
+language = dflt;
+value = "Copyright 2020 The Aoboshi Font Project Authors (https://github.com/matsuba723/Aoboshi), all rights reserved.";
+}
+);
+},
+{
+key = designers;
+values = (
+{
+language = dflt;
+value = IKIMOJI;
+}
+);
+},
+{
+key = manufacturers;
+values = (
+{
+language = dflt;
+value = "Natsumi Matsuba";
+}
+);
+},
+{
+key = familyNames;
+values = (
+{
+language = JAN;
+value = "あおぼし One";
+}
+);
+},
+{
+key = vendorID;
+value = IKMJ;
+},
+{
+key = licenses;
+values = (
+{
+language = dflt;
+value = "This Font Software is licensed under the SIL Open Font License, Version 1.1. This license is available with a FAQ at: https://scripts.sil.org/OFL";
+}
+);
+},
+{
+key = licenseURL;
+value = "https://scripts.sil.org/OFL";
+}
+);
+unitsPerEm = 1000;
+userData = {
+GSDimensionPlugin.Dimensions = {
+"D36B0F94-A848-4C2C-9ADF-F92FCBE7F4F5" = {
+HH = "118";
+HV = "133";
+OH = "122";
+OV = "157";
+nV = "129";
+nd = "109";
+oH = "107";
+oV = "118";
+tH = "112";
+};
+};
+};
+versionMajor = 1;
+versionMinor = 0;
+}

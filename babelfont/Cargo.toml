@@ -51,7 +51,7 @@ default = [
 vfb = ["dep:vfbreader"]
 
 glyphs = ["dep:glyphslib"]
-ufo = ["dep:norad"]
+ufo = ["dep:norad", "dep:plist"]
 fontra = []
 robocjk = []
 fontlab = []
@@ -75,6 +75,7 @@ reactive = ["dep:reactive_stores"]
 [dependencies]
 chrono = { version = "0.4.3", features = ["serde"] }
 glyphslib = { version = "0.4.1", optional = true }
+plist = { version = "1.4.1", optional = true }
 norad = { git = "https://github.com/yanone/norad", rev = "cdd7469a1f4d5459cf5c264079c04ac6149f23aa", features = ["kurbo"], optional = true }
 log = { workspace = true }
 serde_json = "1.0"

@@ -112,7 +112,8 @@ fn named(name: &str) -> Option<&'static GlyphInfo> {
 /// (f_f_l, lam_alef-ar) of its parts: a mark if the first is, the first's
 /// if the others are marks, else a letter ligature
 fn category_of(name: &str) -> Option<(&'static str, Option<&'static str>)> {
-    let attributes = |info: &'static GlyphInfo| (info.category.as_str(), info.sub_category.as_deref());
+    let attributes =
+        |info: &'static GlyphInfo| (info.category.as_str(), info.sub_category.as_deref());
     if name.starts_with('_') {
         return None;
     }
@@ -176,6 +177,21 @@ pub(crate) fn glyph_info_for_codepoint(codepoint: u32) -> Option<&'static GlyphI
     GLYPHS_DATA_INDEX.by_codepoint.get(&codepoint).copied()
 }
 
+/// The category Glyphs.app's data gives a glyph of this name, as glyphsLib
+/// and fontc (category_for_glyph_preliminary) read it: a mark only if it
+/// attaches, and a ligature by its subcategory. A spacing accent or a
+/// modifier letter (acute, apostrophemod) is a base. `None` where the data
+/// says nothing that matters for compiling.
+pub(crate) fn data_category(name: &str) -> Option<crate::GlyphCategory> {
+    let (category, subcategory) = category_of(name)?;
+    match (category, subcategory) {
+        ("Mark", Some("Nonspacing" | "Spacing Combining")) => Some(crate::GlyphCategory::Mark),
+        (_, Some("Ligature")) => Some(crate::GlyphCategory::Ligature),
+        ("Mark", _) => Some(crate::GlyphCategory::Base),
+        _ => None,
+    }
+}
+
 /// A filter that adds Glyphs.app glyph metadata to the font
 pub struct GlyphsData;
 
@@ -193,19 +209,9 @@ impl FontFilter for GlyphsData {
             if glyph.category != crate::GlyphCategory::Unknown {
                 continue;
             }
-            let Some((category, subcategory)) = category_of(&glyph.name) else {
-                continue;
-            };
-            // glyphsLib and fontc (category_for_glyph_preliminary): a mark
-            // only if it attaches, and a ligature by its subcategory. A
-            // spacing accent or a modifier letter (acute, apostrophemod) is a
-            // base
-            glyph.category = match (category, subcategory) {
-                ("Mark", Some("Nonspacing" | "Spacing Combining")) => crate::GlyphCategory::Mark,
-                (_, Some("Ligature")) => crate::GlyphCategory::Ligature,
-                ("Mark", _) => crate::GlyphCategory::Base,
-                _ => continue,
-            };
+            if let Some(category) = data_category(&glyph.name) {
+                glyph.category = category;
+            }
         }
         Ok(())
     }
@@ -273,7 +279,14 @@ mod tests {
         // as fontc makes up a category for a name Glyphs' data lacks: by the
         // glyph a suffix varies, else by the parts of a ligature
         let mut font = Font::new();
-        for name in ["fi", "f_f_l", "f_f.ss01", "A_V", "a_acutecomb", "acutecomb_gravecomb"] {
+        for name in [
+            "fi",
+            "f_f_l",
+            "f_f.ss01",
+            "A_V",
+            "a_acutecomb",
+            "acutecomb_gravecomb",
+        ] {
             font.glyphs.push(Glyph::new(name));
         }
         GlyphsData.apply(&mut font).unwrap();

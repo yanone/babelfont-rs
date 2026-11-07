@@ -153,10 +153,7 @@ mod glyphs {
                     "com.schriftgestalt.Glyphs.disabled".into(),
                     serde_json::Value::Bool(true),
                 );
-                code.code = "#".to_string() + &code.code.replace("\n", "\n#");
-                if code.code.ends_with("\n#") {
-                    code.code.truncate(code.code.len() - 2);
-                }
+                code.code = comment_out(&code.code, &mut code.format_specific);
             }
             if let Some(notes) = &val.notes {
                 code.format_specific.insert(
@@ -179,10 +176,7 @@ mod glyphs {
                     "com.schriftgestalt.Glyphs.disabled".into(),
                     serde_json::Value::Bool(true),
                 );
-                code.code = "#".to_string() + &code.code.replace("\n", "\n#");
-                if code.code.ends_with("\n#") {
-                    code.code.truncate(code.code.len() - 2);
-                }
+                code.code = comment_out(&code.code, &mut code.format_specific);
             }
             if let Some(notes) = &val.notes {
                 code.format_specific.insert(
@@ -233,6 +227,36 @@ mod glyphs {
         }
     }
 
+    /// A disabled feature's code is commented out, so that it does not compile.
+    fn comment_out(code: &str, format_specific: &mut FormatSpecific) -> String {
+        let mut commented = "#".to_string() + &code.replace('\n', "\n#");
+        if commented.ends_with("\n#") {
+            commented.truncate(commented.len() - 2);
+            format_specific.insert(KEY_DISABLED_TRAILING_NEWLINE.into(), true.into());
+        }
+        commented
+    }
+
+    /// The inverse of [`comment_out`], for writing a disabled feature back.
+    fn uncomment(code: &str, format_specific: &FormatSpecific) -> String {
+        let mut code = code
+            .split('\n')
+            .map(|line| line.strip_prefix('#').unwrap_or(line))
+            .collect::<Vec<_>>()
+            .join("\n");
+        if format_specific
+            .get(KEY_DISABLED_TRAILING_NEWLINE)
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
+            code.push('\n');
+        }
+        code
+    }
+
+    /// Whether [`comment_out`] dropped a trailing newline
+    const KEY_DISABLED_TRAILING_NEWLINE: &str = "com.schriftgestalt.Glyphs.disabledTrailingNewline";
+
     // And back again
 
     impl PossiblyAutomaticCode {
@@ -253,6 +277,8 @@ mod glyphs {
                 disabled,
                 notes,
                 name: name.to_string(),
+                // A package names its files after the entry's name.
+                file: None,
             }
         }
 
@@ -268,11 +294,17 @@ mod glyphs {
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
             glyphslib::common::FeaturePrefix {
-                code: self.code.clone(),
+                code: if disabled {
+                    uncomment(&self.code, &self.format_specific)
+                } else {
+                    self.code.clone()
+                },
                 automatic: self.automatic,
                 disabled,
                 notes,
                 name: name.to_string(),
+                // A package names its files after the entry's name.
+                file: None,
             }
         }
 
@@ -319,6 +351,11 @@ mod glyphs {
                 Some(original) => original.to_string(),
                 None => self.code.clone(),
             };
+            let code = if disabled {
+                uncomment(&code, &self.format_specific)
+            } else {
+                code
+            };
             glyphslib::common::Feature {
                 code,
                 automatic: self.automatic,
@@ -326,6 +363,8 @@ mod glyphs {
                 notes,
                 tag: name.to_string(),
                 labels,
+                // A package names its files after the entry's name.
+                file: None,
             }
         }
     }

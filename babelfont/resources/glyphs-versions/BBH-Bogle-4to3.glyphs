@@ -1,0 +1,392 @@
+{
+.appVersion = "3428";
+.formatVersion = 3;
+customParameters = (
+{
+name = glyphOrder;
+value = (
+A,
+B,
+C,
+D,
+E,
+F,
+G,
+H,
+I,
+J,
+K,
+L,
+M,
+N,
+O,
+P,
+Q,
+R,
+S,
+T,
+U,
+V,
+W,
+X,
+Y,
+Z,
+J.ss01,
+a,
+b,
+c,
+d,
+e,
+f,
+g,
+h,
+i,
+j,
+k,
+l,
+m,
+n,
+o,
+p,
+q,
+r,
+s,
+t,
+u,
+v,
+w,
+x,
+y,
+z,
+j.ss01,
+zero,
+one,
+two,
+three,
+four,
+five,
+six,
+seven,
+eight,
+nine,
+space,
+period,
+comma,
+colon,
+semicolon,
+ellipsis,
+exclam,
+question,
+periodcentered,
+bullet,
+asterisk,
+numbersign,
+slash,
+backslash,
+hyphen,
+softhyphen,
+endash,
+emdash,
+underscore,
+parenleft,
+parenright,
+braceleft,
+braceright,
+bracketleft,
+bracketright,
+quotesinglbase,
+quotedblbase,
+quotedblleft,
+quotedblright,
+quoteleft,
+quoteright,
+quotedbl,
+quotesingle,
+at,
+ampersand,
+copyright,
+registered,
+trademark,
+degree,
+bar,
+dollar,
+euro,
+sterling,
+plus,
+minus,
+multiply,
+equal,
+percent
+);
+},
+{
+name = "Use Typo Metrics";
+value = 1;
+},
+{
+name = fsType;
+value = (
+);
+}
+);
+date = "2025-04-15 10:57:34 +0000";
+familyName = "BBH Bogle";
+featurePrefixes = (
+{
+automatic = 1;
+code = "languagesystem DFLT dflt;
+";
+name = Languagesystems;
+}
+);
+features = (
+{
+automatic = 1;
+code = "feature ss01;
+";
+tag = aalt;
+},
+{
+automatic = 1;
+code = "sub J by J.ss01;
+sub j by j.ss01;
+";
+labels = (
+{
+language = dflt;
+value = "alt J";
+}
+);
+tag = ss01;
+}
+);
+fontMaster = (
+{
+customParameters = (
+{
+name = typoAscender;
+value = 950;
+},
+{
+name = typoDescender;
+value = -250;
+},
+{
+name = typoLineGap;
+value = 0;
+},
+{
+name = winAscent;
+value = 1016;
+},
+{
+name = winDescent;
+value = 216;
+},
+{
+name = hheaAscender;
+value = 950;
+},
+{
+name = hheaDescender;
+value = -250;
+},
+{
+name = hheaLineGap;
+value = 0;
+}
+);
+id = "39DC058D-615C-44EE-9158-2D05AB2D1C50";
+metricValues = (
+{
+over = 16;
+pos = 800;
+},
+{
+over = 16;
+pos = 700;
+},
+{
+over = 16;
+pos = 500;
+},
+{
+over = -16;
+},
+{
+over = -16;
+pos = -200;
+},
+{
+}
+);
+name = Bogle;
+stemValues = (
+148,
+140,
+145,
+138
+);
+}
+);
+glyphs = (
+{
+glyphname = backslash;
+lastChange = "2025-06-30 10:04:55 +0000";
+layers = (
+{
+layerId = "39DC058D-615C-44EE-9158-2D05AB2D1C50";
+shapes = (
+{
+pos = (412,0);
+ref = slash;
+scale = (-1,1);
+userData = {
+identifier = EFAAB6DD;
+};
+}
+);
+width = 412;
+}
+);
+unicode = 92;
+},
+{
+glyphname = .notdef;
+lastChange = "2025-11-14 09:03:11 +0000";
+layers = (
+{
+layerId = "39DC058D-615C-44EE-9158-2D05AB2D1C50";
+shapes = (
+{
+attr = {
+strokePos = 1;
+};
+closed = 1;
+nodes = (
+(550,-200,l),
+(550,800,l),
+(50,800,l),
+(50,-200,l)
+);
+},
+{
+attr = {
+strokePos = 1;
+};
+closed = 1;
+nodes = (
+(140,710,l),
+(460,710,l),
+(460,-110,l),
+(140,-110,l)
+);
+}
+);
+width = 600;
+}
+);
+},
+);
+instances = (
+{
+instanceInterpolations = {
+"39DC058D-615C-44EE-9158-2D05AB2D1C50" = 1;
+};
+name = Regular;
+}
+);
+metrics = (
+{
+type = ascender;
+},
+{
+type = "cap height";
+},
+{
+type = "x-height";
+},
+{
+type = baseline;
+},
+{
+type = descender;
+},
+{
+type = "italic angle";
+}
+);
+properties = (
+{
+key = copyrights;
+values = (
+{
+language = dflt;
+value = "Copyright 2025 The BBH Project Authors (https://github.com/Studio-DRAMA/BBH)";
+}
+);
+},
+{
+key = designers;
+values = (
+{
+language = dflt;
+value = "Studio Drama";
+}
+);
+},
+{
+key = licenses;
+values = (
+{
+language = dflt;
+value = "This Font Software is licensed under the SIL Open Font License, Version 1.1. This license is available with a FAQ at: https://openfontlicense.org";
+}
+);
+},
+{
+key = licenseURL;
+value = "https://openfontlicense.org";
+},
+{
+key = manufacturers;
+values = (
+{
+language = dflt;
+value = "Studio Drama";
+}
+);
+}
+);
+settings = {
+disablesAutomaticAlignment = 1;
+};
+stems = (
+{
+name = O;
+},
+{
+horizontal = 1;
+name = O;
+},
+{
+name = H;
+},
+{
+horizontal = 1;
+name = H;
+}
+);
+unitsPerEm = 1000;
+userData = {
+UFO.lib = {
+public.postscriptNames = {
+euro = Euro;
+softhyphen = uni00AD;
+};
+};
+UFOFormat = 3;
+};
+versionMajor = 1;
+versionMinor = 0;
+}

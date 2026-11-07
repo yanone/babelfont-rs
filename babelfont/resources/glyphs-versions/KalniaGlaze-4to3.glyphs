@@ -1,0 +1,5573 @@
+{
+.appVersion = "3257";
+.formatVersion = 3;
+axes = (
+{
+name = Weight;
+tag = wght;
+},
+{
+name = Width;
+tag = wdth;
+}
+);
+classes = (
+{
+automatic = 1;
+code = "A Aacute Abreve Acaron Acircumflex Adieresis Agrave Amacron Aogonek Aring Atilde AE B C Cacute Ccaron Ccedilla Cdotaccent D Dcaron Dcroat Eth E Eacute Ecaron Ecircumflex Edieresis Edotaccent Egrave Emacron Eogonek F G Gbreve Gcommaaccent Gdotaccent H Hbar I IJ Iacute Icircumflex Idieresis Idotaccent Igrave Imacron Iogonek J K Kcommaaccent L Lacute Lcaron Lcommaaccent Ldot Lslash M N Nacute Ncaron Ncommaaccent Ntilde Eng O Oacute Ocircumflex Odieresis Ograve Ohungarumlaut Omacron Oslash Otilde OE P Thorn Q R Racute Rcaron Rcommaaccent S Sacute Scaron Scedilla Scommaaccent Germandbls T Tcaron Tcommaaccent U Uacute Ubreve Ucircumflex Udieresis Ugrave Uhungarumlaut Umacron Uogonek Uring V W Wacute Wcircumflex Wdieresis Wgrave X Y Yacute Ycircumflex Ydieresis Ygrave Z Zacute Zcaron Zdotaccent";
+name = Uppercase;
+}
+);
+customParameters = (
+{
+name = "EditView Line Height";
+value = 1100;
+},
+{
+name = "Use Line Breaks";
+value = 1;
+},
+{
+name = "Use Typo Metrics";
+value = 1;
+},
+{
+name = fsType;
+value = (
+);
+},
+{
+name = "meta Table";
+value = (
+{
+data = Latn;
+tag = dlng;
+},
+{
+data = Latn;
+tag = slng;
+}
+);
+},
+{
+name = "Color Palettes";
+value = (
+(
+(115,250,121,255),
+(255,138,216,255)
+)
+);
+}
+);
+date = "2024-04-10 22:25:51 +0000";
+familyName = "Kalnia Glaze";
+featurePrefixes = (
+{
+automatic = 1;
+code = "languagesystem DFLT dflt;
+
+languagesystem latn dflt;
+languagesystem latn AZE;
+languagesystem latn CRT;
+languagesystem latn KAZ;
+languagesystem latn TAT;
+languagesystem latn TRK;
+languagesystem latn ROM;
+languagesystem latn MOL;
+languagesystem latn CAT;
+";
+name = Languagesystems;
+}
+);
+features = (
+{
+automatic = 1;
+code = "feature locl;
+feature sups;
+feature frac;
+feature ordn;
+feature case;
+";
+tag = aalt;
+},
+{
+code = "lookup ccmp_Other_1 {
+	@CombiningTopAccents = [acutecomb brevecomb caroncomb circumflexcomb commaturnedabovecomb dieresiscomb dotaccentcomb gravecomb hungarumlautcomb macroncomb ringcomb tildecomb];
+	@CombiningNonTopAccents = [cedillacomb ogonekcomb];
+	sub [i j iogonek]' @CombiningTopAccents by [idotless jdotless idotless_ogonekcomb];
+	sub [i j iogonek]' @CombiningNonTopAccents @CombiningTopAccents by [idotless jdotless idotless_ogonekcomb];
+} ccmp_Other_1;
+
+lookup ccmp_latn_1 {
+	sub fi by f i;
+	sub fl by f l;
+} ccmp_latn_1;
+
+script latn;
+lookup ccmp_latn_1;
+";
+tag = ccmp;
+},
+{
+automatic = 1;
+code = "script latn;
+language AZE;
+lookup locl_latn_0 {
+	sub i by idotaccent;
+} locl_latn_0;
+language CRT;
+lookup locl_latn_0;
+language KAZ;
+lookup locl_latn_0;
+language TAT;
+lookup locl_latn_0;
+language TRK;
+lookup locl_latn_0;
+
+script latn;
+language ROM;
+lookup locl_latn_1 {
+	sub Scedilla by Scommaaccent;
+	sub scedilla by scommaaccent;
+} locl_latn_1;
+language MOL;
+lookup locl_latn_1;
+
+script latn;
+language CAT;
+lookup locl_latn_2 {
+	sub l periodcentered' l by periodcentered.loclCAT;
+	sub L periodcentered' L by periodcentered.loclCAT.case;
+} locl_latn_2;
+";
+tag = locl;
+},
+{
+automatic = 1;
+code = "sub one by onesuperior;
+sub two by twosuperior;
+sub three by threesuperior;
+sub four by foursuperior;
+";
+tag = sups;
+},
+{
+automatic = 1;
+code = "sub one slash four by onequarter;
+sub one slash two by onehalf;
+sub three slash four by threequarters;
+";
+tag = frac;
+},
+{
+automatic = 1;
+code = "sub [zero one two three four five six seven eight nine] [A a]' by ordfeminine;
+sub [zero one two three four five six seven eight nine] [O o]' by ordmasculine;
+";
+tag = ordn;
+},
+{
+automatic = 1;
+code = "sub periodcentered.loclCAT by periodcentered.loclCAT.case;
+";
+tag = case;
+},
+{
+automatic = 1;
+code = "lookupflag IgnoreMarks;
+sub f b by f_b.liga;
+sub f f by f_f.liga;
+sub f h by f_h.liga;
+sub f hbar by f_hbar.liga;
+sub f j by f_j.liga;
+sub f k by f_k.liga;
+sub f i by fi;
+sub f l by fl;
+";
+tag = liga;
+},
+{
+automatic = 1;
+code = "pos @Uppercase <5 0 10 0>;
+";
+tag = cpsp;
+}
+);
+fontMaster = (
+{
+axesValues = (
+14,
+100
+);
+customParameters = (
+{
+name = typoAscender;
+value = 1045;
+},
+{
+name = typoDescender;
+value = -300;
+},
+{
+name = typoLineGap;
+value = 0;
+},
+{
+name = hheaAscender;
+value = 1045;
+},
+{
+name = hheaDescender;
+value = -300;
+},
+{
+name = hheaLineGap;
+value = 0;
+},
+{
+name = winAscent;
+value = 1045;
+},
+{
+name = winDescent;
+value = -300;
+},
+{
+name = "Axis Location";
+value = (
+{
+Axis = Weight;
+Location = 100;
+},
+{
+Axis = Width;
+Location = 100;
+}
+);
+}
+);
+iconName = Light;
+id = "A5088515-37FF-452F-BD44-18A7A5EF88F0";
+metricValues = (
+{
+over = -15;
+pos = 745;
+},
+{
+over = 15;
+pos = 708;
+},
+{
+over = 15;
+pos = 500;
+},
+{
+over = -15;
+},
+{
+over = 15;
+pos = -215;
+},
+{
+}
+);
+name = Thin;
+stemValues = (
+5,
+10,
+14,
+15
+);
+userData = {
+GSCornerRadius = 105;
+GSOffsetCapStyle = 1;
+GSOffsetHorizontal = 7;
+GSOffsetMakeStroke = 1;
+GSOffsetProportional = 1;
+GSOffsetVertical = 0;
+};
+},
+{
+axesValues = (
+235,
+100
+);
+customParameters = (
+{
+name = typoAscender;
+value = 1045;
+},
+{
+name = typoDescender;
+value = -300;
+},
+{
+name = typoLineGap;
+value = 0;
+},
+{
+name = hheaAscender;
+value = 1045;
+},
+{
+name = hheaDescender;
+value = -300;
+},
+{
+name = hheaLineGap;
+value = 0;
+},
+{
+name = winAscent;
+value = 1045;
+},
+{
+name = winDescent;
+value = -300;
+},
+{
+name = "Axis Location";
+value = (
+{
+Axis = Weight;
+Location = 700;
+},
+{
+Axis = Width;
+Location = 100;
+}
+);
+}
+);
+iconName = Bold;
+id = "2660E96A-9963-4076-AFCB-E451BC6EE103";
+metricValues = (
+{
+over = -15;
+pos = 745;
+},
+{
+over = 15;
+pos = 708;
+},
+{
+over = 15;
+pos = 500;
+},
+{
+over = -15;
+},
+{
+over = 15;
+pos = -215;
+},
+{
+}
+);
+name = Bold;
+stemValues = (
+5,
+10,
+235,
+245
+);
+userData = {
+GSCornerRadius = 280;
+GSOffsetHorizontal = -20;
+GSOffsetProportional = 1;
+GSOffsetVertical = 0;
+};
+},
+{
+axesValues = (
+14,
+125
+);
+customParameters = (
+{
+name = typoAscender;
+value = 1045;
+},
+{
+name = typoDescender;
+value = -300;
+},
+{
+name = typoLineGap;
+value = 0;
+},
+{
+name = hheaAscender;
+value = 1045;
+},
+{
+name = hheaDescender;
+value = -300;
+},
+{
+name = hheaLineGap;
+value = 0;
+},
+{
+name = winAscent;
+value = 1045;
+},
+{
+name = winDescent;
+value = -300;
+},
+{
+name = "Axis Location";
+value = (
+{
+Axis = Weight;
+Location = 100;
+},
+{
+Axis = Width;
+Location = 125;
+}
+);
+}
+);
+iconName = Light_Extended;
+id = "35A90D60-3AD4-435C-9F8B-D1CA483F6F66";
+metricValues = (
+{
+over = -15;
+pos = 745;
+},
+{
+over = 15;
+pos = 708;
+},
+{
+over = 15;
+pos = 500;
+},
+{
+over = -15;
+},
+{
+over = 15;
+pos = -215;
+},
+{
+}
+);
+name = "Expanded Thin";
+stemValues = (
+5,
+10,
+14,
+15
+);
+userData = {
+GSCornerRadius = 47;
+GSOffsetHorizontal = 7;
+GSOffsetMakeStroke = 1;
+GSOffsetProportional = 1;
+GSOffsetVertical = 0;
+};
+},
+{
+axesValues = (
+235,
+125
+);
+customParameters = (
+{
+name = typoAscender;
+value = 1045;
+},
+{
+name = typoDescender;
+value = -300;
+},
+{
+name = typoLineGap;
+value = 0;
+},
+{
+name = hheaAscender;
+value = 1045;
+},
+{
+name = hheaDescender;
+value = -300;
+},
+{
+name = hheaLineGap;
+value = 0;
+},
+{
+name = winAscent;
+value = 1045;
+},
+{
+name = winDescent;
+value = -300;
+},
+{
+name = "Axis Location";
+value = (
+{
+Axis = Weight;
+Location = 700;
+},
+{
+Axis = Width;
+Location = 125;
+}
+);
+}
+);
+iconName = Bold_Extended;
+id = "DF54607F-DD82-41E6-B2E3-81CA6D0E5C47";
+metricValues = (
+{
+over = -15;
+pos = 745;
+},
+{
+over = 15;
+pos = 708;
+},
+{
+over = 15;
+pos = 500;
+},
+{
+over = -15;
+},
+{
+over = 15;
+pos = -215;
+},
+{
+}
+);
+name = "Expanded Bold";
+stemValues = (
+5,
+10,
+235,
+245
+);
+userData = {
+GSCornerRadius = 350;
+GSOffsetHorizontal = -30;
+GSOffsetProportional = 1;
+GSOffsetVertical = 0;
+};
+visible = 1;
+}
+);
+glyphs = (
+{
+color = 4;
+glyphname = A;
+kernLeft = A;
+kernRight = AA;
+lastChange = "2026-11-07 10:46:50 +0000";
+layers = (
+{
+anchors = (
+{
+name = bottom;
+pos = (410,0);
+},
+{
+name = ogonek;
+pos = (811,10);
+},
+{
+name = top;
+pos = (410,708);
+}
+);
+layerId = "2660E96A-9963-4076-AFCB-E451BC6EE103";
+shapes = (
+{
+closed = 1;
+nodes = (
+(378,0,l),
+(378,10,l),
+(262,10,o),
+(212,105,o),
+(212,222,cs),
+(212,300,o),
+(235,407,o),
+(281,521,cs),
+(285,531,l),
+(298,531,l),
+(502,19,l),
+(432,5,l),
+(432,0,l),
+(815,0,l),
+(815,10,l),
+(767,20,l),
+(493,708,l),
+(341,708,l),
+(56,20,l),
+(5,10,l),
+(5,0,l)
+);
+},
+{
+closed = 1;
+nodes = (
+(402,285,l),
+(402,315,l),
+(172,295,l),
+(172,285,l)
+);
+},
+{
+attr = {
+gradient = {
+colors = (
+(
+(200,255,255,255),
+0
+),
+(
+(150,140,250,255),
+0.26017
+),
+(
+(255,0,220,255),
+0.5293
+),
+(
+(255,130,170,255),
+0.75567
+),
+(
+(255,220,220,255),
+1
+)
+);
+end = (0.4895,0.9855);
+start = (-0.4495,-0.0152);
+};
+};
+closed = 1;
+nodes = (
+(312,551,l),
+(297,551,l),
+(354,688,l),
+(479,688,l),
+(746,20,l),
+(523,20,l)
+);
+},
+{
+attr = {
+gradient = {
+colors = (
+(
+(200,255,255,255),
+0
+),
+(
+(150,140,250,255),
+0.23418
+),
+(
+(255,0,220,255),
+0.50454
+),
+(
+(255,130,170,255),
+0.72473
+),
+(
+(255,220,220,255),
+1
+)
+);
+end = (2.0492,2.2226);
+start = (-0.0044,0.0088);
+};
+};
+closed = 1;
+nodes = (
+(201,320,l),
+(195,284,o),
+(192,251,o),
+(192,222,cs),
+(192,128,o),
+(223,53,o),
+(284,20,c),
+(77,20,l)
+);
+}
+);
+userData = {
+com.hugojourdan.ColorFlow = {
+"0" = 0;
+"1" = 0;
+"10" = 0;
+"11" = 0;
+"2" = 0;
+"3" = 0;
+"4" = 0;
+"5" = 0;
+"6" = 0;
+"7" = 0;
+"8" = 0;
+"9" = 0;
+};
+};
+width = 820;
+},
+{
+anchors = (
+{
+name = bottom;
+pos = (626,0);
+},
+{
+name = ogonek;
+pos = (1242,10);
+},
+{
+name = top;
+pos = (626,708);
+}
+);
+layerId = "DF54607F-DD82-41E6-B2E3-81CA6D0E5C47";
+shapes = (
+{
+closed = 1;
+nodes = (
+(574,0,l),
+(574,10,l),
+(423,10,o),
+(301,83,o),
+(301,235,cs),
+(301,317,o),
+(333,428,o),
+(412,533,cs),
+(418,541,l),
+(439,541,l),
+(773,19,l),
+(703,5,l),
+(703,0,l),
+(1246,0,l),
+(1246,10,l),
+(1198,20,l),
+(758,708,l),
+(514,708,l),
+(57,20,l),
+(5,10,l),
+(5,0,l)
+);
+},
+{
+closed = 1;
+nodes = (
+(612,285,l),
+(612,315,l),
+(243,295,l),
+(243,285,l)
+);
+},
+{
+attr = {
+gradient = {
+colors = (
+(
+(200,255,255,255),
+0
+),
+(
+(150,140,250,255),
+0.26017
+),
+(
+(255,0,220,255),
+0.5293
+),
+(
+(255,130,170,255),
+0.75567
+),
+(
+(255,220,220,255),
+1
+)
+);
+end = (2.0994,1.9181);
+start = (-0.432,-0.0366);
+};
+};
+closed = 1;
+nodes = (
+(450,561,l),
+(441,561,l),
+(525,688,l),
+(741,688,l),
+(1175,20,l),
+(796,20,l)
+);
+},
+{
+attr = {
+gradient = {
+colors = (
+(
+(200,255,255,255),
+0
+),
+(
+(150,140,250,255),
+0.23418
+),
+(
+(255,0,220,255),
+0.50454
+),
+(
+(255,130,170,255),
+0.72473
+),
+(
+(255,220,220,255),
+1
+)
+);
+end = (5.3692,4.0579);
+start = (-0.0018,0.0164);
+};
+};
+closed = 1;
+nodes = (
+(296,343,l),
+(286,304,o),
+(280,268,o),
+(280,233,cs),
+(280,120,o),
+(321,61,o),
+(427,20,c),
+(81,20,l)
+);
+}
+);
+userData = {
+com.hugojourdan.ColorFlow = {
+"0" = 0;
+"1" = 0;
+"10" = 0;
+"11" = 0;
+"2" = 0;
+"3" = 0;
+"4" = 0;
+"5" = 0;
+"6" = 0;
+"7" = 0;
+"8" = 0;
+"9" = 0;
+};
+};
+width = 1251;
+},
+{
+anchors = (
+{
+name = bottom;
+pos = (355,0);
+},
+{
+name = ogonek;
+pos = (685,10);
+},
+{
+name = top;
+pos = (355,708);
+}
+);
+layerId = "A5088515-37FF-452F-BD44-18A7A5EF88F0";
+shapes = (
+{
+closed = 1;
+nodes = (
+(217,0,l),
+(217,10,l),
+(146,10,o),
+(122,21,o),
+(122,54,cs),
+(122,66,o),
+(126,84,o),
+(134,103,c),
+(350,680,l),
+(359,680,l),
+(604,24,l),
+(533,10,l),
+(533,0,l),
+(689,0,l),
+(689,10,l),
+(619,25,l),
+(363,708,l),
+(345,708,l),
+(90,25,l),
+(20,10,l),
+(20,0,l)
+);
+},
+{
+closed = 1;
+nodes = (
+(511,290,l),
+(511,305,l),
+(195,300,l),
+(195,290,l)
+);
+},
+{
+attr = {
+gradient = {
+colors = (
+(
+(200,255,255,255),
+0
+),
+(
+(150,140,250,255),
+0.26017
+),
+(
+(255,0,220,255),
+0.5293
+),
+(
+(255,130,170,255),
+0.75567
+),
+(
+(255,220,220,255),
+1
+)
+);
+end = (0.4895,0.9855);
+start = (-0.4495,-0.0152);
+};
+};
+closed = 1;
+nodes = (
+(362,686,l),
+(342,686,l),
+(348,703,l),
+(360,703,l),
+(621,7,l),
+(616,7,l)
+);
+},
+{
+attr = {
+gradient = {
+colors = (
+(
+(200,255,255,255),
+0
+),
+(
+(150,140,250,255),
+0.23418
+),
+(
+(255,0,220,255),
+0.50454
+),
+(
+(255,130,170,255),
+0.72473
+),
+(
+(255,220,220,255),
+1
+)
+);
+end = (7.7146,6.3255);
+start = (-0.0044,0.0088);
+};
+};
+closed = 1;
+nodes = (
+(126,103,l),
+(117,80,o),
+(113,65,o),
+(113,50,cs),
+(113,24,o),
+(128,14,o),
+(157,5,c),
+(89,5,l)
+);
+}
+);
+userData = {
+com.hugojourdan.ColorFlow = {
+"0" = 0;
+"1" = 0;
+"10" = 0;
+"11" = 0;
+"2" = 0;
+"3" = 0;
+"4" = 0;
+"5" = 0;
+"6" = 0;
+"7" = 0;
+"8" = 0;
+"9" = 0;
+};
+};
+width = 709;
+},
+{
+anchors = (
+{
+name = bottom;
+pos = (542,0);
+},
+{
+name = ogonek;
+pos = (1035,10);
+},
+{
+name = top;
+pos = (542,708);
+}
+);
+layerId = "35A90D60-3AD4-435C-9F8B-D1CA483F6F66";
+shapes = (
+{
+closed = 1;
+nodes = (
+(332,0,l),
+(332,10,l),
+(223,10,o),
+(187,21,o),
+(187,53,cs),
+(187,65,o),
+(193,83,o),
+(205,103,c),
+(534,680,l),
+(549,680,l),
+(922,24,l),
+(814,10,l),
+(814,0,l),
+(1044,0,l),
+(1044,10,l),
+(937,25,l),
+(547,708,l),
+(535,708,l),
+(147,25,l),
+(40,10,l),
+(40,0,l)
+);
+},
+{
+closed = 1;
+nodes = (
+(773,290,l),
+(773,305,l),
+(307,300,l),
+(307,290,l)
+);
+},
+{
+attr = {
+gradient = {
+colors = (
+(
+(200,255,255,255),
+0
+),
+(
+(150,140,250,255),
+0.26017
+),
+(
+(255,0,220,255),
+0.5293
+),
+(
+(255,130,170,255),
+0.75567
+),
+(
+(255,220,220,255),
+1
+)
+);
+end = (2.0994,1.9181);
+start = (-0.432,-0.0366);
+};
+};
+closed = 1;
+nodes = (
+(552,684,l),
+(526,684,l),
+(537,703,l),
+(544,703,l),
+(941,7,l),
+(936,7,l)
+);
+},
+{
+attr = {
+gradient = {
+colors = (
+(
+(200,255,255,255),
+0
+),
+(
+(150,140,250,255),
+0.23418
+),
+(
+(255,0,220,255),
+0.50454
+),
+(
+(255,130,170,255),
+0.72473
+),
+(
+(255,220,220,255),
+1
+)
+);
+end = (5.3692,4.0579);
+start = (-0.0018,0.0164);
+};
+};
+closed = 1;
+nodes = (
+(197,103,l),
+(183,80,o),
+(178,65,o),
+(178,50,cs),
+(178,24,o),
+(200,11,o),
+(247,5,c),
+(141,5,l)
+);
+}
+);
+userData = {
+com.hugojourdan.ColorFlow = {
+"0" = 0;
+"1" = 0;
+"10" = 0;
+"11" = 0;
+"2" = 0;
+"3" = 0;
+"4" = 0;
+"5" = 0;
+"6" = 0;
+"7" = 0;
+"8" = 0;
+"9" = 0;
+};
+};
+width = 1084;
+},
+{
+anchors = (
+{
+name = bottom;
+pos = (355,0);
+},
+{
+name = ogonek;
+pos = (685,10);
+},
+{
+name = top;
+pos = (355,708);
+}
+);
+associatedMasterId = "A5088515-37FF-452F-BD44-18A7A5EF88F0";
+attr = {
+colorPalette = 0;
+};
+layerId = "D1968C97-F97B-452A-A249-451B57CFD867";
+name = "29 Oct 23 2:54 p.m.";
+shapes = (
+{
+closed = 1;
+nodes = (
+(217,0,l),
+(217,10,l),
+(146,10,o),
+(122,21,o),
+(122,54,cs),
+(122,66,o),
+(126,84,o),
+(134,103,c),
+(350,680,l),
+(359,680,l),
+(604,24,l),
+(533,10,l),
+(533,0,l),
+(689,0,l),
+(689,10,l),
+(619,25,l),
+(363,708,l),
+(345,708,l),
+(90,25,l),
+(20,10,l),
+(20,0,l)
+);
+},
+{
+closed = 1;
+nodes = (
+(511,290,l),
+(511,305,l),
+(195,300,l),
+(195,290,l)
+);
+}
+);
+userData = {
+com.hugojourdan.ColorFlow = {
+"0" = 0;
+"1" = 0;
+"10" = 0;
+"11" = 0;
+"2" = 0;
+"3" = 0;
+"4" = 0;
+"5" = 0;
+"6" = 0;
+"7" = 0;
+"8" = 0;
+"9" = 0;
+};
+};
+width = 709;
+},
+{
+anchors = (
+{
+name = bottom;
+pos = (355,0);
+},
+{
+name = ogonek;
+pos = (685,10);
+},
+{
+name = top;
+pos = (355,708);
+}
+);
+associatedMasterId = "A5088515-37FF-452F-BD44-18A7A5EF88F0";
+attr = {
+colorPalette = 1;
+};
+layerId = "4493B574-A163-496C-B5A4-5CB4FE800D8B";
+name = "29 Oct 23 2:54 p.m.";
+shapes = (
+{
+attr = {
+gradient = {
+colors = (
+(
+(200,255,255,255),
+0
+),
+(
+(150,140,250,255),
+0.26017
+),
+(
+(255,0,220,255),
+0.5293
+),
+(
+(255,130,170,255),
+0.75567
+),
+(
+(255,220,220,255),
+1
+)
+);
+end = (0.4895,0.9855);
+start = (-0.4495,-0.0152);
+};
+};
+closed = 1;
+nodes = (
+(362,686,l),
+(342,686,l),
+(348,703,l),
+(360,703,l),
+(621,7,l),
+(616,7,l)
+);
+},
+{
+attr = {
+gradient = {
+colors = (
+(
+(200,255,255,255),
+0
+),
+(
+(150,140,250,255),
+0.23418
+),
+(
+(255,0,220,255),
+0.50454
+),
+(
+(255,130,170,255),
+0.72473
+),
+(
+(255,220,220,255),
+1
+)
+);
+end = (7.7146,6.3255);
+start = (-0.0044,0.0088);
+};
+};
+closed = 1;
+nodes = (
+(126,103,l),
+(117,80,o),
+(113,65,o),
+(113,50,cs),
+(113,24,o),
+(128,14,o),
+(157,5,c),
+(89,5,l)
+);
+}
+);
+userData = {
+com.hugojourdan.ColorFlow = {
+"0" = 0;
+"1" = 0;
+"10" = 0;
+"11" = 0;
+"2" = 0;
+"3" = 0;
+"4" = 0;
+"5" = 0;
+"6" = 0;
+"7" = 0;
+"8" = 0;
+"9" = 0;
+};
+};
+width = 709;
+},
+{
+anchors = (
+{
+name = bottom;
+pos = (410,0);
+},
+{
+name = ogonek;
+pos = (811,10);
+},
+{
+name = top;
+pos = (410,708);
+}
+);
+associatedMasterId = "2660E96A-9963-4076-AFCB-E451BC6EE103";
+attr = {
+colorPalette = 0;
+};
+layerId = "F390A2F7-AF5E-4FEC-8C5F-F0562EC0DB4C";
+name = "29 Oct 23 2:54 p.m.";
+shapes = (
+{
+closed = 1;
+nodes = (
+(378,0,l),
+(378,10,l),
+(262,10,o),
+(212,105,o),
+(212,222,cs),
+(212,300,o),
+(235,407,o),
+(281,521,cs),
+(285,531,l),
+(298,531,l),
+(502,19,l),
+(432,5,l),
+(432,0,l),
+(815,0,l),
+(815,10,l),
+(767,20,l),
+(493,708,l),
+(341,708,l),
+(56,20,l),
+(5,10,l),
+(5,0,l)
+);
+},
+{
+closed = 1;
+nodes = (
+(402,285,l),
+(402,315,l),
+(172,295,l),
+(172,285,l)
+);
+}
+);
+userData = {
+com.hugojourdan.ColorFlow = {
+"0" = 0;
+"1" = 0;
+"10" = 0;
+"11" = 0;
+"2" = 0;
+"3" = 0;
+"4" = 0;
+"5" = 0;
+"6" = 0;
+"7" = 0;
+"8" = 0;
+"9" = 0;
+};
+};
+width = 820;
+},
+{
+anchors = (
+{
+name = bottom;
+pos = (410,0);
+},
+{
+name = ogonek;
+pos = (811,10);
+},
+{
+name = top;
+pos = (410,708);
+}
+);
+associatedMasterId = "2660E96A-9963-4076-AFCB-E451BC6EE103";
+attr = {
+colorPalette = 1;
+};
+layerId = "C1CC84B5-DC4E-47E0-BF36-FEF7B5EE25D0";
+name = "29 Oct 23 2:54 p.m.";
+shapes = (
+{
+attr = {
+gradient = {
+colors = (
+(
+(200,255,255,255),
+0
+),
+(
+(150,140,250,255),
+0.26017
+),
+(
+(255,0,220,255),
+0.5293
+),
+(
+(255,130,170,255),
+0.75567
+),
+(
+(255,220,220,255),
+1
+)
+);
+end = (0.4895,0.9855);
+start = (-0.4495,-0.0152);
+};
+};
+closed = 1;
+nodes = (
+(312,551,l),
+(297,551,l),
+(354,688,l),
+(479,688,l),
+(746,20,l),
+(523,20,l)
+);
+},
+{
+attr = {
+gradient = {
+colors = (
+(
+(200,255,255,255),
+0
+),
+(
+(150,140,250,255),
+0.23418
+),
+(
+(255,0,220,255),
+0.50454
+),
+(
+(255,130,170,255),
+0.72473
+),
+(
+(255,220,220,255),
+1
+)
+);
+end = (2.0492,2.2226);
+start = (-0.0044,0.0088);
+};
+};
+closed = 1;
+nodes = (
+(201,320,l),
+(195,284,o),
+(192,251,o),
+(192,222,cs),
+(192,128,o),
+(223,53,o),
+(284,20,c),
+(77,20,l)
+);
+}
+);
+userData = {
+com.hugojourdan.ColorFlow = {
+"0" = 0;
+"1" = 0;
+"10" = 0;
+"11" = 0;
+"2" = 0;
+"3" = 0;
+"4" = 0;
+"5" = 0;
+"6" = 0;
+"7" = 0;
+"8" = 0;
+"9" = 0;
+};
+};
+width = 820;
+},
+{
+anchors = (
+{
+name = bottom;
+pos = (542,0);
+},
+{
+name = ogonek;
+pos = (1035,10);
+},
+{
+name = top;
+pos = (542,708);
+}
+);
+associatedMasterId = "35A90D60-3AD4-435C-9F8B-D1CA483F6F66";
+attr = {
+colorPalette = 0;
+};
+layerId = "5ACEE046-44B4-4A0C-BB83-3B6A59A83C9F";
+name = "29 Oct 23 2:54 p.m.";
+shapes = (
+{
+closed = 1;
+nodes = (
+(332,0,l),
+(332,10,l),
+(223,10,o),
+(187,21,o),
+(187,53,cs),
+(187,65,o),
+(193,83,o),
+(205,103,c),
+(534,680,l),
+(549,680,l),
+(922,24,l),
+(814,10,l),
+(814,0,l),
+(1044,0,l),
+(1044,10,l),
+(937,25,l),
+(547,708,l),
+(535,708,l),
+(147,25,l),
+(40,10,l),
+(40,0,l)
+);
+},
+{
+closed = 1;
+nodes = (
+(773,290,l),
+(773,305,l),
+(307,300,l),
+(307,290,l)
+);
+}
+);
+userData = {
+com.hugojourdan.ColorFlow = {
+"0" = 0;
+"1" = 0;
+"10" = 0;
+"11" = 0;
+"2" = 0;
+"3" = 0;
+"4" = 0;
+"5" = 0;
+"6" = 0;
+"7" = 0;
+"8" = 0;
+"9" = 0;
+};
+};
+width = 1084;
+},
+{
+anchors = (
+{
+name = bottom;
+pos = (542,0);
+},
+{
+name = ogonek;
+pos = (1035,10);
+},
+{
+name = top;
+pos = (542,708);
+}
+);
+associatedMasterId = "35A90D60-3AD4-435C-9F8B-D1CA483F6F66";
+attr = {
+colorPalette = 1;
+};
+layerId = "BE8A8A86-DEDA-49ED-AC47-CC2325DBB5CB";
+name = "29 Oct 23 2:54 p.m.";
+shapes = (
+{
+attr = {
+gradient = {
+colors = (
+(
+(200,255,255,255),
+0
+),
+(
+(150,140,250,255),
+0.26017
+),
+(
+(255,0,220,255),
+0.5293
+),
+(
+(255,130,170,255),
+0.75567
+),
+(
+(255,220,220,255),
+1
+)
+);
+end = (2.0994,1.9181);
+start = (-0.432,-0.0366);
+};
+};
+closed = 1;
+nodes = (
+(552,684,l),
+(526,684,l),
+(537,703,l),
+(544,703,l),
+(941,7,l),
+(936,7,l)
+);
+},
+{
+attr = {
+gradient = {
+colors = (
+(
+(200,255,255,255),
+0
+),
+(
+(150,140,250,255),
+0.23418
+),
+(
+(255,0,220,255),
+0.50454
+),
+(
+(255,130,170,255),
+0.72473
+),
+(
+(255,220,220,255),
+1
+)
+);
+end = (5.3692,4.0579);
+start = (-0.0018,0.0164);
+};
+};
+closed = 1;
+nodes = (
+(197,103,l),
+(183,80,o),
+(178,65,o),
+(178,50,cs),
+(178,24,o),
+(200,11,o),
+(247,5,c),
+(141,5,l)
+);
+}
+);
+userData = {
+com.hugojourdan.ColorFlow = {
+"0" = 0;
+"1" = 0;
+"10" = 0;
+"11" = 0;
+"2" = 0;
+"3" = 0;
+"4" = 0;
+"5" = 0;
+"6" = 0;
+"7" = 0;
+"8" = 0;
+"9" = 0;
+};
+};
+width = 1084;
+},
+{
+anchors = (
+{
+name = bottom;
+pos = (626,0);
+},
+{
+name = ogonek;
+pos = (1242,10);
+},
+{
+name = top;
+pos = (626,708);
+}
+);
+associatedMasterId = "DF54607F-DD82-41E6-B2E3-81CA6D0E5C47";
+attr = {
+colorPalette = 0;
+};
+layerId = "33885B25-8569-438B-AEEF-EDB8CED281C6";
+name = "29 Oct 23 2:54 p.m.";
+shapes = (
+{
+closed = 1;
+nodes = (
+(574,0,l),
+(574,10,l),
+(423,10,o),
+(301,83,o),
+(301,235,cs),
+(301,317,o),
+(333,428,o),
+(412,533,cs),
+(418,541,l),
+(439,541,l),
+(773,19,l),
+(703,5,l),
+(703,0,l),
+(1246,0,l),
+(1246,10,l),
+(1198,20,l),
+(758,708,l),
+(514,708,l),
+(57,20,l),
+(5,10,l),
+(5,0,l)
+);
+},
+{
+closed = 1;
+nodes = (
+(612,285,l),
+(612,315,l),
+(243,295,l),
+(243,285,l)
+);
+}
+);
+userData = {
+com.hugojourdan.ColorFlow = {
+"0" = 0;
+"1" = 0;
+"10" = 0;
+"11" = 0;
+"2" = 0;
+"3" = 0;
+"4" = 0;
+"5" = 0;
+"6" = 0;
+"7" = 0;
+"8" = 0;
+"9" = 0;
+};
+};
+width = 1251;
+},
+{
+anchors = (
+{
+name = bottom;
+pos = (626,0);
+},
+{
+name = ogonek;
+pos = (1242,10);
+},
+{
+name = top;
+pos = (626,708);
+}
+);
+associatedMasterId = "DF54607F-DD82-41E6-B2E3-81CA6D0E5C47";
+attr = {
+colorPalette = 1;
+};
+layerId = "29AC6A61-63BC-4098-B72B-D3FC55FC7C9F";
+name = "29 Oct 23 2:54 p.m.";
+shapes = (
+{
+attr = {
+gradient = {
+colors = (
+(
+(200,255,255,255),
+0
+),
+(
+(150,140,250,255),
+0.26017
+),
+(
+(255,0,220,255),
+0.5293
+),
+(
+(255,130,170,255),
+0.75567
+),
+(
+(255,220,220,255),
+1
+)
+);
+end = (2.0994,1.9181);
+start = (-0.432,-0.0366);
+};
+};
+closed = 1;
+nodes = (
+(450,561,l),
+(441,561,l),
+(525,688,l),
+(741,688,l),
+(1175,20,l),
+(796,20,l)
+);
+},
+{
+attr = {
+gradient = {
+colors = (
+(
+(200,255,255,255),
+0
+),
+(
+(150,140,250,255),
+0.23418
+),
+(
+(255,0,220,255),
+0.50454
+),
+(
+(255,130,170,255),
+0.72473
+),
+(
+(255,220,220,255),
+1
+)
+);
+end = (5.3692,4.0579);
+start = (-0.0018,0.0164);
+};
+};
+closed = 1;
+nodes = (
+(296,343,l),
+(286,304,o),
+(280,268,o),
+(280,233,cs),
+(280,120,o),
+(321,61,o),
+(427,20,c),
+(81,20,l)
+);
+}
+);
+userData = {
+com.hugojourdan.ColorFlow = {
+"0" = 0;
+"1" = 0;
+"10" = 0;
+"11" = 0;
+"2" = 0;
+"3" = 0;
+"4" = 0;
+"5" = 0;
+"6" = 0;
+"7" = 0;
+"8" = 0;
+"9" = 0;
+};
+};
+width = 1251;
+}
+);
+unicode = 65;
+},
+{
+color = 4;
+glyphname = O;
+kernLeft = OO;
+kernRight = O;
+lastChange = "2026-11-07 10:46:51 +0000";
+layers = (
+{
+anchors = (
+{
+name = bottom;
+pos = (402,0);
+},
+{
+name = center;
+pos = (402,354);
+},
+{
+name = ogonek;
+pos = (533,10);
+},
+{
+name = top;
+pos = (402,708);
+},
+{
+name = topleft;
+pos = (20,708);
+},
+{
+name = topright;
+pos = (780,708);
+}
+);
+layerId = "2660E96A-9963-4076-AFCB-E451BC6EE103";
+shapes = (
+{
+closed = 1;
+nodes = (
+(182,723,o),
+(30,576,o),
+(30,352,cs),
+(30,107,o),
+(190,-15,o),
+(402,-15,cs),
+(612,-15,o),
+(770,103,o),
+(770,351,cs),
+(770,614,o),
+(605,723,o),
+(402,723,cs)
+);
+},
+{
+closed = 1;
+nodes = (
+(488,713,o),
+(520,616,o),
+(520,357,cs),
+(520,96,o),
+(488,-3,o),
+(402,-3,cs),
+(316,-3,o),
+(280,104,o),
+(280,356,cs),
+(280,611,o),
+(316,713,o),
+(402,713,cs)
+);
+},
+{
+attr = {
+fillColor = (255,138,216,255);
+};
+closed = 1;
+nodes = (
+(160,40,o),
+(52,150,o),
+(52,352,cs),
+(52,536,o),
+(154,662,o),
+(316,693,c),
+(276,638,o),
+(258,529,o),
+(258,356,cs),
+(258,179,o),
+(276,67,o),
+(320,14,c)
+);
+},
+{
+attr = {
+fillColor = (255,138,216,255);
+};
+closed = 1;
+nodes = (
+(526,67,o),
+(542,177,o),
+(542,357,cs),
+(542,534,o),
+(526,641,o),
+(486,694,c),
+(639,668,o),
+(748,565,o),
+(748,351,cs),
+(748,148,o),
+(642,40,o),
+(485,14,c)
+);
+}
+);
+userData = {
+com.hugojourdan.ColorFlow = {
+"0" = 0;
+"1" = 0;
+"10" = 0;
+"11" = 0;
+"2" = 0;
+"3" = 0;
+"4" = 0;
+"5" = 0;
+"6" = 0;
+"7" = 0;
+"8" = 0;
+"9" = 0;
+};
+};
+width = 800;
+},
+{
+anchors = (
+{
+name = bottom;
+pos = (686,0);
+},
+{
+name = center;
+pos = (686,354);
+},
+{
+name = ogonek;
+pos = (899,10);
+},
+{
+name = top;
+pos = (686,708);
+},
+{
+name = topleft;
+pos = (20,708);
+},
+{
+name = topright;
+pos = (1348,708);
+}
+);
+layerId = "DF54607F-DD82-41E6-B2E3-81CA6D0E5C47";
+shapes = (
+{
+closed = 1;
+nodes = (
+(308,723,o),
+(30,570,o),
+(30,354,cs),
+(30,138,o),
+(308,-15,o),
+(686,-15,cs),
+(1062,-15,o),
+(1338,138,o),
+(1338,354,cs),
+(1338,570,o),
+(1062,723,o),
+(686,723,cs)
+);
+},
+{
+closed = 1;
+nodes = (
+(772,713,o),
+(804,616,o),
+(804,354,cs),
+(804,96,o),
+(772,-3,o),
+(686,-3,cs),
+(600,-3,o),
+(564,104,o),
+(564,354,cs),
+(564,611,o),
+(600,713,o),
+(686,713,cs)
+);
+},
+{
+attr = {
+fillColor = (255,138,216,255);
+};
+closed = 1;
+nodes = (
+(278,27,o),
+(52,165,o),
+(52,354,cs),
+(52,542,o),
+(276,680,o),
+(605,699,c),
+(560,646,o),
+(542,535,o),
+(542,354,cs),
+(542,173,o),
+(561,60,o),
+(608,9,c)
+);
+},
+{
+attr = {
+fillColor = (255,138,216,255);
+};
+closed = 1;
+nodes = (
+(809,60,o),
+(826,170,o),
+(826,354,cs),
+(826,537,o),
+(810,646,o),
+(768,698,c),
+(1093,679,o),
+(1316,542,o),
+(1316,354,cs),
+(1316,165,o),
+(1092,28,o),
+(765,9,c)
+);
+}
+);
+userData = {
+com.hugojourdan.ColorFlow = {
+"0" = 0;
+"1" = 0;
+"10" = 0;
+"11" = 0;
+"2" = 0;
+"3" = 0;
+"4" = 0;
+"5" = 0;
+"6" = 0;
+"7" = 0;
+"8" = 0;
+"9" = 0;
+};
+};
+width = 1368;
+},
+{
+anchors = (
+{
+name = bottom;
+pos = (371,0);
+},
+{
+name = center;
+pos = (371,354);
+},
+{
+name = ogonek;
+pos = (473,10);
+},
+{
+name = top;
+pos = (371,708);
+},
+{
+name = topleft;
+pos = (20,708);
+},
+{
+name = topright;
+pos = (720,708);
+}
+);
+layerId = "A5088515-37FF-452F-BD44-18A7A5EF88F0";
+shapes = (
+{
+closed = 1;
+nodes = (
+(188,723,o),
+(80,588,o),
+(80,360,cs),
+(80,124,o),
+(188,-15,o),
+(371,-15,cs),
+(553,-15,o),
+(660,124,o),
+(660,360,cs),
+(660,588,o),
+(553,723,o),
+(371,723,cs)
+);
+},
+{
+closed = 1;
+nodes = (
+(543,708,o),
+(644,578,o),
+(644,360,cs),
+(644,134,o),
+(543,0,o),
+(371,0,cs),
+(198,0,o),
+(96,134,o),
+(96,360,cs),
+(96,578,o),
+(198,708,o),
+(371,708,cs)
+);
+},
+{
+attr = {
+fillColor = (255,138,216,255);
+};
+closed = 1;
+nodes = (
+(133,87,o),
+(85,200,o),
+(85,360,cs),
+(85,514,o),
+(137,623,o),
+(225,677,c),
+(143,624,o),
+(91,513,o),
+(91,360,cs),
+(91,201,o),
+(140,87,o),
+(228,31,c)
+);
+},
+{
+attr = {
+fillColor = (255,138,216,255);
+};
+closed = 1;
+nodes = (
+(598,86,o),
+(649,201,o),
+(649,360,cs),
+(649,512,o),
+(597,623,o),
+(516,677,c),
+(604,623,o),
+(655,513,o),
+(655,360,cs),
+(655,200,o),
+(604,86,o),
+(514,31,c)
+);
+}
+);
+userData = {
+com.hugojourdan.ColorFlow = {
+"0" = 0;
+"1" = 0;
+"10" = 0;
+"11" = 0;
+"2" = 0;
+"3" = 0;
+"4" = 0;
+"5" = 0;
+"6" = 0;
+"7" = 0;
+"8" = 0;
+"9" = 0;
+};
+};
+width = 740;
+},
+{
+anchors = (
+{
+name = bottom;
+pos = (576,0);
+},
+{
+name = center;
+pos = (576,354);
+},
+{
+name = ogonek;
+pos = (729,10);
+},
+{
+name = top;
+pos = (576,708);
+},
+{
+name = topleft;
+pos = (20,708);
+},
+{
+name = topright;
+pos = (1127,708);
+}
+);
+layerId = "35A90D60-3AD4-435C-9F8B-D1CA483F6F66";
+shapes = (
+{
+closed = 1;
+nodes = (
+(291,723,o),
+(90,573,o),
+(90,360,cs),
+(90,140,o),
+(291,-15,o),
+(576,-15,cs),
+(858,-15,o),
+(1057,140,o),
+(1057,360,cs),
+(1057,573,o),
+(858,723,o),
+(576,723,cs)
+);
+},
+{
+closed = 1;
+nodes = (
+(849,708,o),
+(1042,563,o),
+(1042,360,cs),
+(1042,150,o),
+(849,0,o),
+(576,0,cs),
+(300,0,o),
+(105,150,o),
+(105,360,cs),
+(105,563,o),
+(300,708,o),
+(576,708,cs)
+);
+},
+{
+attr = {
+fillColor = (255,138,216,255);
+};
+closed = 1;
+nodes = (
+(191,89,o),
+(95,208,o),
+(95,360,cs),
+(95,505,o),
+(190,620,o),
+(349,677,c),
+(195,621,o),
+(100,505,o),
+(100,360,cs),
+(100,209,o),
+(195,88,o),
+(352,31,c)
+);
+},
+{
+attr = {
+fillColor = (255,138,216,255);
+};
+closed = 1;
+nodes = (
+(949,88,o),
+(1047,209,o),
+(1047,360,cs),
+(1047,505,o),
+(954,621,o),
+(801,677,c),
+(959,621,o),
+(1052,506,o),
+(1052,360,cs),
+(1052,208,o),
+(953,89,o),
+(799,31,c)
+);
+}
+);
+userData = {
+com.hugojourdan.ColorFlow = {
+"0" = 0;
+"1" = 0;
+"10" = 0;
+"11" = 0;
+"2" = 0;
+"3" = 0;
+"4" = 0;
+"5" = 0;
+"6" = 0;
+"7" = 0;
+"8" = 0;
+"9" = 0;
+};
+};
+width = 1147;
+},
+{
+anchors = (
+{
+name = bottom;
+pos = (371,0);
+},
+{
+name = center;
+pos = (371,354);
+},
+{
+name = ogonek;
+pos = (473,10);
+},
+{
+name = top;
+pos = (371,708);
+},
+{
+name = topleft;
+pos = (20,708);
+},
+{
+name = topright;
+pos = (720,708);
+}
+);
+associatedMasterId = "A5088515-37FF-452F-BD44-18A7A5EF88F0";
+attr = {
+colorPalette = 0;
+};
+layerId = "F0FCE6B7-6A77-4CAD-A652-AA13DCEF739A";
+name = "29 Oct 23 2:54 p.m.";
+shapes = (
+{
+closed = 1;
+nodes = (
+(188,723,o),
+(80,588,o),
+(80,360,cs),
+(80,124,o),
+(188,-15,o),
+(371,-15,cs),
+(553,-15,o),
+(660,124,o),
+(660,360,cs),
+(660,588,o),
+(553,723,o),
+(371,723,cs)
+);
+},
+{
+closed = 1;
+nodes = (
+(543,708,o),
+(644,578,o),
+(644,360,cs),
+(644,134,o),
+(543,0,o),
+(371,0,cs),
+(198,0,o),
+(96,134,o),
+(96,360,cs),
+(96,578,o),
+(198,708,o),
+(371,708,cs)
+);
+}
+);
+userData = {
+com.hugojourdan.ColorFlow = {
+"0" = 0;
+"1" = 0;
+"10" = 0;
+"11" = 0;
+"2" = 0;
+"3" = 0;
+"4" = 0;
+"5" = 0;
+"6" = 0;
+"7" = 0;
+"8" = 0;
+"9" = 0;
+};
+};
+width = 740;
+},
+{
+anchors = (
+{
+name = bottom;
+pos = (371,0);
+},
+{
+name = center;
+pos = (371,354);
+},
+{
+name = ogonek;
+pos = (473,10);
+},
+{
+name = top;
+pos = (371,708);
+},
+{
+name = topleft;
+pos = (20,708);
+},
+{
+name = topright;
+pos = (720,708);
+}
+);
+associatedMasterId = "A5088515-37FF-452F-BD44-18A7A5EF88F0";
+attr = {
+colorPalette = 1;
+};
+layerId = "2EEED1CB-9B42-4DEA-AB0B-BA6B7601EF52";
+name = "29 Oct 23 2:54 p.m.";
+shapes = (
+{
+attr = {
+fillColor = (255,138,216,255);
+};
+closed = 1;
+nodes = (
+(133,87,o),
+(85,200,o),
+(85,360,cs),
+(85,514,o),
+(137,623,o),
+(225,677,c),
+(143,624,o),
+(91,513,o),
+(91,360,cs),
+(91,201,o),
+(140,87,o),
+(228,31,c)
+);
+},
+{
+attr = {
+fillColor = (255,138,216,255);
+};
+closed = 1;
+nodes = (
+(598,86,o),
+(649,201,o),
+(649,360,cs),
+(649,512,o),
+(597,623,o),
+(516,677,c),
+(604,623,o),
+(655,513,o),
+(655,360,cs),
+(655,200,o),
+(604,86,o),
+(514,31,c)
+);
+}
+);
+userData = {
+com.hugojourdan.ColorFlow = {
+"0" = 0;
+"1" = 0;
+"10" = 0;
+"11" = 0;
+"2" = 0;
+"3" = 0;
+"4" = 0;
+"5" = 0;
+"6" = 0;
+"7" = 0;
+"8" = 0;
+"9" = 0;
+};
+};
+width = 740;
+},
+{
+anchors = (
+{
+name = bottom;
+pos = (402,0);
+},
+{
+name = center;
+pos = (402,354);
+},
+{
+name = ogonek;
+pos = (533,10);
+},
+{
+name = top;
+pos = (402,708);
+},
+{
+name = topleft;
+pos = (20,708);
+},
+{
+name = topright;
+pos = (780,708);
+}
+);
+associatedMasterId = "2660E96A-9963-4076-AFCB-E451BC6EE103";
+attr = {
+colorPalette = 0;
+};
+layerId = "9EB774A1-68BA-44D1-92F5-A11821AB7C32";
+name = "29 Oct 23 2:54 p.m.";
+shapes = (
+{
+closed = 1;
+nodes = (
+(182,723,o),
+(30,576,o),
+(30,352,cs),
+(30,107,o),
+(190,-15,o),
+(402,-15,cs),
+(612,-15,o),
+(770,103,o),
+(770,351,cs),
+(770,614,o),
+(605,723,o),
+(402,723,cs)
+);
+},
+{
+closed = 1;
+nodes = (
+(488,713,o),
+(520,616,o),
+(520,357,cs),
+(520,96,o),
+(488,-3,o),
+(402,-3,cs),
+(316,-3,o),
+(280,104,o),
+(280,356,cs),
+(280,611,o),
+(316,713,o),
+(402,713,cs)
+);
+}
+);
+userData = {
+com.hugojourdan.ColorFlow = {
+"0" = 0;
+"1" = 0;
+"10" = 0;
+"11" = 0;
+"2" = 0;
+"3" = 0;
+"4" = 0;
+"5" = 0;
+"6" = 0;
+"7" = 0;
+"8" = 0;
+"9" = 0;
+};
+};
+width = 800;
+},
+{
+anchors = (
+{
+name = bottom;
+pos = (402,0);
+},
+{
+name = center;
+pos = (402,354);
+},
+{
+name = ogonek;
+pos = (533,10);
+},
+{
+name = top;
+pos = (402,708);
+},
+{
+name = topleft;
+pos = (20,708);
+},
+{
+name = topright;
+pos = (780,708);
+}
+);
+associatedMasterId = "2660E96A-9963-4076-AFCB-E451BC6EE103";
+attr = {
+colorPalette = 1;
+};
+layerId = "A0EF237F-5483-4128-B941-7742F26E529F";
+name = "29 Oct 23 2:54 p.m.";
+shapes = (
+{
+attr = {
+fillColor = (255,138,216,255);
+};
+closed = 1;
+nodes = (
+(160,40,o),
+(52,150,o),
+(52,352,cs),
+(52,536,o),
+(154,662,o),
+(316,693,c),
+(276,638,o),
+(258,529,o),
+(258,356,cs),
+(258,179,o),
+(276,67,o),
+(320,14,c)
+);
+},
+{
+attr = {
+fillColor = (255,138,216,255);
+};
+closed = 1;
+nodes = (
+(526,67,o),
+(542,177,o),
+(542,357,cs),
+(542,534,o),
+(526,641,o),
+(486,694,c),
+(639,668,o),
+(748,565,o),
+(748,351,cs),
+(748,148,o),
+(642,40,o),
+(485,14,c)
+);
+}
+);
+userData = {
+com.hugojourdan.ColorFlow = {
+"0" = 0;
+"1" = 0;
+"10" = 0;
+"11" = 0;
+"2" = 0;
+"3" = 0;
+"4" = 0;
+"5" = 0;
+"6" = 0;
+"7" = 0;
+"8" = 0;
+"9" = 0;
+};
+};
+width = 800;
+},
+{
+anchors = (
+{
+name = bottom;
+pos = (576,0);
+},
+{
+name = center;
+pos = (576,354);
+},
+{
+name = ogonek;
+pos = (729,10);
+},
+{
+name = top;
+pos = (576,708);
+},
+{
+name = topleft;
+pos = (20,708);
+},
+{
+name = topright;
+pos = (1127,708);
+}
+);
+associatedMasterId = "35A90D60-3AD4-435C-9F8B-D1CA483F6F66";
+attr = {
+colorPalette = 0;
+};
+layerId = "0DF3605E-4350-4593-9A30-5612DF67F3FF";
+name = "29 Oct 23 2:54 p.m.";
+shapes = (
+{
+closed = 1;
+nodes = (
+(291,723,o),
+(90,573,o),
+(90,360,cs),
+(90,140,o),
+(291,-15,o),
+(576,-15,cs),
+(858,-15,o),
+(1057,140,o),
+(1057,360,cs),
+(1057,573,o),
+(858,723,o),
+(576,723,cs)
+);
+},
+{
+closed = 1;
+nodes = (
+(849,708,o),
+(1042,563,o),
+(1042,360,cs),
+(1042,150,o),
+(849,0,o),
+(576,0,cs),
+(300,0,o),
+(105,150,o),
+(105,360,cs),
+(105,563,o),
+(300,708,o),
+(576,708,cs)
+);
+}
+);
+userData = {
+com.hugojourdan.ColorFlow = {
+"0" = 0;
+"1" = 0;
+"10" = 0;
+"11" = 0;
+"2" = 0;
+"3" = 0;
+"4" = 0;
+"5" = 0;
+"6" = 0;
+"7" = 0;
+"8" = 0;
+"9" = 0;
+};
+};
+width = 1147;
+},
+{
+anchors = (
+{
+name = bottom;
+pos = (576,0);
+},
+{
+name = center;
+pos = (576,354);
+},
+{
+name = ogonek;
+pos = (729,10);
+},
+{
+name = top;
+pos = (576,708);
+},
+{
+name = topleft;
+pos = (20,708);
+},
+{
+name = topright;
+pos = (1127,708);
+}
+);
+associatedMasterId = "35A90D60-3AD4-435C-9F8B-D1CA483F6F66";
+attr = {
+colorPalette = 1;
+};
+layerId = "F4BB83D6-CF79-4D5B-A33F-00CF9DE66056";
+name = "29 Oct 23 2:54 p.m.";
+shapes = (
+{
+attr = {
+fillColor = (255,138,216,255);
+};
+closed = 1;
+nodes = (
+(191,89,o),
+(95,208,o),
+(95,360,cs),
+(95,505,o),
+(190,620,o),
+(349,677,c),
+(195,621,o),
+(100,505,o),
+(100,360,cs),
+(100,209,o),
+(195,88,o),
+(352,31,c)
+);
+},
+{
+attr = {
+fillColor = (255,138,216,255);
+};
+closed = 1;
+nodes = (
+(949,88,o),
+(1047,209,o),
+(1047,360,cs),
+(1047,505,o),
+(954,621,o),
+(801,677,c),
+(959,621,o),
+(1052,506,o),
+(1052,360,cs),
+(1052,208,o),
+(953,89,o),
+(799,31,c)
+);
+}
+);
+userData = {
+com.hugojourdan.ColorFlow = {
+"0" = 0;
+"1" = 0;
+"10" = 0;
+"11" = 0;
+"2" = 0;
+"3" = 0;
+"4" = 0;
+"5" = 0;
+"6" = 0;
+"7" = 0;
+"8" = 0;
+"9" = 0;
+};
+};
+width = 1147;
+},
+{
+anchors = (
+{
+name = bottom;
+pos = (686,0);
+},
+{
+name = center;
+pos = (686,354);
+},
+{
+name = ogonek;
+pos = (899,10);
+},
+{
+name = top;
+pos = (686,708);
+},
+{
+name = topleft;
+pos = (20,708);
+},
+{
+name = topright;
+pos = (1348,708);
+}
+);
+associatedMasterId = "DF54607F-DD82-41E6-B2E3-81CA6D0E5C47";
+attr = {
+colorPalette = 0;
+};
+layerId = "922E0F03-CD68-4079-B11A-9005AA33A0D0";
+name = "29 Oct 23 2:54 p.m.";
+shapes = (
+{
+closed = 1;
+nodes = (
+(308,723,o),
+(30,570,o),
+(30,354,cs),
+(30,138,o),
+(308,-15,o),
+(686,-15,cs),
+(1062,-15,o),
+(1338,138,o),
+(1338,354,cs),
+(1338,570,o),
+(1062,723,o),
+(686,723,cs)
+);
+},
+{
+closed = 1;
+nodes = (
+(772,713,o),
+(804,616,o),
+(804,354,cs),
+(804,96,o),
+(772,-3,o),
+(686,-3,cs),
+(600,-3,o),
+(564,104,o),
+(564,354,cs),
+(564,611,o),
+(600,713,o),
+(686,713,cs)
+);
+}
+);
+userData = {
+com.hugojourdan.ColorFlow = {
+"0" = 0;
+"1" = 0;
+"10" = 0;
+"11" = 0;
+"2" = 0;
+"3" = 0;
+"4" = 0;
+"5" = 0;
+"6" = 0;
+"7" = 0;
+"8" = 0;
+"9" = 0;
+};
+};
+width = 1368;
+},
+{
+anchors = (
+{
+name = bottom;
+pos = (686,0);
+},
+{
+name = center;
+pos = (686,354);
+},
+{
+name = ogonek;
+pos = (899,10);
+},
+{
+name = top;
+pos = (686,708);
+},
+{
+name = topleft;
+pos = (20,708);
+},
+{
+name = topright;
+pos = (1348,708);
+}
+);
+associatedMasterId = "DF54607F-DD82-41E6-B2E3-81CA6D0E5C47";
+attr = {
+colorPalette = 1;
+};
+layerId = "31B9BE36-CF3A-4E32-9E42-7245285A23F5";
+name = "29 Oct 23 2:54 p.m.";
+shapes = (
+{
+attr = {
+fillColor = (255,138,216,255);
+};
+closed = 1;
+nodes = (
+(278,27,o),
+(52,165,o),
+(52,354,cs),
+(52,542,o),
+(276,680,o),
+(605,699,c),
+(560,646,o),
+(542,535,o),
+(542,354,cs),
+(542,173,o),
+(561,60,o),
+(608,9,c)
+);
+},
+{
+attr = {
+fillColor = (255,138,216,255);
+};
+closed = 1;
+nodes = (
+(809,60,o),
+(826,170,o),
+(826,354,cs),
+(826,537,o),
+(810,646,o),
+(768,698,c),
+(1093,679,o),
+(1316,542,o),
+(1316,354,cs),
+(1316,165,o),
+(1092,28,o),
+(765,9,c)
+);
+}
+);
+userData = {
+com.hugojourdan.ColorFlow = {
+"0" = 0;
+"1" = 0;
+"10" = 0;
+"11" = 0;
+"2" = 0;
+"3" = 0;
+"4" = 0;
+"5" = 0;
+"6" = 0;
+"7" = 0;
+"8" = 0;
+"9" = 0;
+};
+};
+width = 1368;
+}
+);
+unicode = 79;
+},
+);
+instances = (
+{
+axesValues = (
+14,
+100
+);
+customParameters = (
+{
+disabled = 1;
+name = "Style Name as STAT entry";
+value = wght;
+},
+{
+name = "Axis Location";
+value = (
+{
+Axis = Weight;
+Location = 100;
+}
+);
+}
+);
+instanceInterpolations = {
+"A5088515-37FF-452F-BD44-18A7A5EF88F0" = 1;
+};
+name = Thin;
+weightClass = 100;
+},
+{
+axesValues = (
+40,
+100
+);
+customParameters = (
+{
+disabled = 1;
+name = "Style Name as STAT entry";
+value = wght;
+},
+{
+name = "Axis Location";
+value = (
+{
+Axis = Weight;
+Location = 200;
+}
+);
+}
+);
+instanceInterpolations = {
+"2660E96A-9963-4076-AFCB-E451BC6EE103" = 0.11765;
+"A5088515-37FF-452F-BD44-18A7A5EF88F0" = 0.88235;
+};
+name = ExtraLight;
+weightClass = 200;
+},
+{
+axesValues = (
+60,
+100
+);
+customParameters = (
+{
+disabled = 1;
+name = "Style Name as STAT entry";
+value = wght;
+},
+{
+name = "Axis Location";
+value = (
+{
+Axis = Weight;
+Location = 300;
+}
+);
+}
+);
+instanceInterpolations = {
+"2660E96A-9963-4076-AFCB-E451BC6EE103" = 0.20814;
+"A5088515-37FF-452F-BD44-18A7A5EF88F0" = 0.79186;
+};
+name = Light;
+weightClass = 300;
+},
+{
+axesValues = (
+110,
+100
+);
+customParameters = (
+{
+disabled = 1;
+name = "Style Name as STAT entry";
+value = wght;
+},
+{
+disabled = 1;
+name = "Style Name as STAT entry";
+value = wdth;
+},
+{
+name = "Axis Location";
+value = (
+{
+Axis = Weight;
+Location = 400;
+}
+);
+}
+);
+instanceInterpolations = {
+"2660E96A-9963-4076-AFCB-E451BC6EE103" = 0.43439;
+"A5088515-37FF-452F-BD44-18A7A5EF88F0" = 0.56561;
+};
+name = Regular;
+},
+{
+axesValues = (
+140,
+100
+);
+customParameters = (
+{
+disabled = 1;
+name = "Style Name as STAT entry";
+value = wght;
+},
+{
+name = "Axis Location";
+value = (
+{
+Axis = Weight;
+Location = 500;
+}
+);
+}
+);
+instanceInterpolations = {
+"2660E96A-9963-4076-AFCB-E451BC6EE103" = 0.57014;
+"A5088515-37FF-452F-BD44-18A7A5EF88F0" = 0.42986;
+};
+name = Medium;
+weightClass = 500;
+},
+{
+axesValues = (
+190,
+100
+);
+customParameters = (
+{
+disabled = 1;
+name = "Style Name as STAT entry";
+value = wght;
+},
+{
+name = "Axis Location";
+value = (
+{
+Axis = Weight;
+Location = 600;
+}
+);
+}
+);
+instanceInterpolations = {
+"2660E96A-9963-4076-AFCB-E451BC6EE103" = 0.79638;
+"A5088515-37FF-452F-BD44-18A7A5EF88F0" = 0.20362;
+};
+name = SemiBold;
+weightClass = 600;
+},
+{
+axesValues = (
+235,
+100
+);
+customParameters = (
+{
+disabled = 1;
+name = "Style Name as STAT entry";
+value = wght;
+},
+{
+name = "Axis Location";
+value = (
+{
+Axis = Weight;
+Location = 700;
+}
+);
+}
+);
+instanceInterpolations = {
+"2660E96A-9963-4076-AFCB-E451BC6EE103" = 1;
+};
+isBold = 1;
+linkStyle = Regular;
+name = Bold;
+weightClass = 700;
+},
+{
+axesValues = (
+14,
+125
+);
+customParameters = (
+{
+disabled = 1;
+name = "Variable Font Style Name";
+value = "Expanded Thin";
+},
+{
+name = "Axis Location";
+value = (
+{
+Axis = Weight;
+Location = 100;
+}
+);
+}
+);
+exports = 0;
+instanceInterpolations = {
+"35A90D60-3AD4-435C-9F8B-D1CA483F6F66" = 1;
+};
+name = Thin;
+properties = (
+{
+key = familyNames;
+values = (
+{
+language = dflt;
+value = "Kalnia Expanded";
+}
+);
+}
+);
+weightClass = 100;
+widthClass = 7;
+},
+{
+axesValues = (
+40,
+125
+);
+customParameters = (
+{
+disabled = 1;
+name = "Variable Font Style Name";
+value = "Expanded ExtraLight";
+},
+{
+name = "Axis Location";
+value = (
+{
+Axis = Weight;
+Location = 200;
+}
+);
+}
+);
+exports = 0;
+instanceInterpolations = {
+"35A90D60-3AD4-435C-9F8B-D1CA483F6F66" = 0.88235;
+"DF54607F-DD82-41E6-B2E3-81CA6D0E5C47" = 0.11765;
+};
+name = ExtraLight;
+properties = (
+{
+key = familyNames;
+values = (
+{
+language = dflt;
+value = "Kalnia Expanded";
+}
+);
+}
+);
+weightClass = 200;
+widthClass = 7;
+},
+{
+axesValues = (
+60,
+125
+);
+customParameters = (
+{
+disabled = 1;
+name = "Variable Font Style Name";
+value = "Expanded Light";
+},
+{
+name = "Axis Location";
+value = (
+{
+Axis = Weight;
+Location = 300;
+}
+);
+}
+);
+exports = 0;
+instanceInterpolations = {
+"35A90D60-3AD4-435C-9F8B-D1CA483F6F66" = 0.79186;
+"DF54607F-DD82-41E6-B2E3-81CA6D0E5C47" = 0.20814;
+};
+name = Light;
+properties = (
+{
+key = familyNames;
+values = (
+{
+language = dflt;
+value = "Kalnia Expanded";
+}
+);
+}
+);
+weightClass = 300;
+widthClass = 7;
+},
+{
+axesValues = (
+110,
+125
+);
+customParameters = (
+{
+disabled = 1;
+name = "Style Name as STAT entry";
+value = wdth;
+},
+{
+disabled = 1;
+name = "Variable Font Style Name";
+value = Expanded;
+},
+{
+name = "Axis Location";
+value = (
+{
+Axis = Weight;
+Location = 400;
+}
+);
+}
+);
+exports = 0;
+instanceInterpolations = {
+"35A90D60-3AD4-435C-9F8B-D1CA483F6F66" = 0.56561;
+"DF54607F-DD82-41E6-B2E3-81CA6D0E5C47" = 0.43439;
+};
+name = Regular;
+properties = (
+{
+key = familyNames;
+values = (
+{
+language = dflt;
+value = "Kalnia Expanded";
+}
+);
+},
+{
+key = postscriptFullName;
+value = "Kalnia Expanded Regular";
+}
+);
+widthClass = 7;
+},
+{
+axesValues = (
+140,
+125
+);
+customParameters = (
+{
+disabled = 1;
+name = "Variable Font Style Name";
+value = "Expanded Medium";
+},
+{
+name = "Axis Location";
+value = (
+{
+Axis = Weight;
+Location = 500;
+}
+);
+}
+);
+exports = 0;
+instanceInterpolations = {
+"35A90D60-3AD4-435C-9F8B-D1CA483F6F66" = 0.42986;
+"DF54607F-DD82-41E6-B2E3-81CA6D0E5C47" = 0.57014;
+};
+name = Medium;
+properties = (
+{
+key = familyNames;
+values = (
+{
+language = dflt;
+value = "Kalnia Expanded";
+}
+);
+}
+);
+weightClass = 500;
+widthClass = 7;
+},
+{
+axesValues = (
+190,
+125
+);
+customParameters = (
+{
+disabled = 1;
+name = "Variable Font Style Name";
+value = "Expanded SemiBold";
+},
+{
+name = "Axis Location";
+value = (
+{
+Axis = Weight;
+Location = 600;
+}
+);
+}
+);
+exports = 0;
+instanceInterpolations = {
+"35A90D60-3AD4-435C-9F8B-D1CA483F6F66" = 0.20362;
+"DF54607F-DD82-41E6-B2E3-81CA6D0E5C47" = 0.79638;
+};
+name = SemiBold;
+properties = (
+{
+key = familyNames;
+values = (
+{
+language = dflt;
+value = "Kalnia Expanded";
+}
+);
+}
+);
+weightClass = 600;
+widthClass = 7;
+},
+{
+axesValues = (
+235,
+125
+);
+customParameters = (
+{
+disabled = 1;
+name = "Variable Font Style Name";
+value = "Expanded Bold";
+},
+{
+name = "Axis Location";
+value = (
+{
+Axis = Weight;
+Location = 700;
+}
+);
+}
+);
+exports = 0;
+instanceInterpolations = {
+"DF54607F-DD82-41E6-B2E3-81CA6D0E5C47" = 1;
+};
+isBold = 1;
+linkStyle = Regular;
+name = Bold;
+properties = (
+{
+key = familyNames;
+values = (
+{
+language = dflt;
+value = "Kalnia Expanded";
+}
+);
+},
+{
+key = postscriptFullName;
+value = "Kalnia Expanded Bold";
+}
+);
+weightClass = 700;
+widthClass = 7;
+}
+);
+metrics = (
+{
+type = ascender;
+},
+{
+type = "cap height";
+},
+{
+type = "x-height";
+},
+{
+type = baseline;
+},
+{
+type = descender;
+},
+{
+type = "italic angle";
+}
+);
+properties = (
+{
+key = copyrights;
+values = (
+{
+language = dflt;
+value = "Copyright 2022 The Kalnia Glaze Project Authors (https://github.com/fridamedrano/Kalnia-Glaze)";
+}
+);
+},
+{
+key = descriptions;
+values = (
+{
+language = dflt;
+value = "Kalnia Glaze is a new typeface that experiments with the new color font technology in variable fonts, inviting you to step into a world of color and add vibrancy and depth to your projects.";
+}
+);
+},
+{
+key = designers;
+values = (
+{
+language = dflt;
+value = "Frida Medrano";
+}
+);
+},
+{
+key = designerURL;
+value = fridamedrano.com;
+},
+{
+key = licenses;
+values = (
+{
+language = dflt;
+value = "This Font Software is licensed under the SIL Open Font License, Version 1.1. This license is available with a FAQ at: https://openfontlicense.org";
+}
+);
+},
+{
+key = licenseURL;
+value = "https://openfontlicense.org";
+},
+{
+key = manufacturers;
+values = (
+{
+language = dflt;
+value = "Frida Medrano";
+}
+);
+},
+{
+key = manufacturerURL;
+value = "https://www.google.com/fonts";
+},
+{
+key = vendorID;
+value = GOOG;
+}
+);
+stems = (
+{
+horizontal = 1;
+name = hStem0;
+},
+{
+horizontal = 1;
+name = hStem1;
+},
+{
+name = vStem0;
+},
+{
+name = vStem1;
+}
+);
+unitsPerEm = 1000;
+userData = {
+GSDimensionPlugin.Dimensions = {
+"12075EEC-5330-4CFA-B344-B676803E4944" = {
+};
+"23439494-CDF1-444F-B6A8-9C8426A90444" = {
+nV = 95;
+nd = 270;
+};
+"2660E96A-9963-4076-AFCB-E451BC6EE103" = {
+};
+};
+GSDontShowVersionAlert = 1;
+"com.hugojourdan.ColorFlow-Report_Data" = {
+"2660E96A-9963-4076-AFCB-E451BC6EE103" = {
+.notdef = None;
+.null = None;
+A = None;
+AE = None;
+Aacute = None;
+Abreve = None;
+Acaron = None;
+Acircumflex = None;
+Adieresis = None;
+Agrave = None;
+Amacron = None;
+Aogonek = None;
+Aring = None;
+Atilde = None;
+B = None;
+C = None;
+CR = None;
+Cacute = None;
+Ccaron = None;
+Ccedilla = None;
+Cdotaccent = None;
+D = None;
+Dcaron = None;
+Dcroat = None;
+E = None;
+Eacute = None;
+Ecaron = None;
+Ecircumflex = None;
+Edieresis = None;
+Edotaccent = None;
+Egrave = None;
+Emacron = None;
+Eng = None;
+Eogonek = None;
+Eth = None;
+F = None;
+G = None;
+Gbreve = None;
+Gcommaaccent = None;
+Gdotaccent = None;
+Germandbls = None;
+H = None;
+Hbar = None;
+I = None;
+IJ = None;
+Iacute = None;
+Icircumflex = None;
+Idieresis = None;
+Idotaccent = None;
+Igrave = None;
+Imacron = None;
+Iogonek = None;
+J = None;
+K = None;
+Kcommaaccent = None;
+L = None;
+Lacute = None;
+Lcaron = None;
+Lcommaaccent = None;
+Ldot = None;
+Lslash = None;
+M = None;
+N = None;
+Nacute = None;
+Ncaron = None;
+Ncommaaccent = None;
+Ntilde = None;
+O = None;
+OE = None;
+Oacute = None;
+Ocircumflex = None;
+Odieresis = None;
+Ograve = None;
+Ohungarumlaut = None;
+Omacron = None;
+Oslash = None;
+Otilde = None;
+P = None;
+Q = None;
+R = None;
+Racute = None;
+Rcaron = None;
+Rcommaaccent = None;
+S = None;
+Sacute = None;
+Scaron = None;
+Scedilla = None;
+Scommaaccent = None;
+T = None;
+Tcaron = None;
+Tcommaaccent = None;
+Thorn = None;
+U = None;
+Uacute = None;
+Ubreve = None;
+Ucircumflex = None;
+Udieresis = None;
+Ugrave = None;
+Uhungarumlaut = None;
+Umacron = None;
+Uogonek = None;
+Uring = None;
+V = None;
+W = None;
+Wacute = None;
+Wcircumflex = None;
+Wdieresis = None;
+Wgrave = None;
+X = None;
+Y = None;
+Yacute = None;
+Ycircumflex = None;
+Ydieresis = None;
+Ygrave = None;
+Z = None;
+Zacute = None;
+Zcaron = None;
+Zdotaccent = None;
+"_zero-percent" = None;
+a = None;
+aacute = None;
+abreve = None;
+acaron = None;
+acircumflex = None;
+acute = None;
+acutecomb = None;
+adieresis = None;
+ae = None;
+agrave = None;
+amacron = None;
+ampersand = None;
+aogonek = None;
+apostrophemod = None;
+approxequal = None;
+aring = None;
+asciicircum = None;
+asciitilde = None;
+asterisk = None;
+at = None;
+atilde = None;
+b = None;
+backslash = None;
+bar = None;
+braceleft = None;
+braceright = None;
+bracketleft = None;
+bracketright = None;
+breve = None;
+brevecomb = None;
+brokenbar = None;
+bullet = None;
+c = None;
+cacute = None;
+caron = None;
+caroncomb = None;
+caroncomb.alt = None;
+ccaron = None;
+ccedilla = None;
+cdotaccent = None;
+cedilla = None;
+cedillacomb = None;
+cent = None;
+circumflex = None;
+circumflexcomb = None;
+colon = None;
+comma = None;
+commaaccentcomb = None;
+commaturnedabovecomb = None;
+commaturnedmod = None;
+copyright = None;
+currency = None;
+d = None;
+dagger = None;
+daggerdbl = None;
+dcaron = None;
+dcroat = None;
+degree = None;
+dieresis = None;
+dieresiscomb = None;
+divide = None;
+divisionslash = None;
+dollar = None;
+dotaccent = None;
+dotaccentcomb = None;
+dottedCircle = None;
+downArrow = None;
+e = None;
+eacute = None;
+ecaron = None;
+ecircumflex = None;
+edieresis = None;
+edotaccent = None;
+egrave = None;
+eight = None;
+ellipsis = None;
+emacron = None;
+emdash = None;
+endash = None;
+eng = None;
+enspace = None;
+eogonek = None;
+equal = None;
+eth = None;
+euro = None;
+exclam = None;
+exclamdown = None;
+f = None;
+f_b.liga = None;
+f_f.liga = None;
+f_h.liga = None;
+f_j.liga = None;
+f_k.liga = None;
+fi = None;
+five = None;
+fl = None;
+florin = None;
+four = None;
+foursuperior = None;
+fraction = None;
+g = None;
+gbreve = None;
+gcommaaccent = None;
+gdotaccent = None;
+germandbls = None;
+grave = None;
+gravecomb = None;
+greater = None;
+greaterequal = None;
+guillemetleft = None;
+guillemetright = None;
+guilsinglleft = None;
+guilsinglright = None;
+h = None;
+hbar = None;
+hungarumlaut = None;
+hungarumlautcomb = None;
+hyphen = None;
+i = None;
+iacute = None;
+icircumflex = None;
+idieresis = None;
+idotaccent = None;
+idotless = None;
+idotless_ogonekcomb = None;
+igrave = None;
+ij = None;
+imacron = None;
+iogonek = None;
+j = None;
+jdotless = None;
+k = None;
+kcommaaccent = None;
+l = None;
+lacute = None;
+lcaron = None;
+lcommaaccent = None;
+ldot = None;
+less = None;
+lessequal = None;
+logicalnot = None;
+lslash = None;
+m = None;
+macron = None;
+macroncomb = None;
+micro = None;
+minus = None;
+minute = None;
+mu = None;
+multiply = None;
+n = None;
+nacute = None;
+nbspace = None;
+ncaron = None;
+ncommaaccent = None;
+nine = None;
+notequal = None;
+ntilde = None;
+numbersign = None;
+o = None;
+oacute = None;
+ocircumflex = None;
+odieresis = None;
+oe = None;
+ogonek = None;
+ogonekcomb = None;
+ograve = None;
+ohungarumlaut = None;
+omacron = None;
+one = None;
+onehalf = None;
+onequarter = None;
+onesuperior = None;
+ordfeminine = None;
+ordmasculine = None;
+oslash = None;
+otilde = None;
+p = None;
+paragraph = None;
+parenleft = None;
+parenright = None;
+percent = None;
+period = None;
+periodcentered = None;
+periodcentered.loclCAT = None;
+periodcentered.loclCAT.case = None;
+perthousand = None;
+plus = None;
+plusminus = None;
+q = None;
+question = None;
+questiondown = None;
+quotedbl = None;
+quotedblbase = None;
+quotedblleft = None;
+quotedblright = None;
+quoteleft = None;
+quoteright = None;
+quotesinglbase = None;
+quotesingle = None;
+r = None;
+racute = None;
+rcaron = None;
+rcommaaccent = None;
+registered = None;
+replacementCharacter = None;
+ring = None;
+ringcomb = None;
+s = None;
+sacute = None;
+scaron = None;
+scedilla = None;
+scommaaccent = None;
+second = None;
+section = None;
+semicolon = None;
+seven = None;
+six = None;
+slash = None;
+space = None;
+sterling = None;
+t = None;
+tcaron = None;
+tcommaaccent = None;
+thinspace = None;
+thorn = None;
+three = None;
+threequarters = None;
+threesuperior = None;
+tilde = None;
+tildecomb = None;
+trademark = None;
+two = None;
+twosuperior = None;
+u = None;
+uacute = None;
+ubreve = None;
+ucircumflex = None;
+udieresis = None;
+ugrave = None;
+uhungarumlaut = None;
+umacron = None;
+underscore = None;
+uogonek = None;
+upArrow = None;
+uring = None;
+v = None;
+w = None;
+wacute = None;
+wcircumflex = None;
+wdieresis = None;
+wgrave = None;
+x = None;
+y = None;
+yacute = None;
+ycircumflex = None;
+ydieresis = None;
+yen = None;
+ygrave = None;
+z = None;
+zacute = None;
+zcaron = None;
+zdotaccent = None;
+zero = None;
+zeroWidthNoBreakSpace = None;
+zerowidthspace = None;
+};
+"35A90D60-3AD4-435C-9F8B-D1CA483F6F66" = {
+.notdef = None;
+.null = None;
+A = None;
+AE = None;
+Aacute = None;
+Abreve = None;
+Acaron = None;
+Acircumflex = None;
+Adieresis = None;
+Agrave = None;
+Amacron = None;
+Aogonek = None;
+Aring = None;
+Atilde = None;
+B = None;
+C = None;
+CR = None;
+Cacute = None;
+Ccaron = None;
+Ccedilla = None;
+Cdotaccent = None;
+D = None;
+Dcaron = None;
+Dcroat = None;
+E = None;
+Eacute = None;
+Ecaron = None;
+Ecircumflex = None;
+Edieresis = None;
+Edotaccent = None;
+Egrave = None;
+Emacron = None;
+Eng = None;
+Eogonek = None;
+Eth = None;
+F = None;
+G = None;
+Gbreve = None;
+Gcommaaccent = None;
+Gdotaccent = None;
+Germandbls = None;
+H = None;
+Hbar = None;
+I = None;
+IJ = None;
+Iacute = None;
+Icircumflex = None;
+Idieresis = None;
+Idotaccent = None;
+Igrave = None;
+Imacron = None;
+Iogonek = None;
+J = None;
+K = None;
+Kcommaaccent = None;
+L = None;
+Lacute = None;
+Lcaron = None;
+Lcommaaccent = None;
+Ldot = None;
+Lslash = None;
+M = None;
+N = None;
+Nacute = None;
+Ncaron = None;
+Ncommaaccent = None;
+Ntilde = None;
+O = None;
+OE = None;
+Oacute = None;
+Ocircumflex = None;
+Odieresis = None;
+Ograve = None;
+Ohungarumlaut = None;
+Omacron = None;
+Oslash = None;
+Otilde = None;
+P = None;
+Q = None;
+R = None;
+Racute = None;
+Rcaron = None;
+Rcommaaccent = None;
+S = None;
+Sacute = None;
+Scaron = None;
+Scedilla = None;
+Scommaaccent = None;
+T = None;
+Tcaron = None;
+Tcommaaccent = None;
+Thorn = None;
+U = None;
+Uacute = None;
+Ubreve = None;
+Ucircumflex = None;
+Udieresis = None;
+Ugrave = None;
+Uhungarumlaut = None;
+Umacron = None;
+Uogonek = None;
+Uring = None;
+V = None;
+W = None;
+Wacute = None;
+Wcircumflex = None;
+Wdieresis = None;
+Wgrave = None;
+X = None;
+Y = None;
+Yacute = None;
+Ycircumflex = None;
+Ydieresis = None;
+Ygrave = None;
+Z = None;
+Zacute = None;
+Zcaron = None;
+Zdotaccent = None;
+"_zero-percent" = None;
+a = None;
+aacute = None;
+abreve = None;
+acaron = None;
+acircumflex = None;
+acute = None;
+acutecomb = None;
+adieresis = None;
+ae = None;
+agrave = None;
+amacron = None;
+ampersand = None;
+aogonek = None;
+apostrophemod = None;
+approxequal = None;
+aring = None;
+asciicircum = None;
+asciitilde = None;
+asterisk = None;
+at = None;
+atilde = None;
+b = None;
+backslash = None;
+bar = None;
+braceleft = None;
+braceright = None;
+bracketleft = None;
+bracketright = None;
+breve = None;
+brevecomb = None;
+brokenbar = None;
+bullet = None;
+c = None;
+cacute = None;
+caron = None;
+caroncomb = None;
+caroncomb.alt = None;
+ccaron = None;
+ccedilla = None;
+cdotaccent = None;
+cedilla = None;
+cedillacomb = None;
+cent = None;
+circumflex = None;
+circumflexcomb = None;
+colon = None;
+comma = None;
+commaaccentcomb = None;
+commaturnedabovecomb = None;
+commaturnedmod = None;
+copyright = None;
+currency = None;
+d = None;
+dagger = None;
+daggerdbl = None;
+dcaron = None;
+dcroat = None;
+degree = None;
+dieresis = None;
+dieresiscomb = None;
+divide = None;
+divisionslash = None;
+dollar = None;
+dotaccent = None;
+dotaccentcomb = None;
+dottedCircle = None;
+downArrow = None;
+e = None;
+eacute = None;
+ecaron = None;
+ecircumflex = None;
+edieresis = None;
+edotaccent = None;
+egrave = None;
+eight = None;
+ellipsis = None;
+emacron = None;
+emdash = None;
+endash = None;
+eng = None;
+enspace = None;
+eogonek = None;
+equal = None;
+eth = None;
+euro = None;
+exclam = None;
+exclamdown = None;
+f = None;
+f_b.liga = None;
+f_f.liga = None;
+f_h.liga = None;
+f_j.liga = None;
+f_k.liga = None;
+fi = None;
+five = None;
+fl = None;
+florin = None;
+four = None;
+foursuperior = None;
+fraction = None;
+g = None;
+gbreve = None;
+gcommaaccent = None;
+gdotaccent = None;
+germandbls = None;
+grave = None;
+gravecomb = None;
+greater = None;
+greaterequal = None;
+guillemetleft = None;
+guillemetright = None;
+guilsinglleft = None;
+guilsinglright = None;
+h = None;
+hbar = None;
+hungarumlaut = None;
+hungarumlautcomb = None;
+hyphen = None;
+i = None;
+iacute = None;
+icircumflex = None;
+idieresis = None;
+idotaccent = None;
+idotless = None;
+idotless_ogonekcomb = None;
+igrave = None;
+ij = None;
+imacron = None;
+iogonek = None;
+j = None;
+jdotless = None;
+k = None;
+kcommaaccent = None;
+l = None;
+lacute = None;
+lcaron = None;
+lcommaaccent = None;
+ldot = None;
+less = None;
+lessequal = None;
+logicalnot = None;
+lslash = None;
+m = None;
+macron = None;
+macroncomb = None;
+micro = None;
+minus = None;
+minute = None;
+mu = None;
+multiply = None;
+n = None;
+nacute = None;
+nbspace = None;
+ncaron = None;
+ncommaaccent = None;
+nine = None;
+notequal = None;
+ntilde = None;
+numbersign = None;
+o = None;
+oacute = None;
+ocircumflex = None;
+odieresis = None;
+oe = None;
+ogonek = None;
+ogonekcomb = None;
+ograve = None;
+ohungarumlaut = None;
+omacron = None;
+one = None;
+onehalf = None;
+onequarter = None;
+onesuperior = None;
+ordfeminine = None;
+ordmasculine = None;
+oslash = None;
+otilde = None;
+p = None;
+paragraph = None;
+parenleft = None;
+parenright = None;
+percent = None;
+period = None;
+periodcentered = None;
+periodcentered.loclCAT = None;
+periodcentered.loclCAT.case = None;
+perthousand = None;
+plus = None;
+plusminus = None;
+q = None;
+question = None;
+questiondown = None;
+quotedbl = None;
+quotedblbase = None;
+quotedblleft = None;
+quotedblright = None;
+quoteleft = None;
+quoteright = None;
+quotesinglbase = None;
+quotesingle = None;
+r = None;
+racute = None;
+rcaron = None;
+rcommaaccent = None;
+registered = None;
+replacementCharacter = None;
+ring = None;
+ringcomb = None;
+s = None;
+sacute = None;
+scaron = None;
+scedilla = None;
+scommaaccent = None;
+second = None;
+section = None;
+semicolon = None;
+seven = None;
+six = None;
+slash = None;
+space = None;
+sterling = None;
+t = None;
+tcaron = None;
+tcommaaccent = None;
+thinspace = None;
+thorn = None;
+three = None;
+threequarters = None;
+threesuperior = None;
+tilde = None;
+tildecomb = None;
+trademark = None;
+two = None;
+twosuperior = None;
+u = None;
+uacute = None;
+ubreve = None;
+ucircumflex = None;
+udieresis = None;
+ugrave = None;
+uhungarumlaut = None;
+umacron = None;
+underscore = None;
+uogonek = None;
+upArrow = None;
+uring = None;
+v = None;
+w = None;
+wacute = None;
+wcircumflex = None;
+wdieresis = None;
+wgrave = None;
+x = None;
+y = None;
+yacute = None;
+ycircumflex = None;
+ydieresis = None;
+yen = None;
+ygrave = None;
+z = None;
+zacute = None;
+zcaron = None;
+zdotaccent = None;
+zero = None;
+zeroWidthNoBreakSpace = None;
+zerowidthspace = None;
+};
+"A5088515-37FF-452F-BD44-18A7A5EF88F0" = {
+.notdef = None;
+.null = None;
+A = None;
+AE = None;
+Aacute = None;
+Abreve = None;
+Acaron = None;
+Acircumflex = None;
+Adieresis = None;
+Agrave = None;
+Amacron = None;
+Aogonek = None;
+Aring = None;
+Atilde = None;
+B = None;
+C = None;
+CR = None;
+Cacute = None;
+Ccaron = None;
+Ccedilla = None;
+Cdotaccent = None;
+D = None;
+Dcaron = None;
+Dcroat = None;
+E = None;
+Eacute = None;
+Ecaron = None;
+Ecircumflex = None;
+Edieresis = None;
+Edotaccent = None;
+Egrave = None;
+Emacron = None;
+Eng = None;
+Eogonek = None;
+Eth = None;
+F = None;
+G = None;
+Gbreve = None;
+Gcommaaccent = None;
+Gdotaccent = None;
+Germandbls = None;
+H = None;
+Hbar = None;
+I = None;
+IJ = None;
+Iacute = None;
+Icircumflex = None;
+Idieresis = None;
+Idotaccent = None;
+Igrave = None;
+Imacron = None;
+Iogonek = None;
+J = None;
+K = None;
+Kcommaaccent = None;
+L = None;
+Lacute = None;
+Lcaron = None;
+Lcommaaccent = None;
+Ldot = None;
+Lslash = None;
+M = None;
+N = None;
+Nacute = None;
+Ncaron = None;
+Ncommaaccent = None;
+Ntilde = None;
+O = None;
+OE = None;
+Oacute = None;
+Ocircumflex = None;
+Odieresis = None;
+Ograve = None;
+Ohungarumlaut = None;
+Omacron = None;
+Oslash = None;
+Otilde = None;
+P = None;
+Q = None;
+R = None;
+Racute = None;
+Rcaron = None;
+Rcommaaccent = None;
+S = None;
+Sacute = None;
+Scaron = None;
+Scedilla = None;
+Scommaaccent = None;
+T = None;
+Tcaron = None;
+Tcommaaccent = None;
+Thorn = None;
+U = None;
+Uacute = None;
+Ubreve = None;
+Ucircumflex = None;
+Udieresis = None;
+Ugrave = None;
+Uhungarumlaut = None;
+Umacron = None;
+Uogonek = None;
+Uring = None;
+V = None;
+W = None;
+Wacute = None;
+Wcircumflex = None;
+Wdieresis = None;
+Wgrave = None;
+X = None;
+Y = None;
+Yacute = None;
+Ycircumflex = None;
+Ydieresis = None;
+Ygrave = None;
+Z = None;
+Zacute = None;
+Zcaron = None;
+Zdotaccent = None;
+"_zero-percent" = None;
+a = None;
+aacute = None;
+abreve = None;
+acaron = None;
+acircumflex = None;
+acute = None;
+acutecomb = None;
+adieresis = None;
+ae = None;
+agrave = None;
+amacron = None;
+ampersand = None;
+aogonek = None;
+apostrophemod = None;
+approxequal = None;
+aring = None;
+asciicircum = None;
+asciitilde = None;
+asterisk = None;
+at = None;
+atilde = None;
+b = None;
+backslash = None;
+bar = None;
+braceleft = None;
+braceright = None;
+bracketleft = None;
+bracketright = None;
+breve = None;
+brevecomb = None;
+brokenbar = None;
+bullet = None;
+c = None;
+cacute = None;
+caron = None;
+caroncomb = None;
+caroncomb.alt = None;
+ccaron = None;
+ccedilla = None;
+cdotaccent = None;
+cedilla = None;
+cedillacomb = None;
+cent = None;
+circumflex = None;
+circumflexcomb = None;
+colon = None;
+comma = None;
+commaaccentcomb = None;
+commaturnedabovecomb = None;
+commaturnedmod = None;
+copyright = None;
+currency = None;
+d = None;
+dagger = None;
+daggerdbl = None;
+dcaron = None;
+dcroat = None;
+degree = None;
+dieresis = None;
+dieresiscomb = None;
+divide = None;
+divisionslash = None;
+dollar = None;
+dotaccent = None;
+dotaccentcomb = None;
+dottedCircle = None;
+downArrow = None;
+e = None;
+eacute = None;
+ecaron = None;
+ecircumflex = None;
+edieresis = None;
+edotaccent = None;
+egrave = None;
+eight = None;
+ellipsis = None;
+emacron = None;
+emdash = None;
+endash = None;
+eng = None;
+enspace = None;
+eogonek = None;
+equal = None;
+eth = None;
+euro = None;
+exclam = None;
+exclamdown = None;
+f = None;
+f_b.liga = None;
+f_f.liga = None;
+f_h.liga = None;
+f_j.liga = None;
+f_k.liga = None;
+fi = None;
+five = None;
+fl = None;
+florin = None;
+four = None;
+foursuperior = None;
+fraction = None;
+g = None;
+gbreve = None;
+gcommaaccent = None;
+gdotaccent = None;
+germandbls = None;
+grave = None;
+gravecomb = None;
+greater = None;
+greaterequal = None;
+guillemetleft = None;
+guillemetright = None;
+guilsinglleft = None;
+guilsinglright = None;
+h = None;
+hbar = None;
+hungarumlaut = None;
+hungarumlautcomb = None;
+hyphen = None;
+i = None;
+iacute = None;
+icircumflex = None;
+idieresis = None;
+idotaccent = None;
+idotless = None;
+idotless_ogonekcomb = None;
+igrave = None;
+ij = None;
+imacron = None;
+iogonek = None;
+j = None;
+jdotless = None;
+k = None;
+kcommaaccent = None;
+l = None;
+lacute = None;
+lcaron = None;
+lcommaaccent = None;
+ldot = None;
+less = None;
+lessequal = None;
+logicalnot = None;
+lslash = None;
+m = None;
+macron = None;
+macroncomb = None;
+micro = None;
+minus = None;
+minute = None;
+mu = None;
+multiply = None;
+n = None;
+nacute = None;
+nbspace = None;
+ncaron = None;
+ncommaaccent = None;
+nine = None;
+notequal = None;
+ntilde = None;
+numbersign = None;
+o = None;
+oacute = None;
+ocircumflex = None;
+odieresis = None;
+oe = None;
+ogonek = None;
+ogonekcomb = None;
+ograve = None;
+ohungarumlaut = None;
+omacron = None;
+one = None;
+onehalf = None;
+onequarter = None;
+onesuperior = None;
+ordfeminine = None;
+ordmasculine = None;
+oslash = None;
+otilde = None;
+p = None;
+paragraph = None;
+parenleft = None;
+parenright = None;
+percent = None;
+period = None;
+periodcentered = None;
+periodcentered.loclCAT = None;
+periodcentered.loclCAT.case = None;
+perthousand = None;
+plus = None;
+plusminus = None;
+q = None;
+question = None;
+questiondown = None;
+quotedbl = None;
+quotedblbase = None;
+quotedblleft = None;
+quotedblright = None;
+quoteleft = None;
+quoteright = None;
+quotesinglbase = None;
+quotesingle = None;
+r = None;
+racute = None;
+rcaron = None;
+rcommaaccent = None;
+registered = None;
+replacementCharacter = None;
+ring = None;
+ringcomb = None;
+s = None;
+sacute = None;
+scaron = None;
+scedilla = None;
+scommaaccent = None;
+second = None;
+section = None;
+semicolon = None;
+seven = None;
+six = None;
+slash = None;
+space = None;
+sterling = None;
+t = None;
+tcaron = None;
+tcommaaccent = None;
+thinspace = None;
+thorn = None;
+three = None;
+threequarters = None;
+threesuperior = None;
+tilde = None;
+tildecomb = None;
+trademark = None;
+two = None;
+twosuperior = None;
+u = None;
+uacute = None;
+ubreve = None;
+ucircumflex = None;
+udieresis = None;
+ugrave = None;
+uhungarumlaut = None;
+umacron = None;
+underscore = None;
+uogonek = None;
+upArrow = None;
+uring = None;
+v = None;
+w = None;
+wacute = None;
+wcircumflex = None;
+wdieresis = None;
+wgrave = None;
+x = None;
+y = None;
+yacute = None;
+ycircumflex = None;
+ydieresis = None;
+yen = None;
+ygrave = None;
+z = None;
+zacute = None;
+zcaron = None;
+zdotaccent = None;
+zero = None;
+zeroWidthNoBreakSpace = None;
+zerowidthspace = None;
+};
+"DF54607F-DD82-41E6-B2E3-81CA6D0E5C47" = {
+.notdef = None;
+.null = None;
+A = None;
+AE = None;
+Aacute = None;
+Abreve = None;
+Acaron = None;
+Acircumflex = None;
+Adieresis = None;
+Agrave = None;
+Amacron = None;
+Aogonek = None;
+Aring = None;
+Atilde = None;
+B = None;
+C = None;
+CR = None;
+Cacute = None;
+Ccaron = None;
+Ccedilla = None;
+Cdotaccent = None;
+D = None;
+Dcaron = None;
+Dcroat = None;
+E = None;
+Eacute = None;
+Ecaron = None;
+Ecircumflex = None;
+Edieresis = None;
+Edotaccent = None;
+Egrave = None;
+Emacron = None;
+Eng = None;
+Eogonek = None;
+Eth = None;
+F = None;
+G = None;
+Gbreve = None;
+Gcommaaccent = None;
+Gdotaccent = None;
+Germandbls = None;
+H = None;
+Hbar = None;
+I = None;
+IJ = None;
+Iacute = None;
+Icircumflex = None;
+Idieresis = None;
+Idotaccent = None;
+Igrave = None;
+Imacron = None;
+Iogonek = None;
+J = None;
+K = None;
+Kcommaaccent = None;
+L = None;
+Lacute = None;
+Lcaron = None;
+Lcommaaccent = None;
+Ldot = None;
+Lslash = None;
+M = None;
+N = None;
+Nacute = None;
+Ncaron = None;
+Ncommaaccent = None;
+Ntilde = None;
+O = None;
+OE = None;
+Oacute = None;
+Ocircumflex = None;
+Odieresis = None;
+Ograve = None;
+Ohungarumlaut = None;
+Omacron = None;
+Oslash = None;
+Otilde = None;
+P = None;
+Q = None;
+R = None;
+Racute = None;
+Rcaron = None;
+Rcommaaccent = None;
+S = None;
+Sacute = None;
+Scaron = None;
+Scedilla = None;
+Scommaaccent = None;
+T = None;
+Tcaron = None;
+Tcommaaccent = None;
+Thorn = None;
+U = None;
+Uacute = None;
+Ubreve = None;
+Ucircumflex = None;
+Udieresis = None;
+Ugrave = None;
+Uhungarumlaut = None;
+Umacron = None;
+Uogonek = None;
+Uring = None;
+V = None;
+W = None;
+Wacute = None;
+Wcircumflex = None;
+Wdieresis = None;
+Wgrave = None;
+X = None;
+Y = None;
+Yacute = None;
+Ycircumflex = None;
+Ydieresis = None;
+Ygrave = None;
+Z = None;
+Zacute = None;
+Zcaron = None;
+Zdotaccent = None;
+"_zero-percent" = None;
+a = None;
+aacute = None;
+abreve = None;
+acaron = None;
+acircumflex = None;
+acute = None;
+acutecomb = None;
+adieresis = None;
+ae = None;
+agrave = None;
+amacron = None;
+ampersand = None;
+aogonek = None;
+apostrophemod = None;
+approxequal = None;
+aring = None;
+asciicircum = None;
+asciitilde = None;
+asterisk = None;
+at = None;
+atilde = None;
+b = None;
+backslash = None;
+bar = None;
+braceleft = None;
+braceright = None;
+bracketleft = None;
+bracketright = None;
+breve = None;
+brevecomb = None;
+brokenbar = None;
+bullet = None;
+c = None;
+cacute = None;
+caron = None;
+caroncomb = None;
+caroncomb.alt = None;
+ccaron = None;
+ccedilla = None;
+cdotaccent = None;
+cedilla = None;
+cedillacomb = None;
+cent = None;
+circumflex = None;
+circumflexcomb = None;
+colon = None;
+comma = None;
+commaaccentcomb = None;
+commaturnedabovecomb = None;
+commaturnedmod = None;
+copyright = None;
+currency = None;
+d = None;
+dagger = None;
+daggerdbl = None;
+dcaron = None;
+dcroat = None;
+degree = None;
+dieresis = None;
+dieresiscomb = None;
+divide = None;
+divisionslash = None;
+dollar = None;
+dotaccent = None;
+dotaccentcomb = None;
+dottedCircle = None;
+downArrow = None;
+e = None;
+eacute = None;
+ecaron = None;
+ecircumflex = None;
+edieresis = None;
+edotaccent = None;
+egrave = None;
+eight = None;
+ellipsis = None;
+emacron = None;
+emdash = None;
+endash = None;
+eng = None;
+enspace = None;
+eogonek = None;
+equal = None;
+eth = None;
+euro = None;
+exclam = None;
+exclamdown = None;
+f = None;
+f_b.liga = None;
+f_f.liga = None;
+f_h.liga = None;
+f_j.liga = None;
+f_k.liga = None;
+fi = None;
+five = None;
+fl = None;
+florin = None;
+four = None;
+foursuperior = None;
+fraction = None;
+g = None;
+gbreve = None;
+gcommaaccent = None;
+gdotaccent = None;
+germandbls = None;
+grave = None;
+gravecomb = None;
+greater = None;
+greaterequal = None;
+guillemetleft = None;
+guillemetright = None;
+guilsinglleft = None;
+guilsinglright = None;
+h = None;
+hbar = None;
+hungarumlaut = None;
+hungarumlautcomb = None;
+hyphen = None;
+i = None;
+iacute = None;
+icircumflex = None;
+idieresis = None;
+idotaccent = None;
+idotless = None;
+idotless_ogonekcomb = None;
+igrave = None;
+ij = None;
+imacron = None;
+iogonek = None;
+j = None;
+jdotless = None;
+k = None;
+kcommaaccent = None;
+l = None;
+lacute = None;
+lcaron = None;
+lcommaaccent = None;
+ldot = None;
+less = None;
+lessequal = None;
+logicalnot = None;
+lslash = None;
+m = None;
+macron = None;
+macroncomb = None;
+micro = None;
+minus = None;
+minute = None;
+mu = None;
+multiply = None;
+n = None;
+nacute = None;
+nbspace = None;
+ncaron = None;
+ncommaaccent = None;
+nine = None;
+notequal = None;
+ntilde = None;
+numbersign = None;
+o = None;
+oacute = None;
+ocircumflex = None;
+odieresis = None;
+oe = None;
+ogonek = None;
+ogonekcomb = None;
+ograve = None;
+ohungarumlaut = None;
+omacron = None;
+one = None;
+onehalf = None;
+onequarter = None;
+onesuperior = None;
+ordfeminine = None;
+ordmasculine = None;
+oslash = None;
+otilde = None;
+p = None;
+paragraph = None;
+parenleft = None;
+parenright = None;
+percent = None;
+period = None;
+periodcentered = None;
+periodcentered.loclCAT = None;
+periodcentered.loclCAT.case = None;
+perthousand = None;
+plus = None;
+plusminus = None;
+q = None;
+question = None;
+questiondown = None;
+quotedbl = None;
+quotedblbase = None;
+quotedblleft = None;
+quotedblright = None;
+quoteleft = None;
+quoteright = None;
+quotesinglbase = None;
+quotesingle = None;
+r = None;
+racute = None;
+rcaron = None;
+rcommaaccent = None;
+registered = None;
+replacementCharacter = None;
+ring = None;
+ringcomb = None;
+s = None;
+sacute = None;
+scaron = None;
+scedilla = None;
+scommaaccent = None;
+second = None;
+section = None;
+semicolon = None;
+seven = None;
+six = None;
+slash = None;
+space = None;
+sterling = None;
+t = None;
+tcaron = None;
+tcommaaccent = None;
+thinspace = None;
+thorn = None;
+three = None;
+threequarters = None;
+threesuperior = None;
+tilde = None;
+tildecomb = None;
+trademark = None;
+two = None;
+twosuperior = None;
+u = None;
+uacute = None;
+ubreve = None;
+ucircumflex = None;
+udieresis = None;
+ugrave = None;
+uhungarumlaut = None;
+umacron = None;
+underscore = None;
+uogonek = None;
+upArrow = None;
+uring = None;
+v = None;
+w = None;
+wacute = None;
+wcircumflex = None;
+wdieresis = None;
+wgrave = None;
+x = None;
+y = None;
+yacute = None;
+ycircumflex = None;
+ydieresis = None;
+yen = None;
+ygrave = None;
+z = None;
+zacute = None;
+zcaron = None;
+zdotaccent = None;
+zero = None;
+zeroWidthNoBreakSpace = None;
+zerowidthspace = None;
+};
+};
+"com.hugojourdan.ColorFlow-currentFont" = "<null>";
+"com.hugojourdan.ColorFlow-export" = "<null>";
+"com.hugojourdan.ColorFlow-master-data" = {
+"2660E96A-9963-4076-AFCB-E451BC6EE103" = {
+"0" = 0;
+"1" = 0;
+"10" = 0;
+"11" = 0;
+"2" = 0;
+"3" = 0;
+"4" = 0;
+"5" = 0;
+"6" = 0;
+"7" = 0;
+"8" = 0;
+"9" = 0;
+};
+"35A90D60-3AD4-435C-9F8B-D1CA483F6F66" = {
+"0" = 0;
+"1" = 0;
+"10" = 0;
+"11" = 0;
+"2" = 0;
+"3" = 0;
+"4" = 0;
+"5" = 0;
+"6" = 0;
+"7" = 0;
+"8" = 0;
+"9" = 0;
+};
+"A5088515-37FF-452F-BD44-18A7A5EF88F0" = {
+"0" = 0;
+"1" = 0;
+"10" = 0;
+"11" = 0;
+"2" = 0;
+"3" = 0;
+"4" = 0;
+"5" = 0;
+"6" = 0;
+"7" = 0;
+"8" = 0;
+"9" = 0;
+};
+"DF54607F-DD82-41E6-B2E3-81CA6D0E5C47" = {
+"0" = 0;
+"1" = 0;
+"10" = 0;
+"11" = 0;
+"2" = 0;
+"3" = 0;
+"4" = 0;
+"5" = 0;
+"6" = 0;
+"7" = 0;
+"8" = 0;
+"9" = 0;
+};
+};
+"com.hugojourdan.ColorFlow-selectedLayer" = 1;
+"com.hugojourdan.ColorFlow-selectedLayer-data" = {
+"0" = 0;
+"1" = 0;
+"10" = 0;
+"11" = 0;
+"2" = 0;
+"3" = 0;
+"4" = 0;
+"5" = 0;
+"6" = 0;
+"7" = 0;
+"8" = 0;
+"9" = 0;
+};
+"com.hugojourdan.ColorFlow-selectedMaster" = {
+axesValues = (
+235,
+125
+);
+customParameters = (
+{
+name = typoAscender;
+value = 1045;
+},
+{
+name = typoDescender;
+value = -300;
+},
+{
+name = typoLineGap;
+value = 0;
+},
+{
+name = hheaAscender;
+value = 1045;
+},
+{
+name = hheaDescender;
+value = -300;
+},
+{
+name = hheaLineGap;
+value = 0;
+},
+{
+name = winAscent;
+value = 995;
+},
+{
+name = winDescent;
+value = 355;
+},
+{
+name = "Axis Location";
+value = (
+{
+Axis = Weight;
+Location = 700;
+},
+{
+Axis = Width;
+Location = 125;
+}
+);
+}
+);
+guides = (
+{
+angle = 0;
+pos = (
+-24,
+718
+);
+},
+{
+angle = 0;
+pos = (
+-24,
+534
+);
+},
+{
+angle = 0;
+pos = (
+194,
+671
+);
+},
+{
+angle = 0;
+pos = (
+194,
+586
+);
+},
+{
+angle = 0;
+pos = (
+107,
+-215
+);
+}
+);
+iconName = Bold_Extended;
+id = "DF54607F-DD82-41E6-B2E3-81CA6D0E5C47";
+metricValues = (
+{
+over = -15;
+pos = 931;
+},
+{
+over = 15;
+pos = 708;
+},
+{
+over = 15;
+pos = 500;
+},
+{
+over = -15;
+pos = 0;
+},
+{
+over = 15;
+pos = -355;
+},
+{
+over = -15;
+pos = 0;
+}
+);
+name = "Expanded Bold";
+stemValues = (
+{
+id = "E164A084-B762-4CB3-AD08-46407F7CA86F";
+width = 5;
+},
+{
+id = "3CAAD74E-4EE0-4308-95A7-85AEA812746D";
+width = 10;
+},
+{
+id = "630B7828-3252-4D36-9042-66D08D85B821";
+width = 235;
+},
+{
+id = "4A3109FF-9B36-4AF0-BD6D-8A25B88BBC62";
+width = 245;
+}
+);
+userData = {
+GSCornerRadius = 350;
+GSOffsetHorizontal = 7;
+GSOffsetMakeStroke = 1;
+GSOffsetProportional = 1;
+GSOffsetVertical = 0;
+};
+};
+};
+versionMajor = 1;
+versionMinor = 110;
+}

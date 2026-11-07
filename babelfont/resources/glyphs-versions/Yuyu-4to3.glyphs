@@ -1,0 +1,610 @@
+{
+.appVersion = "3516";
+.formatVersion = 3;
+customParameters = (
+{
+name = panose;
+value = (
+3,
+0,
+5,
+2,
+3,
+0,
+0,
+0,
+0,
+0
+);
+},
+{
+name = unicodeRanges;
+value = (
+0,
+1,
+31,
+33
+);
+},
+{
+name = codePageRanges;
+value = (
+"1252"
+);
+},
+{
+name = fsType;
+value = (
+);
+},
+{
+disabled = 1;
+name = blueScale;
+value = 0.03333;
+},
+{
+disabled = 1;
+name = blueShift;
+value = 1;
+},
+{
+disabled = 1;
+name = glyphOrder;
+value = (
+.notdef,
+space,
+exclam,
+uni0022,
+numbersign,
+dollar,
+percent,
+ampersand,
+quotesingle,
+parenleft,
+parenright,
+asterisk,
+plus,
+comma,
+hyphen,
+period,
+slash,
+zero,
+one,
+two,
+three,
+four,
+five,
+six,
+seven,
+eight,
+nine,
+colon,
+semicolon,
+less,
+equal,
+greater,
+question,
+at,
+A,
+B,
+C,
+D,
+E,
+F,
+G,
+H,
+I,
+J,
+K,
+L,
+M,
+N,
+O,
+P,
+Q,
+R,
+S,
+T,
+U,
+V,
+W,
+X,
+Y,
+Z,
+bracketleft,
+bracketright,
+asciicircum,
+underscore,
+grave,
+a,
+b,
+c,
+d,
+e,
+f,
+g,
+h,
+i,
+j,
+k,
+l,
+m,
+n,
+o,
+p,
+q,
+r,
+s,
+t,
+u,
+v,
+w,
+x,
+y,
+z,
+braceleft,
+bar,
+braceright,
+asciitilde,
+quoteleft,
+quoteright,
+euro,
+exclamdown,
+cent,
+sterling,
+dieresis,
+copyright,
+registered,
+degree,
+acute,
+ordmasculine,
+questiondown,
+Agrave,
+Aacute,
+Acircumflex,
+Adieresis,
+Ccedilla,
+Egrave,
+Eacute,
+Ecircumflex,
+Edieresis,
+Igrave,
+Iacute,
+Icircumflex,
+Idieresis,
+Ntilde,
+Ograve,
+Oacute,
+Ocircumflex,
+Odieresis,
+Ugrave,
+Uacute,
+Ucircumflex,
+Udieresis,
+agrave,
+aacute,
+acircumflex,
+adieresis,
+ccedilla,
+egrave,
+eacute,
+ecircumflex,
+edieresis,
+igrave,
+iacute,
+icircumflex,
+idieresis,
+ntilde,
+ograve,
+oacute,
+ocircumflex,
+odieresis,
+ugrave,
+uacute,
+ucircumflex,
+udieresis
+);
+},
+{
+name = "Use Typo Metrics";
+value = 1;
+}
+);
+date = "2024-09-16 20:00:00 +0000";
+familyName = Yuyu;
+featurePrefixes = (
+{
+automatic = 1;
+code = "languagesystem DFLT dflt;
+
+languagesystem latn dflt;
+languagesystem latn AZE;
+languagesystem latn CRT;
+languagesystem latn KAZ;
+languagesystem latn TAT;
+languagesystem latn TRK;
+languagesystem latn ROM;
+languagesystem latn MOL;
+languagesystem latn CAT;
+";
+name = Languagesystems;
+}
+);
+features = (
+{
+automatic = 1;
+code = "feature locl;
+feature ordn;
+feature case;
+";
+tag = aalt;
+},
+{
+automatic = 1;
+code = "lookup ccmp_DFLT_1 {
+	@CombiningTopAccents = [acutecomb brevecomb caroncomb circumflexcomb commaturnedabovecomb dieresiscomb dotaccentcomb gravecomb hungarumlautcomb macroncomb ringcomb tildecomb];
+	lookupflag UseMarkFilteringSet @CombiningTopAccents;
+	sub i' @CombiningTopAccents by idotless;
+	sub j' @CombiningTopAccents by jdotless;
+} ccmp_DFLT_1;
+";
+tag = ccmp;
+},
+{
+automatic = 1;
+code = "script latn;
+language AZE;
+lookup locl_latn_0 {
+	sub i by idotaccent;
+} locl_latn_0;
+language CRT;
+lookup locl_latn_0;
+language KAZ;
+lookup locl_latn_0;
+language TAT;
+lookup locl_latn_0;
+language TRK;
+lookup locl_latn_0;
+
+script latn;
+language ROM;
+lookup locl_latn_1 {
+	sub Scedilla by Scommaaccent;
+	sub scedilla by scommaaccent;
+} locl_latn_1;
+language MOL;
+lookup locl_latn_1;
+
+script latn;
+language CAT;
+lookup locl_latn_2 {
+	sub l periodcentered' l by periodcentered.loclCAT;
+	sub L periodcentered' L by periodcentered.loclCAT.case;
+} locl_latn_2;
+";
+tag = locl;
+},
+{
+automatic = 1;
+code = "sub [zero one two three four five six seven eight nine] [A a]' by ordfeminine;
+sub [zero one two three four five six seven eight nine] [O o]' by ordmasculine;
+";
+tag = ordn;
+},
+{
+automatic = 1;
+code = "sub periodcentered.loclCAT by periodcentered.loclCAT.case;
+";
+tag = case;
+}
+);
+fontMaster = (
+{
+customParameters = (
+{
+name = typoAscender;
+value = 930;
+},
+{
+name = typoDescender;
+value = -200;
+},
+{
+name = typoLineGap;
+value = 0;
+},
+{
+name = winAscent;
+value = 945;
+},
+{
+name = winDescent;
+value = 218;
+},
+{
+name = hheaAscender;
+value = 930;
+},
+{
+name = hheaDescender;
+value = -200;
+},
+{
+name = hheaLineGap;
+value = 0;
+},
+{
+name = strikeoutPosition;
+value = 258;
+},
+{
+name = strikeoutSize;
+value = 49;
+},
+{
+name = "Alignment Zones";
+value = (
+{
+pos = 28;
+size = -29;
+},
+{
+pos = 348;
+size = 18;
+},
+{
+pos = 562;
+size = 22;
+},
+{
+pos = 683;
+size = 7;
+},
+{
+pos = -181;
+size = -7;
+}
+);
+}
+);
+id = m01;
+metricValues = (
+{
+pos = 930;
+},
+{
+over = 12;
+pos = 715;
+},
+{
+pos = 357;
+},
+{
+},
+{
+pos = -200;
+},
+{
+}
+);
+name = Regular;
+stemValues = (
+46,
+56,
+45,
+54
+);
+}
+);
+glyphs = (
+{
+glyphname = Agrave;
+lastChange = "2026-04-06 09:10:49 +0000";
+layers = (
+{
+hints = (
+{
+horizontal = 1;
+place = (123,41.5);
+type = Stem;
+},
+{
+horizontal = 1;
+place = (685.83,-20);
+target = down;
+type = TopGhost;
+},
+{
+place = (67.41,48.31);
+type = Stem;
+},
+{
+place = (283.03,49.89);
+type = Stem;
+}
+);
+layerId = m01;
+shapes = (
+{
+ref = A;
+},
+{
+pos = (147,129);
+ref = gravecomb;
+}
+);
+width = 399;
+}
+);
+note = Agrave;
+unicode = 192;
+},
+{
+glyphname = I;
+lastChange = "2026-04-28 12:49:43 +0000";
+layers = (
+{
+anchors = (
+{
+name = bottom;
+pos = (120,0);
+},
+{
+name = ogonek;
+pos = (127,39);
+},
+{
+name = top;
+pos = (110,739);
+},
+{
+name = topleft;
+pos = (-10,715);
+}
+);
+hints = (
+{
+horizontal = 1;
+place = (25,21);
+target = up;
+type = BottomGhost;
+},
+{
+horizontal = 1;
+place = (724,-20);
+target = down;
+type = TopGhost;
+},
+{
+place = (123,48);
+type = Stem;
+},
+{
+place = (137,41);
+type = Stem;
+}
+);
+layerId = m01;
+shapes = (
+{
+closed = 1;
+nodes = (
+(104,1,o),
+(153,-40,o),
+(153,56,cs),
+(151,226,o),
+(141,633,o),
+(136,666,cs),
+(134,678,o),
+(125,714,o),
+(104,695,cs),
+(69,664,o),
+(95,236,o),
+(100,52,c)
+);
+}
+);
+width = 240;
+}
+);
+note = I;
+unicode = 73;
+},
+);
+instances = (
+{
+instanceInterpolations = {
+m01 = 1;
+};
+name = Regular;
+}
+);
+metrics = (
+{
+type = ascender;
+},
+{
+type = "cap height";
+},
+{
+type = "x-height";
+},
+{
+type = baseline;
+},
+{
+type = descender;
+},
+{
+type = "italic angle";
+}
+);
+note = "This is the “medium” version of the font family Yuyu.";
+properties = (
+{
+key = copyrights;
+values = (
+{
+language = dflt;
+value = "Copyright 2026 The Yuyu Font Project Authors (https://github.com/JuliaGarciaLopez/Yuyu-Font)";
+}
+);
+},
+{
+key = descriptions;
+values = (
+{
+language = dflt;
+value = "Yuyu Mid was developed with a clear focus on legibility and accessibility.";
+}
+);
+},
+{
+key = designers;
+values = (
+{
+language = dflt;
+value = "JGLO Julia Garcia Lopez";
+}
+);
+},
+{
+key = licenses;
+values = (
+{
+language = dflt;
+value = "This Font Software is licensed under the SIL Open Font License, Version 1.1. This license is available with a FAQ at: https://openfontlicense.org";
+}
+);
+},
+{
+key = licenseURL;
+value = "https://openfontlicense.org";
+}
+);
+stems = (
+{
+horizontal = 1;
+name = hStem0;
+},
+{
+horizontal = 1;
+name = hStem1;
+},
+{
+name = vStem0;
+},
+{
+name = vStem1;
+}
+);
+unitsPerEm = 1000;
+userData = {
+GSDimensionPlugin.Dimensions = {
+m01 = {
+};
+};
+};
+versionMajor = 1;
+versionMinor = 4;
+}

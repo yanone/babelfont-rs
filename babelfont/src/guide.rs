@@ -165,7 +165,10 @@ mod glyphs {
             extract_and_insert!("showMeasurement", |v: &G3Guide| v.show_measurement);
             extract_and_insert!("size", |v: &G3Guide| v.size);
             extract_and_insert!("type", |v: &G3Guide| v.guide_type);
-            extract_and_insert!("userData", |v: &G3Guide| v.attr.clone());
+            extract_and_insert!("userData", |v: &G3Guide| v.attr.dict.clone());
+            if !val.attr.other.is_empty() {
+                extract_and_insert!("attr", |v: &G3Guide| v.attr.other.clone());
+            }
             extract_and_insert!("slope", |v: &G3Guide| v.slope);
 
             Guide {
@@ -209,7 +212,10 @@ mod glyphs {
                 size: extract_format_specific!("size", (f32, f32)),
                 guide_type: extract_format_specific!("type", String),
                 filter: extract_format_specific!("filter", String),
-                attr: extract_format_specific!("attr", Dictionary),
+                attr: glyphslib::common::Attributes {
+                    dict: extract_format_specific!("userData", Dictionary),
+                    other: extract_format_specific!("attr", Dictionary),
+                },
                 slope: extract_format_specific!("slope", bool),
             }
         }

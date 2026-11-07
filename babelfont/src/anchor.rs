@@ -69,7 +69,7 @@ mod ufo {
 #[cfg(feature = "glyphs")]
 mod glyphs {
     use crate::convertors::glyphs3::{
-        copy_user_data, KEY_ANCHOR_LOCKED, KEY_ANCHOR_ORIENTATION, KEY_USER_DATA,
+        copy_user_data, KEY_ANCHOR_LOCKED, KEY_ANCHOR_ORIENTATION, KEY_ATTR, KEY_USER_DATA,
     };
     use glyphslib::common::Attributes;
 
@@ -79,6 +79,9 @@ mod glyphs {
         fn from(val: &glyphslib::glyphs3::Anchor) -> Self {
             let mut format_specific = FormatSpecific::default();
             copy_user_data(&mut format_specific, &val.attr);
+            if !val.attr.other.is_empty() {
+                format_specific.insert_json(KEY_ATTR, &val.attr.other);
+            }
             // Store "locked" property in format_specific
             if val.locked {
                 format_specific.insert(KEY_ANCHOR_LOCKED.into(), serde_json::json!(true));
@@ -119,6 +122,11 @@ mod glyphs {
                 dict: val
                     .format_specific
                     .get(KEY_USER_DATA)
+                    .and_then(|v| serde_json::from_value(v.clone()).ok())
+                    .unwrap_or_default(),
+                other: val
+                    .format_specific
+                    .get(KEY_ATTR)
                     .and_then(|v| serde_json::from_value(v.clone()).ok())
                     .unwrap_or_default(),
             };

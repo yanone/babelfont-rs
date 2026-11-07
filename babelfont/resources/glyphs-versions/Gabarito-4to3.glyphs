@@ -1,0 +1,2364 @@
+{
+.appVersion = "3214";
+.formatVersion = 3;
+axes = (
+{
+name = Weight;
+tag = wght;
+}
+);
+classes = (
+{
+code = "one.sansSerifCircled two.sansSerifCircled three.sansSerifCircled four.sansSerifCircled five.sansSerifCircled six.sansSerifCircled seven.sansSerifCircled eight.sansSerifCircled nine.sansSerifCircled";
+name = WhiteCircle;
+},
+{
+code = "one.sansSerifBlackCircled two.sansSerifBlackCircled three.sansSerifBlackCircled four.sansSerifBlackCircled five.sansSerifBlackCircled six.sansSerifBlackCircled seven.sansSerifBlackCircled eight.sansSerifBlackCircled nine.sansSerifBlackCircled ";
+name = BlackCircle;
+},
+{
+code = "one two three four five six seven eight nine";
+name = numeros;
+},
+{
+automatic = 1;
+code = "A Aacute Abreve Acaron Acircumflex Adieresis Agrave Amacron Aogonek Aring Atilde AE B C Cacute Ccaron Ccedilla Cdotaccent D Eth Dcaron Dcroat E Eacute Ecaron Ecircumflex Edieresis Edotaccent Egrave Emacron Eogonek Etilde F G Gbreve Gcommaaccent Gdotaccent H Hbar I IJ Iacute Icircumflex Idieresis Idotaccent Igrave Imacron Iogonek J Jacute K Kcommaaccent L Lacute Lcaron Lcommaaccent Lslash M N Nacute Ncaron Ncommaaccent Ntilde Eng O Oacute Ocircumflex Odieresis Ograve Ohungarumlaut Omacron Oslash Otilde OE P Thorn Q R Racute Rcaron Rcommaaccent S Sacute Scaron Scedilla Scommaaccent Germandbls T Tcaron Tcommaaccent U Uacute Ubreve Ucircumflex Udieresis Ugrave Uhungarumlaut Umacron Uogonek Uring V W Wacute Wcircumflex Wdieresis Wgrave X Y Yacute Ycircumflex Ydieresis Ygrave Z Zacute Zcaron Zdotaccent J.alt";
+name = Uppercase;
+}
+);
+customParameters = (
+{
+name = unicodeRanges;
+value = (
+0,
+1,
+2,
+3
+);
+},
+{
+name = "Use Typo Metrics";
+value = 1;
+},
+{
+name = "Write lastChange";
+value = 0;
+},
+{
+name = "Write DisplayStrings";
+value = 0;
+},
+{
+name = fsType;
+value = (
+);
+},
+{
+name = "meta Table";
+value = (
+{
+data = latn;
+tag = dlng;
+},
+{
+data = latn;
+tag = slng;
+}
+);
+},
+{
+name = "Family Alignment Zones";
+value = (
+{
+pos = 681;
+size = 15;
+},
+{
+pos = 681;
+size = 15;
+},
+{
+pos = 488;
+size = 15;
+},
+{
+name = dnom;
+pos = 398;
+size = 8;
+},
+{
+pos = 0;
+size = -15;
+},
+{
+pos = -190;
+size = -15;
+}
+);
+}
+);
+date = "2023-08-01 15:00:00 +0000";
+familyName = Gabarito;
+featurePrefixes = (
+{
+automatic = 1;
+code = "languagesystem DFLT dflt;
+
+languagesystem latn dflt;
+languagesystem latn AZE;
+languagesystem latn CRT;
+languagesystem latn KAZ;
+languagesystem latn TAT;
+languagesystem latn TRK;
+languagesystem latn ROM;
+languagesystem latn MOL;
+languagesystem latn CAT;
+languagesystem latn NLD;
+languagesystem latn DEU;
+";
+name = Languagesystems;
+}
+);
+features = (
+{
+automatic = 1;
+code = "feature locl;
+feature subs;
+feature sinf;
+feature sups;
+feature numr;
+feature dnom;
+feature frac;
+feature ordn;
+feature ss01;
+feature ss02;
+feature pnum;
+feature tnum;
+feature fwid;
+";
+tag = aalt;
+},
+{
+code = "@CombiningTopAccents = [acutecomb brevecomb caroncomb circumflexcomb commaturnedabovecomb dieresiscomb dotaccentcomb gravecomb hungarumlautcomb macroncomb overlinecomb ringcomb tildecomb];
+@CombiningNonTopAccents = [cedillacomb commaaccentcomb dotbelowcomb ogonekcomb slashshortcomb strokelongcomb strokeshortcomb];
+
+lookup ccmp_Other_1 {
+	sub [i j]' @CombiningTopAccents by [idotless jdotless];
+	sub iogonek' @CombiningTopAccents by idotless ogonekcomb;
+	sub iogonek' @CombiningNonTopAccents @CombiningTopAccents by idotless ogonekcomb;
+	sub [i j]' @CombiningNonTopAccents @CombiningTopAccents by [idotless jdotless];
+} ccmp_Other_1;
+
+lookup ccmp_latn_1 {
+	sub fi by f i;
+	sub fl by f l;
+} ccmp_latn_1;
+
+script latn;
+lookup ccmp_latn_1;
+";
+tag = ccmp;
+},
+{
+code = "lookup locl_latn_0 {
+	script latn;
+	language AZE;
+	sub i by idotaccent;
+	language CRT;
+	sub i by idotaccent;
+	language KAZ;
+	sub i by idotaccent;
+	language TAT;
+	sub i by idotaccent;
+	language TRK;
+	sub i by idotaccent;
+} locl_latn_0;
+
+lookup locl_latn_1 {
+	script latn;
+	language ROM;
+	sub Scedilla by Scommaaccent;
+	sub scedilla by scommaaccent;
+	language MOL;
+	sub Scedilla by Scommaaccent;
+	sub scedilla by scommaaccent;
+} locl_latn_1;
+
+lookup locl_latn_2 {
+	script latn;
+	language CAT;
+	sub l periodcentered' l by periodcentered.loclCAT;
+	sub L periodcentered' L by periodcentered.loclCAT.case;
+} locl_latn_2;
+
+lookup locl_latn_3 {
+	script latn;
+	language NLD;
+	sub iacute j' by jacute;
+	sub Iacute J' by Jacute;
+} locl_latn_3;
+
+# BEGIN German cap sharp s
+language DEU;
+lookup uppercaseSharpS {
+	sub @Uppercase @Uppercase germandbls' by Germandbls;
+	sub germandbls' @Uppercase by Germandbls;
+} uppercaseSharpS;
+# END German cap sharp s
+";
+tag = locl;
+},
+{
+automatic = 1;
+code = "sub zero by zeroinferior;
+sub one by oneinferior;
+sub two by twoinferior;
+sub three by threeinferior;
+sub four by fourinferior;
+sub five by fiveinferior;
+sub six by sixinferior;
+sub seven by seveninferior;
+sub eight by eightinferior;
+sub nine by nineinferior;
+sub plus by plusinferior;
+sub minus by minusinferior;
+";
+tag = subs;
+},
+{
+automatic = 1;
+code = "sub zero by zeroinferior;
+sub one by oneinferior;
+sub two by twoinferior;
+sub three by threeinferior;
+sub four by fourinferior;
+sub five by fiveinferior;
+sub six by sixinferior;
+sub seven by seveninferior;
+sub eight by eightinferior;
+sub nine by nineinferior;
+sub plus by plusinferior;
+sub minus by minusinferior;
+";
+tag = sinf;
+},
+{
+automatic = 1;
+code = "sub zero by zerosuperior;
+sub one by onesuperior;
+sub two by twosuperior;
+sub three by threesuperior;
+sub four by foursuperior;
+sub five by fivesuperior;
+sub six by sixsuperior;
+sub seven by sevensuperior;
+sub eight by eightsuperior;
+sub nine by ninesuperior;
+sub plus by plussuperior;
+sub minus by minussuperior;
+";
+tag = sups;
+},
+{
+automatic = 1;
+code = "sub zero by zero.numr;
+sub one by one.numr;
+sub two by two.numr;
+sub three by three.numr;
+sub four by four.numr;
+sub five by five.numr;
+sub six by six.numr;
+sub seven by seven.numr;
+sub eight by eight.numr;
+sub nine by nine.numr;
+";
+tag = numr;
+},
+{
+automatic = 1;
+code = "sub zero by zero.dnom;
+sub one by one.dnom;
+sub two by two.dnom;
+sub three by three.dnom;
+sub four by four.dnom;
+sub five by five.dnom;
+sub six by six.dnom;
+sub seven by seven.dnom;
+sub eight by eight.dnom;
+sub nine by nine.dnom;
+";
+tag = dnom;
+},
+{
+code = "sub one slash four by onequarter;
+sub one slash two by onehalf;
+sub three slash four by threequarters;
+
+# BEGIN FRACTION-FEVER-2
+# Fraction Fever 2 by Tal Leming
+
+@figDefault = [zero one two three four five six seven eight nine];
+@figNumer = [zero.numr one.numr two.numr three.numr four.numr five.numr six.numr seven.numr eight.numr nine.numr];
+@figDenom = [zero.dnom one.dnom two.dnom three.dnom four.dnom five.dnom six.dnom seven.dnom eight.dnom nine.dnom];
+
+lookup FractionBar {
+     ignore sub slash @figDefault @figDefault @figDefault @figDefault @figDefault @figDefault @figDefault @figDefault @figDefault @figDefault slash';
+     ignore sub slash' @figDefault @figDefault @figDefault @figDefault @figDefault @figDefault @figDefault @figDefault @figDefault @figDefault slash;
+     ignore sub slash @figDefault @figDefault @figDefault @figDefault @figDefault @figDefault @figDefault @figDefault @figDefault slash';
+     ignore sub slash' @figDefault @figDefault @figDefault @figDefault @figDefault @figDefault @figDefault @figDefault @figDefault slash;
+     ignore sub slash @figDefault @figDefault @figDefault @figDefault @figDefault @figDefault @figDefault @figDefault slash';
+     ignore sub slash' @figDefault @figDefault @figDefault @figDefault @figDefault @figDefault @figDefault @figDefault slash;
+     ignore sub slash @figDefault @figDefault @figDefault @figDefault @figDefault @figDefault @figDefault slash';
+     ignore sub slash' @figDefault @figDefault @figDefault @figDefault @figDefault @figDefault @figDefault slash;
+     ignore sub slash @figDefault @figDefault @figDefault @figDefault @figDefault @figDefault slash';
+     ignore sub slash' @figDefault @figDefault @figDefault @figDefault @figDefault @figDefault slash;
+     ignore sub slash @figDefault @figDefault @figDefault @figDefault @figDefault slash';
+     ignore sub slash' @figDefault @figDefault @figDefault @figDefault @figDefault slash;
+     ignore sub slash @figDefault @figDefault @figDefault @figDefault slash';
+     ignore sub slash' @figDefault @figDefault @figDefault @figDefault slash;
+     ignore sub slash @figDefault @figDefault @figDefault slash';
+     ignore sub slash' @figDefault @figDefault @figDefault slash;
+     ignore sub slash @figDefault @figDefault slash';
+     ignore sub slash' @figDefault @figDefault slash;
+     ignore sub slash @figDefault slash';
+     ignore sub slash' @figDefault slash;
+     sub @figDefault slash' @figDefault by fraction;
+} FractionBar;
+
+lookup Numerator1 {
+     sub @figDefault' fraction by @figNumer;
+} Numerator1;
+
+lookup Numerator2 {
+     sub @figDefault' @figNumer fraction by @figNumer;
+} Numerator2;
+
+lookup Numerator3 {
+     sub @figDefault' @figNumer @figNumer fraction by @figNumer;
+} Numerator3;
+
+lookup Numerator4 {
+     sub @figDefault' @figNumer @figNumer @figNumer fraction by @figNumer;
+} Numerator4;
+
+lookup Numerator5 {
+     sub @figDefault' @figNumer @figNumer @figNumer @figNumer fraction by @figNumer;
+} Numerator5;
+
+lookup Numerator6 {
+     sub @figDefault' @figNumer @figNumer @figNumer @figNumer @figNumer fraction by @figNumer;
+} Numerator6;
+
+lookup Numerator7 {
+     sub @figDefault' @figNumer @figNumer @figNumer @figNumer @figNumer @figNumer fraction by @figNumer;
+} Numerator7;
+
+lookup Numerator8 {
+     sub @figDefault' @figNumer @figNumer @figNumer @figNumer @figNumer @figNumer @figNumer fraction by @figNumer;
+} Numerator8;
+
+lookup Numerator9 {
+     sub @figDefault' @figNumer @figNumer @figNumer @figNumer @figNumer @figNumer @figNumer @figNumer fraction by @figNumer;
+} Numerator9;
+
+lookup Numerator10 {
+     sub @figDefault' @figNumer @figNumer @figNumer @figNumer @figNumer @figNumer @figNumer @figNumer @figNumer fraction by @figNumer;
+} Numerator10;
+
+lookup Numerator11 {
+     sub @figDefault' @figNumer @figNumer @figNumer @figNumer @figNumer @figNumer @figNumer @figNumer @figNumer @figNumer fraction by @figNumer;
+} Numerator11;
+
+lookup Numerator12 {
+     sub @figDefault' @figNumer @figNumer @figNumer @figNumer @figNumer @figNumer @figNumer @figNumer @figNumer @figNumer @figNumer fraction by @figNumer;
+} Numerator12;
+
+lookup Denominator {
+     sub [fraction @figDenom] @figDefault' by @figDenom;
+} Denominator;
+
+sub @figDefault space' @figNumer by thinspace;
+
+# END FRACTION-FEVER-2
+";
+tag = frac;
+},
+{
+automatic = 1;
+code = "sub [zero one two three four five six seven eight nine] [A a]' by ordfeminine;
+sub [zero one two three four five six seven eight nine] [O o]' by ordmasculine;
+";
+tag = ordn;
+},
+{
+code = "sub @numeros by @WhiteCircle;";
+labels = (
+{
+language = dflt;
+value = "Circled numbers";
+}
+);
+tag = ss01;
+},
+{
+code = "sub @numeros by @BlackCircle;";
+labels = (
+{
+language = dflt;
+value = "Circled numbers filled";
+}
+);
+tag = ss02;
+},
+{
+automatic = 1;
+code = "sub zero.tf by zero;
+sub one.tf by one;
+sub two.tf by two;
+sub three.tf by three;
+sub four.tf by four;
+sub five.tf by five;
+sub six.tf by six;
+sub seven.tf by seven;
+sub eight.tf by eight;
+sub nine.tf by nine;
+";
+tag = pnum;
+},
+{
+automatic = 1;
+code = "sub zero by zero.tf;
+sub one by one.tf;
+sub two by two.tf;
+sub three by three.tf;
+sub four by four.tf;
+sub five by five.tf;
+sub six by six.tf;
+sub seven by seven.tf;
+sub eight by eight.tf;
+sub nine by nine.tf;
+";
+tag = tnum;
+},
+{
+code = "sub P J' by J.alt;";
+tag = liga;
+},
+{
+automatic = 1;
+code = "sub periodcentered.loclCAT by periodcentered.loclCAT.case;
+";
+disabled = 1;
+tag = case;
+},
+{
+code = "# BEGIN German cap sharp s
+lookup uppercaseSharpS;
+# END German cap sharp s
+";
+tag = calt;
+},
+{
+automatic = 1;
+code = "sub space by emspace;
+sub macron by macron.full;
+";
+tag = fwid;
+}
+);
+fontMaster = (
+{
+axesValues = (
+100
+);
+customParameters = (
+{
+name = underlineThickness;
+value = 80;
+},
+{
+name = underlinePosition;
+value = -195;
+},
+{
+name = typoAscender;
+value = 940;
+},
+{
+name = typoDescender;
+value = -260;
+},
+{
+name = typoLineGap;
+value = 0;
+},
+{
+name = hheaAscender;
+value = 940;
+},
+{
+name = hheaDescender;
+value = -260;
+},
+{
+name = hheaLineGap;
+value = 0;
+},
+{
+name = winAscent;
+value = 998;
+},
+{
+name = winDescent;
+value = 295;
+}
+);
+iconName = SemiLight;
+id = "344A0678-763D-4FBD-9EF6-1E94428A847E";
+metricValues = (
+{
+over = 15;
+pos = 681;
+},
+{
+over = 15;
+pos = 681;
+},
+{
+over = 15;
+pos = 488;
+},
+{
+over = 8;
+pos = 398;
+},
+{
+over = -15;
+},
+{
+over = -15;
+pos = -190;
+},
+{
+}
+);
+name = Regular;
+stemValues = (
+96,
+100
+);
+userData = {
+GSCornerRadius = 15;
+};
+},
+{
+axesValues = (
+181
+);
+customParameters = (
+{
+name = underlineThickness;
+value = 80;
+},
+{
+name = underlinePosition;
+value = -195;
+},
+{
+name = typoAscender;
+value = 940;
+},
+{
+name = typoDescender;
+value = -260;
+},
+{
+name = typoLineGap;
+value = 0;
+},
+{
+name = hheaAscender;
+value = 940;
+},
+{
+name = hheaDescender;
+value = -260;
+},
+{
+name = hheaLineGap;
+value = 0;
+},
+{
+name = winAscent;
+value = 998;
+},
+{
+name = winDescent;
+value = 295;
+}
+);
+iconName = Bold;
+id = "1CA3C852-39F9-4810-8045-E03244E0B506";
+metricValues = (
+{
+over = 20;
+pos = 681;
+},
+{
+over = 20;
+pos = 681;
+},
+{
+over = 21;
+pos = 490;
+},
+{
+over = 11;
+pos = 423;
+},
+{
+over = -20;
+},
+{
+over = -15;
+pos = -190;
+},
+{
+}
+);
+name = Ultra;
+stemValues = (
+177,
+184
+);
+userData = {
+GSCornerRadius = 15;
+};
+}
+);
+glyphs = (
+{
+glyphname = A;
+kernLeft = A;
+kernRight = A;
+layers = (
+{
+anchors = (
+{
+name = bottom;
+pos = (331,0);
+},
+{
+name = ogonek;
+pos = (642,0);
+},
+{
+name = top;
+pos = (331,681);
+}
+);
+guides = (
+{
+angle = 70.3355;
+pos = (424,-185);
+}
+);
+layerId = "344A0678-763D-4FBD-9EF6-1E94428A847E";
+shapes = (
+{
+closed = 1;
+nodes = (
+(148,159,l),
+(515,159,l),
+(515,253,l),
+(148,253,l)
+);
+},
+{
+closed = 1;
+nodes = (
+(122,0,l),
+(340,611,l),
+(322,611,l),
+(540,0,l),
+(642,0,l),
+(399,681,l),
+(263,681,l),
+(20,0,l)
+);
+}
+);
+userData = {
+com.typemytype.robofont.guides = (
+{
+angle = 90;
+isGlobal = 0;
+magnetic = 5;
+x = 362;
+y = 349;
+},
+{
+angle = 90;
+isGlobal = 0;
+magnetic = 5;
+x = 321;
+y = 335;
+}
+);
+};
+width = 662;
+},
+{
+anchors = (
+{
+name = bottom;
+pos = (324,0);
+},
+{
+name = ogonek;
+pos = (645,0);
+},
+{
+name = top;
+pos = (336,681);
+}
+);
+layerId = "1CA3C852-39F9-4810-8045-E03244E0B506";
+shapes = (
+{
+closed = 1;
+nodes = (
+(169,102,l),
+(454,102,l),
+(454,269,l),
+(169,269,l)
+);
+},
+{
+closed = 1;
+nodes = (
+(185,0,l),
+(372,558,l),
+(300,558,l),
+(463,0,l),
+(645,0,l),
+(426,681,l),
+(245,681,l),
+(4,0,l)
+);
+}
+);
+userData = {
+com.schriftgestaltung.Glyphs.lastChange = "2017-03-20 13:23:24 +0000";
+com.typemytype.robofont.guides = (
+{
+angle = 90;
+isGlobal = 0;
+magnetic = 5;
+x = 362;
+y = 349;
+},
+{
+angle = 90;
+isGlobal = 0;
+magnetic = 5;
+x = 350;
+y = 354;
+},
+{
+angle = 90;
+isGlobal = 0;
+magnetic = 5;
+x = 370;
+y = 366;
+}
+);
+};
+width = 648;
+}
+);
+note = "
+    A
+  ";
+unicode = 65;
+},
+{
+glyphname = B;
+kernLeft = H;
+kernRight = B;
+layers = (
+{
+anchors = (
+{
+name = bottom;
+pos = (300,0);
+},
+{
+name = top;
+pos = (292,681);
+}
+);
+layerId = "344A0678-763D-4FBD-9EF6-1E94428A847E";
+shapes = (
+{
+closed = 1;
+nodes = (
+(328,0,ls),
+(471,0,o),
+(550,67,o),
+(550,191,cs),
+(550,309,o),
+(467,375,o),
+(346,375,c),
+(339,323,l),
+(437,323,o),
+(525,394,o),
+(525,499,cs),
+(525,623,o),
+(449,681,o),
+(311,681,cs),
+(85,681,l),
+(85,0,l)
+);
+},
+{
+closed = 1;
+nodes = (
+(149,585,l),
+(314,585,ls),
+(383,585,o),
+(423,546,o),
+(423,491,cs),
+(423,431,o),
+(384,399,o),
+(314,399,cs),
+(145,399,l),
+(145,307,l),
+(333,307,ls),
+(407,307,o),
+(448,270,o),
+(448,201,cs),
+(448,140,o),
+(406,96,o),
+(331,96,cs),
+(145,96,l),
+(185,70,l),
+(185,618,l)
+);
+}
+);
+userData = {
+com.typemytype.robofont.guides = (
+{
+angle = 90;
+isGlobal = 0;
+magnetic = 5;
+x = 327;
+y = 459;
+},
+{
+angle = 0;
+isGlobal = 0;
+magnetic = 5;
+x = 1026;
+y = 875;
+},
+{
+angle = 0;
+isGlobal = 0;
+magnetic = 5;
+x = 268;
+y = 353;
+},
+{
+angle = 0;
+isGlobal = 0;
+magnetic = 5;
+x = 218;
+y = 201;
+},
+{
+angle = 0;
+isGlobal = 0;
+magnetic = 5;
+x = 294;
+y = 491;
+}
+);
+};
+width = 600;
+},
+{
+anchors = (
+{
+name = bottom;
+pos = (291,0);
+},
+{
+name = top;
+pos = (284,681);
+}
+);
+layerId = "1CA3C852-39F9-4810-8045-E03244E0B506";
+shapes = (
+{
+closed = 1;
+nodes = (
+(318,0,ls),
+(477,0,o),
+(555,63,o),
+(555,192,cs),
+(555,272,o),
+(515,349,o),
+(399,349,c),
+(399,332,l),
+(489,332,o),
+(546,396,o),
+(546,490,cs),
+(546,613,o),
+(489,681,o),
+(299,681,cs),
+(41,681,l),
+(41,0,l)
+);
+},
+{
+closed = 1;
+nodes = (
+(164,508,l),
+(301,508,ls),
+(341,508,o),
+(360,494,o),
+(360,462,cs),
+(360,430,o),
+(341,416,o),
+(301,416,cs),
+(161,416,l),
+(161,265,l),
+(314,265,ls),
+(347,265,o),
+(371,251,o),
+(371,219,cs),
+(371,187,o),
+(347,173,o),
+(312,173,cs),
+(161,173,l),
+(222,91,l),
+(222,597,l)
+);
+}
+);
+userData = {
+com.schriftgestaltung.Glyphs.lastChange = "2017-03-20 13:25:33 +0000";
+com.typemytype.robofont.guides = (
+{
+angle = 90;
+isGlobal = 0;
+magnetic = 5;
+x = 327;
+y = 459;
+},
+{
+angle = 90;
+isGlobal = 0;
+magnetic = 5;
+x = 411;
+y = 465;
+},
+{
+angle = 90;
+isGlobal = 0;
+magnetic = 5;
+x = 596;
+y = 444;
+},
+{
+angle = 0;
+isGlobal = 0;
+magnetic = 5;
+x = 361;
+y = 241;
+},
+{
+angle = 0;
+isGlobal = 0;
+magnetic = 5;
+x = 361;
+y = 509;
+}
+);
+};
+width = 582;
+}
+);
+metricLeft = H;
+note = "
+    B
+  ";
+unicode = 66;
+},
+);
+instances = (
+{
+customParameters = (
+{
+name = fileName;
+value = GabaritoVariable;
+}
+);
+name = Regular;
+properties = (
+{
+key = familyNames;
+values = (
+{
+language = dflt;
+value = "Gabarito Variable";
+}
+);
+}
+);
+type = variable;
+},
+{
+axesValues = (
+100
+);
+customParameters = (
+{
+name = panose;
+value = (
+2,
+11,
+5,
+3,
+2,
+2,
+3,
+2,
+2,
+4
+);
+},
+{
+name = "Axis Location";
+value = (
+{
+Axis = Weight;
+Location = 400;
+}
+);
+}
+);
+instanceInterpolations = {
+"344A0678-763D-4FBD-9EF6-1E94428A847E" = 1;
+};
+name = Regular;
+},
+{
+axesValues = (
+116
+);
+customParameters = (
+{
+name = panose;
+value = (
+2,
+11,
+6,
+3,
+2,
+2,
+3,
+2,
+2,
+4
+);
+},
+{
+name = "Axis Location";
+value = (
+{
+Axis = Weight;
+Location = 500;
+}
+);
+}
+);
+instanceInterpolations = {
+"1CA3C852-39F9-4810-8045-E03244E0B506" = 0.19753;
+"344A0678-763D-4FBD-9EF6-1E94428A847E" = 0.80247;
+};
+name = Medium;
+weightClass = 500;
+},
+{
+axesValues = (
+131
+);
+customParameters = (
+{
+name = panose;
+value = (
+2,
+11,
+7,
+3,
+2,
+2,
+3,
+2,
+2,
+4
+);
+},
+{
+name = "Axis Location";
+value = (
+{
+Axis = Weight;
+Location = 600;
+}
+);
+}
+);
+instanceInterpolations = {
+"1CA3C852-39F9-4810-8045-E03244E0B506" = 0.38272;
+"344A0678-763D-4FBD-9EF6-1E94428A847E" = 0.61728;
+};
+name = SemiBold;
+weightClass = 600;
+},
+{
+axesValues = (
+146
+);
+customParameters = (
+{
+name = panose;
+value = (
+2,
+11,
+8,
+3,
+2,
+2,
+3,
+2,
+2,
+4
+);
+},
+{
+name = "Axis Location";
+value = (
+{
+Axis = Weight;
+Location = 700;
+}
+);
+}
+);
+instanceInterpolations = {
+"1CA3C852-39F9-4810-8045-E03244E0B506" = 0.5679;
+"344A0678-763D-4FBD-9EF6-1E94428A847E" = 0.4321;
+};
+isBold = 1;
+name = Bold;
+weightClass = 700;
+},
+{
+axesValues = (
+162
+);
+customParameters = (
+{
+name = panose;
+value = (
+2,
+11,
+9,
+3,
+2,
+2,
+3,
+2,
+2,
+4
+);
+},
+{
+name = "Axis Location";
+value = (
+{
+Axis = Weight;
+Location = 800;
+}
+);
+}
+);
+instanceInterpolations = {
+"1CA3C852-39F9-4810-8045-E03244E0B506" = 0.76543;
+"344A0678-763D-4FBD-9EF6-1E94428A847E" = 0.23457;
+};
+name = ExtraBold;
+weightClass = 800;
+},
+{
+axesValues = (
+181
+);
+customParameters = (
+{
+name = panose;
+value = (
+2,
+11,
+10,
+3,
+2,
+2,
+3,
+2,
+2,
+4
+);
+},
+{
+name = "Axis Location";
+value = (
+{
+Axis = Weight;
+Location = 900;
+}
+);
+}
+);
+instanceInterpolations = {
+"1CA3C852-39F9-4810-8045-E03244E0B506" = 1;
+};
+name = Black;
+weightClass = 900;
+}
+);
+metrics = (
+{
+type = ascender;
+},
+{
+type = "cap height";
+},
+{
+type = "x-height";
+},
+{
+name = dnom;
+},
+{
+type = baseline;
+},
+{
+type = descender;
+},
+{
+type = "italic angle";
+}
+);
+properties = (
+{
+key = copyrights;
+values = (
+{
+language = dflt;
+value = "Copyright 2023 The Gabarito Project Authors (https://github.com/naipefoundry/gabarito)";
+}
+);
+},
+{
+key = designers;
+values = (
+{
+language = dflt;
+value = "Leandro Assis / Alvaro Franca / Felipe Casaprima";
+}
+);
+},
+{
+key = licenses;
+values = (
+{
+language = dflt;
+value = "This Font Software is licensed under the SIL Open Font License, Version 1.1. This license is available with a FAQ at: https://scripts.sil.org/OFL";
+}
+);
+},
+{
+key = licenseURL;
+value = "https://scripts.sil.org/OFL";
+},
+{
+key = manufacturers;
+values = (
+{
+language = dflt;
+value = "Naipe Foundry";
+}
+);
+},
+{
+key = manufacturerURL;
+value = "http://www.naipe.xyz/";
+},
+{
+key = vendorID;
+value = NYPE;
+},
+{
+key = versionString;
+value = "Version 1.000";
+}
+);
+stems = (
+{
+horizontal = 1;
+name = hStem0;
+},
+{
+name = vStem0;
+}
+);
+unitsPerEm = 1000;
+userData = {
+UFO.lib = {
+com.loicsander.scaleFast = {
+guides = (
+);
+presets = {
+};
+};
+com.typemytype.robofont.background.layerStrokeColor = (
+1,
+0.4,
+1,
+1
+);
+com.typemytype.robofont.compileSettings.autohint = 1;
+com.typemytype.robofont.compileSettings.checkOutlines = 0;
+com.typemytype.robofont.compileSettings.createDummyDSIG = 1;
+com.typemytype.robofont.compileSettings.decompose = 0;
+com.typemytype.robofont.compileSettings.generateFormat = 0;
+com.typemytype.robofont.compileSettings.releaseMode = 0;
+com.typemytype.robofont.foreground.layerStrokeColor = (
+0.5,
+0,
+0.5,
+0.7
+);
+com.typemytype.robofont.guides = (
+{
+angle = 90;
+isGlobal = 1;
+magnetic = 5;
+name = ".::Régua_V::.";
+showMeasurements = 1;
+x = 374;
+y = 613;
+},
+{
+angle = 0;
+isGlobal = 1;
+magnetic = 5;
+name = ".::Régua_H::.";
+showMeasurements = 1;
+x = 442;
+y = 438;
+},
+{
+angle = 0;
+isGlobal = 1;
+magnetic = 5;
+name = UC_overshoot;
+x = 381;
+y = 690;
+},
+{
+angle = 0;
+isGlobal = 1;
+magnetic = 5;
+name = lc_overshoot;
+x = 151;
+y = 498;
+},
+{
+angle = 0;
+isGlobal = 1;
+magnetic = 5;
+name = midLC;
+showMeasurements = 0;
+x = 281;
+y = 221;
+},
+{
+angle = 0;
+isGlobal = 1;
+magnetic = 5;
+name = lcUndershoot;
+x = 410;
+y = -10;
+},
+{
+angle = 0;
+isGlobal = 1;
+magnetic = 5;
+name = figHght;
+x = 318;
+y = 650;
+},
+{
+angle = 0;
+isGlobal = 1;
+magnetic = 5;
+name = lcAnchor;
+x = 598;
+y = 537;
+},
+{
+angle = 0;
+isGlobal = 1;
+magnetic = 5;
+name = ucUndershoot;
+showMeasurements = 0;
+x = 440;
+y = -10;
+},
+{
+angle = 0;
+isGlobal = 1;
+magnetic = 5;
+name = ucAnchor;
+x = 403;
+y = 730;
+},
+{
+angle = 0;
+isGlobal = 1;
+magnetic = 5;
+name = midMid;
+x = 58;
+y = 280;
+},
+{
+angle = 0;
+isGlobal = 1;
+magnetic = 5;
+name = descenders;
+x = 526;
+y = -175;
+},
+{
+angle = 0;
+isGlobal = 1;
+magnetic = 5;
+name = figOvershoot;
+x = 303;
+y = 660;
+},
+{
+angle = 0;
+isGlobal = 1;
+magnetic = 5;
+name = ".::régua_H::.";
+showMeasurements = 1;
+x = 272;
+y = 151;
+},
+{
+angle = 0;
+isGlobal = 1;
+magnetic = 5;
+name = midUC;
+x = 21;
+y = 340;
+},
+{
+angle = 0;
+isGlobal = 1;
+magnetic = 5;
+name = "";
+x = 180;
+y = 550;
+}
+);
+com.typemytype.robofont.italicSlantOffset = 0;
+com.typemytype.robofont.layerOrder = (
+background,
+mask
+);
+com.typemytype.robofont.mask.layerStrokeColor = (
+0.5,
+1,
+0,
+0.7
+);
+com.typemytype.robofont.segmentType = curve;
+com.typemytype.robofont.shouldAddPointsInSplineConversion = 1;
+com.typemytype.robofont.sort = (
+{
+ascending = (
+NULL,
+CR,
+.null,
+.notdef,
+space,
+tilde,
+grave,
+acute,
+hungarumlaut,
+circumflex,
+caron,
+caron.alt,
+breve,
+macron,
+ring,
+dieresis,
+dotaccent,
+uni0307,
+dot,
+cedilla,
+ogonek,
+hook,
+commaaccent,
+dotbellow,
+asciicircum,
+asciitilde,
+tilde.nrw,
+dieresis.nrw,
+macron.nrw,
+breve.nrw,
+circumflex.nrw,
+period,
+comma,
+colon,
+semicolon,
+exclam,
+exclamdown,
+question,
+questiondown,
+ellipsis,
+periodcentered,
+bullet,
+quotesingle,
+quotedbl,
+quoteleft,
+quoteright,
+quotedblleft,
+quotedblright,
+quotesinglbase,
+quotedblbase,
+guilsinglleft,
+guilsinglright,
+guillemotleft,
+guillemotright,
+hyphen,
+endash,
+emdash,
+underscore,
+parenleft,
+parenright,
+braceleft,
+braceright,
+bracketleft,
+bracketright,
+slash,
+backslash,
+bar,
+brokenbar,
+numbersign,
+asterisk,
+copyright,
+registered,
+trademark,
+at,
+ampersand,
+paragraph,
+section,
+dollar,
+Euro,
+sterling,
+yen,
+cent,
+currency,
+zero,
+one,
+two,
+three,
+four,
+five,
+six,
+seven,
+eight,
+nine,
+zero.tf,
+one.tf,
+two.tf,
+three.tf,
+four.tf,
+five.tf,
+six.tf,
+seven.tf,
+eight.tf,
+nine.tf,
+A,
+B,
+C,
+D,
+E,
+F,
+G,
+H,
+I,
+J,
+IJ,
+K,
+L,
+M,
+N,
+O,
+P,
+Q,
+R,
+S,
+T,
+U,
+V,
+W,
+X,
+Y,
+Z,
+uni1E9E,
+AE,
+OE,
+Thorn,
+Oslash,
+Eth,
+a,
+b,
+c,
+d,
+e,
+f,
+g,
+h,
+i,
+j,
+ij,
+dotlessi,
+uni0237,
+dotlessij,
+k,
+l,
+m,
+n,
+o,
+p,
+q,
+r,
+s,
+t,
+u,
+v,
+w,
+x,
+y,
+z,
+germandbls,
+ae,
+oe,
+thorn,
+oslash,
+eth,
+ordfeminine,
+ordmasculine,
+degree,
+percent,
+perthousand,
+plus,
+minus,
+equal,
+notequal,
+approxequal,
+congruent,
+plusminus,
+multiply,
+divide,
+fraction,
+less,
+lessequal,
+greater,
+greaterequal,
+infinity,
+partialdiff,
+product,
+logicaland,
+logicalor,
+logicalnot,
+emptyset,
+radical,
+integral,
+summation,
+lozenge,
+alpha,
+uni03B2,
+gamma,
+delta,
+epsilon,
+eta,
+theta,
+uni03BB,
+mu,
+pi,
+tau,
+rho,
+sigma,
+phi,
+uni03D5,
+uni03C9,
+uni03A9,
+Delta,
+Agrave,
+Aacute,
+Acircumflex,
+Atilde,
+Adieresis,
+Aring,
+Aogonek,
+Ccedilla,
+Egrave,
+Eacute,
+Ecircumflex,
+Etilde,
+Edieresis,
+Eogonek,
+Igrave,
+Iacute,
+Icircumflex,
+Idieresis,
+IJacute,
+Lslash,
+Ntilde,
+Ograve,
+Oacute,
+Ocircumflex,
+Otilde,
+Odieresis,
+Scaron,
+Ugrave,
+Uacute,
+Ucircumflex,
+Udieresis,
+Yacute,
+Ydieresis,
+Zcaron,
+agrave,
+aacute,
+acircumflex,
+atilde,
+adieresis,
+aring,
+aogonek,
+ccedilla,
+egrave,
+eacute,
+ecircumflex,
+etilde,
+edieresis,
+eogonek,
+igrave,
+iacute,
+icircumflex,
+idieresis,
+ijacute,
+lslash,
+ntilde,
+ograve,
+oacute,
+ocircumflex,
+otilde,
+odieresis,
+scaron,
+ugrave,
+uacute,
+ucircumflex,
+udieresis,
+yacute,
+ydieresis,
+zcaron,
+zero.dnom,
+one.dnom,
+two.dnom,
+three.dnom,
+four.dnom,
+five.dnom,
+six.dnom,
+seven.dnom,
+eight.dnom,
+nine.dnom,
+zero.numr,
+one.numr,
+two.numr,
+three.numr,
+four.numr,
+five.numr,
+six.numr,
+seven.numr,
+eight.numr,
+nine.numr,
+uni2080,
+uni2081,
+uni2082,
+uni2083,
+uni2084,
+uni2085,
+uni2086,
+uni2087,
+uni2088,
+uni2089,
+uni2070,
+uni00B9,
+uni00B2,
+uni00B3,
+uni2074,
+uni2075,
+uni2076,
+uni2077,
+uni2078,
+uni2079,
+uni278A,
+uni278B,
+uni278C,
+uni278D,
+uni278E,
+uni278F,
+uni2790,
+uni2791,
+uni2792,
+uni2780,
+uni2781,
+uni2782,
+uni2783,
+uni2784,
+uni2785,
+uni2786,
+uni2787,
+uni2788,
+uni2160,
+uni2161,
+uni2162,
+uni2163,
+uni2164,
+uni2165,
+uni2166,
+uni2167,
+uni2168,
+uni2169,
+uni216C,
+uni216D,
+uni216E,
+uni216F,
+uni21C5,
+uni21C4,
+J.alt,
+uni2196,
+uni2197,
+uni2191,
+uni2190,
+uni2193,
+uni2192,
+uni2199,
+uni2198,
+threequarters,
+onequarter,
+onehalf
+);
+type = glyphList;
+}
+);
+com.typemytype.robofont.templateCharacterSet = Basico;
+com.typesupply.MetricsMachine4.groupColors = {
+"@MMK_L_A" = (
+1,
+0,
+0,
+0.25
+);
+"@MMK_L_C" = (
+1,
+0.5,
+0,
+0.25
+);
+"@MMK_L_E" = (
+1,
+1,
+0,
+0.25
+);
+"@MMK_L_GKrounds" = (
+0,
+1,
+0,
+0.25
+);
+"@MMK_L_GKstraights" = (
+1,
+0,
+0.5,
+0.25
+);
+"@MMK_L_L" = (
+1,
+0,
+0,
+0.25
+);
+"@MMK_L_O" = (
+0,
+0.5,
+1,
+0.25
+);
+"@MMK_L_S" = (
+0,
+0,
+1,
+0.25
+);
+"@MMK_L_U" = (
+0.5,
+0,
+1,
+0.25
+);
+"@MMK_L_UCstraights" = (
+0,
+1,
+0,
+0.25
+);
+"@MMK_L_Y" = (
+1,
+0,
+1,
+0.25
+);
+"@MMK_L_Z" = (
+1,
+0,
+0.5,
+0.25
+);
+"@MMK_L_a" = (
+1,
+0,
+0,
+0.25
+);
+"@MMK_L_c" = (
+1,
+0.5,
+0,
+0.25
+);
+"@MMK_L_colon" = (
+1,
+0,
+0,
+0.25
+);
+"@MMK_L_copyright" = (
+1,
+0,
+0,
+0.25
+);
+"@MMK_L_dashes" = (
+1,
+1,
+0,
+0.25
+);
+"@MMK_L_e" = (
+1,
+1,
+0,
+0.25
+);
+"@MMK_L_guillemetleft" = (
+0,
+0,
+1,
+0.25
+);
+"@MMK_L_guillemetright" = (
+0,
+0.5,
+1,
+0.25
+);
+"@MMK_L_i" = (
+0,
+1,
+0,
+0.25
+);
+"@MMK_L_n" = (
+0,
+1,
+1,
+0.25
+);
+"@MMK_L_o" = (
+0,
+0.5,
+1,
+0.25
+);
+"@MMK_L_pitau" = (
+0,
+1,
+1,
+0.25
+);
+"@MMK_L_quoteascii" = (
+1,
+1,
+0,
+0.25
+);
+"@MMK_L_quotebase" = (
+1,
+0.5,
+0,
+0.25
+);
+"@MMK_L_quoteleft" = (
+0.5,
+0,
+1,
+0.25
+);
+"@MMK_L_quoteright" = (
+1,
+0,
+1,
+0.25
+);
+"@MMK_L_roundedfigs" = (
+1,
+0.5,
+0,
+0.25
+);
+"@MMK_L_s" = (
+0,
+0,
+1,
+0.25
+);
+"@MMK_L_u" = (
+0.5,
+0,
+1,
+0.25
+);
+"@MMK_L_y" = (
+1,
+0,
+1,
+0.25
+);
+"@MMK_L_z" = (
+1,
+0,
+0.5,
+0.25
+);
+"@MMK_R_A" = (
+1,
+0,
+0,
+0.25
+);
+"@MMK_R_Copyright" = (
+1,
+0.5,
+0,
+0.25
+);
+"@MMK_R_GKrounds" = (
+1,
+0.5,
+0,
+0.25
+);
+"@MMK_R_GKstraighs" = (
+1,
+0,
+0.5,
+0.25
+);
+"@MMK_R_O" = (
+0,
+0.5,
+1,
+0.25
+);
+"@MMK_R_S" = (
+0,
+0,
+1,
+0.25
+);
+"@MMK_R_U" = (
+0.5,
+0,
+1,
+0.25
+);
+"@MMK_R_UCstraights" = (
+0,
+1,
+0,
+0.25
+);
+"@MMK_R_Y" = (
+1,
+0,
+1,
+0.25
+);
+"@MMK_R_Z" = (
+1,
+0,
+0.5,
+0.25
+);
+"@MMK_R_a" = (
+1,
+0,
+0,
+0.25
+);
+"@MMK_R_circledfigs" = (
+0,
+1,
+1,
+0.25
+);
+"@MMK_R_colon" = (
+1,
+0,
+0,
+0.25
+);
+"@MMK_R_dAscenders" = (
+1,
+1,
+0,
+0.25
+);
+"@MMK_R_dashes" = (
+1,
+0,
+0,
+0.25
+);
+"@MMK_R_ft" = (
+1,
+0,
+0.5,
+0.25
+);
+"@MMK_R_guillemetleft" = (
+0,
+1,
+0,
+0.25
+);
+"@MMK_R_guillemetright" = (
+0,
+1,
+1,
+0.25
+);
+"@MMK_R_i" = (
+0,
+1,
+0,
+0.25
+);
+"@MMK_R_n" = (
+0,
+1,
+1,
+0.25
+);
+"@MMK_R_o" = (
+0,
+0.5,
+1,
+0.25
+);
+"@MMK_R_percent" = (
+1,
+0,
+1,
+0.25
+);
+"@MMK_R_period" = (
+0.5,
+0,
+1,
+0.25
+);
+"@MMK_R_pitau" = (
+1,
+1,
+0,
+0.25
+);
+"@MMK_R_q" = (
+1,
+0.5,
+0,
+0.25
+);
+"@MMK_R_quoteascii" = (
+1,
+1,
+0,
+0.25
+);
+"@MMK_R_quoteleft" = (
+0,
+0.5,
+1,
+0.25
+);
+"@MMK_R_quoteright" = (
+0,
+0,
+1,
+0.25
+);
+"@MMK_R_s" = (
+0,
+0,
+1,
+0.25
+);
+"@MMK_R_u" = (
+0.5,
+0,
+1,
+0.25
+);
+"@MMK_R_y" = (
+1,
+0,
+1,
+0.25
+);
+"@MMK_R_z" = (
+1,
+0,
+0.5,
+0.25
+);
+};
+public.postscriptNames = {
+Delta = uni0394;
+"Eight-roman" = uni2167;
+Etilde = uni1EBC;
+"Fifty-roman" = uni216C;
+"Five-roman" = uni2164;
+"Fivehundred-roman" = uni216E;
+"Four-roman" = uni2163;
+Germandbls = uni1E9E;
+"Hundred-roman" = uni216D;
+"Nine-roman" = uni2168;
+Omega = uni03A9;
+"One-roman" = uni2160;
+"Seven-roman" = uni2166;
+"Six-roman" = uni2165;
+"Ten-roman" = uni2169;
+"Thousand-roman" = uni216F;
+"Three-roman" = uni2162;
+"Two-roman" = uni2161;
+andWithDot = uni27D1;
+commaaccentcomb = uni0326;
+dotaccentcomb = uni0307;
+downArrow = arrowdown;
+eight.sansSerifBlackCircled = uni2791;
+eight.sansSerifCircled = uni2787;
+eightinferior = uni2088;
+eightsuperior = uni2078;
+etilde = uni1EBD;
+euro = Euro;
+five.sansSerifBlackCircled = uni278E;
+five.sansSerifCircled = uni2784;
+fiveinferior = uni2085;
+fivesuperior = uni2075;
+four.sansSerifBlackCircled = uni278D;
+four.sansSerifCircled = uni2783;
+fourinferior = uni2084;
+foursuperior = uni2074;
+guillemetleft = guillemotleft;
+guillemetright = guillemotright;
+idotless = dotlessi;
+jdotless = uni0237;
+leftArrow = arrowleft;
+mu = uni03BC;
+nine.sansSerifBlackCircled = uni2792;
+nine.sansSerifCircled = uni2788;
+nineinferior = uni2089;
+ninesuperior = uni2079;
+northEastArrow = uni2197;
+northWestArrow = uni2196;
+ocrHook = uni2440;
+one.sansSerifBlackCircled = uni278A;
+one.sansSerifCircled = uni2780;
+oneinferior = uni2081;
+onesuperior = uni00B9;
+phiSymbol = uni03D5;
+rightArrow = arrowright;
+rightOverLeftArrow = uni21C4;
+seven.sansSerifBlackCircled = uni2790;
+seven.sansSerifCircled = uni2786;
+seveninferior = uni2087;
+sevensuperior = uni2077;
+six.sansSerifBlackCircled = uni278F;
+six.sansSerifCircled = uni2785;
+sixinferior = uni2086;
+sixsuperior = uni2076;
+southEastArrow = uni2198;
+southWestArrow = uni2199;
+three.sansSerifBlackCircled = uni278C;
+three.sansSerifCircled = uni2782;
+threeinferior = uni2083;
+threesuperior = uni00B3;
+two.sansSerifBlackCircled = uni278B;
+two.sansSerifCircled = uni2781;
+twoinferior = uni2082;
+twosuperior = uni00B2;
+upAndDownArrow = uni21C5;
+upArrow = arrowup;
+zeroinferior = uni2080;
+zerosuperior = uni2070;
+};
+};
+UFOFormat = 2;
+};
+versionMajor = 1;
+versionMinor = 0;
+}

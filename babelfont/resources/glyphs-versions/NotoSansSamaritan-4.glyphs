@@ -1,0 +1,705 @@
+{
+.appVersion = "3177";
+.formatVersion = 4;
+axes = (
+{
+name = Weight;
+tag = wght;
+},
+{
+name = Width;
+tag = wdth;
+},
+);
+classes = (
+{
+code = "uni081C uni081D uni081E uni081F uni0820 uni0821 uni0822 uni0823 uni0825 uni0826 uni0827 uni0829 uni082A uni082B";
+name = class1;
+},
+{
+code = "uni0800 uni0801 uni0802 uni0803 uni0804 uni0805 uni0806 uni0807 uni0808 uni0809 uni080A uni080B uni080C uni080D uni080E uni080F uni0810 uni0811 uni0812 uni0813 uni0814 uni0815 uni081A uni0824 uni0828 uni0830 uni0831 uni0832 uni0833 uni0834 uni0835 uni0836 uni0837 uni0838 uni0839 uni083A uni083B uni083C uni083D uni083E uni2E31";
+name = GDEF_Base;
+},
+{
+code = "";
+name = GDEF_Ligature;
+},
+{
+code = "uni0816 uni0817 uni0818 uni0819 uni081B uni081C uni081D uni081E uni081F uni0820 uni0821 uni0822 uni0823 uni0825 uni0826 uni0827 uni0829 uni082A uni082B uni082C uni082D uni0818.alt";
+name = GDEF_Mark;
+},
+{
+code = "";
+name = GDEF_Component;
+},
+{
+code = "uni081C uni081D uni081E uni081F uni0820 uni0821 uni0822 uni0823 uni0825 uni0826 uni0827 uni0829 uni082A uni082B";
+name = class1;
+},
+);
+customParameters = (
+{
+name = glyphOrder;
+value = (
+.notdef,
+NULL,
+CR,
+space,
+uni0800,
+uni0801,
+uni0802,
+uni0803,
+uni0804,
+uni0805,
+uni0806,
+uni0807,
+uni0808,
+uni0809,
+uni080A,
+uni080B,
+uni080C,
+uni080D,
+uni080E,
+uni080F,
+uni0810,
+uni0811,
+uni0812,
+uni0813,
+uni0814,
+uni0815,
+uni0816,
+uni0817,
+uni0818,
+uni0819,
+uni081A,
+uni081B,
+uni081C,
+uni081D,
+uni081E,
+uni081F,
+uni0820,
+uni0821,
+uni0822,
+uni0823,
+uni0824,
+uni0825,
+uni0826,
+uni0827,
+uni0828,
+uni0829,
+uni082A,
+uni082B,
+uni082C,
+uni082D,
+uni0830,
+uni0831,
+uni0832,
+uni0833,
+uni0834,
+uni0835,
+uni0836,
+uni0837,
+uni0838,
+uni0839,
+uni083A,
+uni083B,
+uni083C,
+uni083D,
+uni083E,
+uni0818.alt,
+uni2E31,
+uni00A0,
+);
+},
+{
+name = descriptions;
+value = "Designed by Monotype design team.";
+},
+{
+name = licenses;
+value = "This Font Software is licensed under the SIL Open Font License, Version 1.1. This license is available with a FAQ at: https://scripts.sil.org/OFL";
+},
+{
+name = licenseURL;
+value = "https://scripts.sil.org/OFL";
+},
+{
+name = versionString;
+value = "Version 2.001";
+},
+{
+name = codePageRanges;
+value = (
+);
+},
+{
+name = panose;
+value = (
+2,
+11,
+5,
+2,
+4,
+5,
+4,
+2,
+2,
+4,
+);
+},
+{
+name = fsType;
+value = (
+);
+},
+{
+name = unicodeRanges;
+value = (
+0,
+1,
+31,
+);
+},
+{
+name = vendorID;
+value = GOOG;
+},
+{
+name = trademarks;
+value = "Noto is a trademark of Google Inc.";
+},
+);
+date = "2017-03-01 14:39:58 +0000";
+featurePrefixes = (
+{
+code = "languagesystem DFLT dflt;
+languagesystem samr dflt;";
+name = LanguageSystems;
+},
+);
+features = (
+{
+code = "sub [uni0816 uni0817] uni0818' by uni0818.alt;
+sub uni0818' @class1 by uni0818.alt;
+sub [uni080D uni080E] uni0818' by uni0818.alt;
+";
+tag = rclt;
+},
+{
+code = "pos @class1' @class1 <293 0 293 0>;
+pos [uni081A uni0824 uni0828]' @class1 <293 0 293 0>;
+";
+tag = dist;
+},
+{
+code = "# Automatic Code Start
+";
+tag = mark;
+},
+{
+code = "# Automatic Code Start
+";
+tag = mkmk;
+},
+);
+fontMaster = (
+{
+axesValues = (
+100,
+100,
+);
+customParameters = (
+{
+name = typoAscender;
+value = 1069;
+},
+{
+name = typoDescender;
+value = -293;
+},
+{
+name = typoLineGap;
+value = 0;
+},
+{
+name = hheaAscender;
+value = 1069;
+},
+{
+name = hheaDescender;
+value = -293;
+},
+{
+name = hheaLineGap;
+value = 0;
+},
+{
+name = winAscent;
+value = 1069;
+},
+{
+name = winDescent;
+value = 293;
+},
+{
+name = underlineThickness;
+value = 50;
+},
+{
+name = underlinePosition;
+value = -100;
+},
+);
+id = UUID0;
+metricValues = (
+{
+over = 15;
+pos = 1069;
+},
+{
+over = 15;
+pos = 659;
+},
+{
+over = 15;
+pos = 536;
+},
+{
+over = -15;
+},
+{
+over = -15;
+pos = -293;
+},
+{
+},
+);
+name = Regular;
+stemValues = (
+120,
+113,
+87,
+77,
+66,
+);
+userData = {
+com.schriftgestaltung.layerId = UUID0;
+com.schriftgestaltung.layerOrderInGlyph..notdef = 0;
+com.schriftgestaltung.layerOrderInGlyph.CR = 0;
+com.schriftgestaltung.layerOrderInGlyph.NULL = 0;
+com.schriftgestaltung.layerOrderInGlyph.space = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni00A0 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0800 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0801 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0802 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0803 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0804 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0805 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0806 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0807 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0808 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0809 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni080A = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni080B = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni080C = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni080D = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni080E = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni080F = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0810 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0811 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0812 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0813 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0814 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0815 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0816 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0817 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0818 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0818.alt = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0819 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni081A = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni081B = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni081C = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni081D = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni081E = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni081F = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0820 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0821 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0822 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0823 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0824 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0825 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0826 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0827 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0828 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0829 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni082A = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni082B = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni082C = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni082D = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0830 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0831 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0832 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0833 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0834 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0835 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0836 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0837 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0838 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni0839 = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni083A = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni083B = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni083C = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni083D = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni083E = 0;
+com.schriftgestaltung.layerOrderInGlyph.uni2E31 = 0;
+};
+},
+);
+glyphs = (
+{
+glyphname = uni0800;
+layers = (
+{
+anchors = (
+{
+name = Anchor6;
+pos = (729,732);
+},
+{
+name = Anchor7;
+pos = (458,732);
+},
+{
+name = Anchor9;
+pos = (48,732);
+},
+);
+layerId = UUID0;
+shapes = (
+{
+closed = 1;
+nodes = (
+(226,2,l),
+(212,30,o),
+(208,71,o),
+(208,119,cs),
+(208,225,o),
+(240,378,o),
+(309,498,c),
+(401,421,o),
+(463,279,o),
+(511,71,c),
+(566,60,l),
+(642,158,o),
+(745,255,o),
+(858,324,c),
+(798,429,l),
+(708,376,o),
+(600,245,o),
+(559,173,c),
+(543,230,o),
+(527,286,o),
+(509,336,c),
+(581,417,o),
+(669,490,o),
+(767,549,c),
+(708,648,l),
+(625,599,o),
+(540,499,o),
+(478,415,c),
+(417,553,o),
+(335,648,o),
+(215,673,c),
+(184,558,l),
+(210,552,o),
+(235,543,o),
+(258,532,c),
+(176,404,o),
+(88,229,o),
+(88,87,cs),
+(88,41,o),
+(93,-9,o),
+(109,-42,c),
+);
+},
+);
+width = 927;
+},
+);
+unicode = 2048;
+},
+{
+glyphname = uni0801;
+layers = (
+{
+anchors = (
+{
+name = Anchor6;
+pos = (537,732);
+},
+{
+name = Anchor7;
+pos = (322,732);
+},
+{
+name = Anchor9;
+pos = (48,732);
+},
+);
+layerId = UUID0;
+shapes = (
+{
+closed = 1;
+nodes = (
+(666,-39,o),
+(708,41,o),
+(708,87,cs),
+(708,148,o),
+(377,661,o),
+(334,661,cs),
+(308,661,o),
+(295,651,o),
+(277,636,cs),
+(196,565,o),
+(73,420,o),
+(73,383,cs),
+(73,367,o),
+(81,354,o),
+(104,333,cs),
+(115,323,o),
+(133,319,o),
+(169,319,cs),
+(322,319,ls),
+(363,319,o),
+(433,316,o),
+(491,311,c),
+(543,215,o),
+(588,124,o),
+(588,93,cs),
+(588,43,o),
+(552,39,o),
+(493,39,cs),
+(367,39,o),
+(219,116,o),
+(106,116,cs),
+(93,116,o),
+(81,115,o),
+(68,112,c),
+(49,-2,l),
+(65,1,o),
+(84,3,o),
+(105,3,cs),
+(221,3,o),
+(375,-39,o),
+(502,-39,cs),
+);
+},
+{
+closed = 1;
+nodes = (
+(393,395,o),
+(332,396,o),
+(311,396,cs),
+(203,396,ls),
+(195,396,o),
+(192,398,o),
+(192,404,cs),
+(192,438,o),
+(291,574,o),
+(311,583,c),
+(329,578,o),
+(387,492,o),
+(444,394,c),
+);
+},
+);
+width = 776;
+},
+);
+unicode = 2049;
+},
+);
+instances = (
+{
+axesValues = (
+100,
+100,
+);
+customParameters = (
+{
+name = "Use Typo Metrics";
+value = 1;
+},
+{
+name = "Has WWS Names";
+value = 1;
+},
+);
+id = "C6E2E1B7-CCEA-4812-B9BB-FF5EE6A009E8";
+instanceInterpolations = {
+UUID0 = 1;
+};
+properties = (
+{
+key = styleNames;
+values = (
+{
+language = dflt;
+value = Regular;
+},
+);
+},
+);
+},
+);
+metrics = (
+{
+type = ascender;
+},
+{
+type = "cap height";
+},
+{
+type = "x-height";
+},
+{
+type = baseline;
+},
+{
+type = descender;
+},
+{
+type = "italic angle";
+},
+);
+properties = (
+{
+key = copyrights;
+values = (
+{
+language = dflt;
+value = "Copyright 2022 The Noto Project Authors (https://github.com/notofonts/samaritan)";
+},
+);
+},
+{
+key = descriptions;
+values = (
+{
+language = dflt;
+value = "Designed by Monotype design team.";
+},
+);
+},
+{
+key = designers;
+values = (
+{
+language = dflt;
+value = "Monotype Design Team";
+},
+);
+},
+{
+key = designerURL;
+value = "http://www.monotype.com/studio";
+},
+{
+key = familyNames;
+values = (
+{
+language = dflt;
+value = "Noto Sans Samaritan";
+},
+);
+},
+{
+key = licenses;
+values = (
+{
+language = dflt;
+value = "This Font Software is licensed under the SIL Open Font License, Version 1.1. This license is available with a FAQ at: https://scripts.sil.org/OFL";
+},
+);
+},
+{
+key = licenseURL;
+value = "https://scripts.sil.org/OFL";
+},
+{
+key = manufacturers;
+values = (
+{
+language = dflt;
+value = "Monotype Imaging Inc.";
+},
+);
+},
+{
+key = manufacturerURL;
+value = "http://www.google.com/get/noto/";
+},
+{
+key = trademarks;
+values = (
+{
+language = dflt;
+value = "Noto is a trademark of Google Inc.";
+},
+);
+},
+{
+key = vendorID;
+value = GOOG;
+},
+{
+key = versionString;
+value = "Version 2.001";
+},
+);
+settings = {
+colorSpace = "apple-rgb";
+disablesNiceNames = :true;
+};
+stems = (
+{
+name = vStem0;
+},
+{
+horizontal = 1;
+name = hStem0;
+},
+{
+horizontal = 1;
+name = hStem0;
+},
+{
+horizontal = 1;
+name = hStem0;
+},
+{
+horizontal = 1;
+name = hStem0;
+},
+);
+unitsPerEm = 1000;
+userData = {
+UFO.lib = {
+com.schriftgestaltung.appVersion = "973";
+com.schriftgestaltung.customParameter.GSFont.disablesAutomaticAlignment = 1;
+com.schriftgestaltung.customParameter.GSFont.useNiceNames = 0;
+com.schriftgestaltung.customParameter.GSFontMaster.customValue = 0;
+com.schriftgestaltung.customParameter.GSFontMaster.customValue1 = 0;
+com.schriftgestaltung.customParameter.GSFontMaster.customValue2 = 0;
+com.schriftgestaltung.customParameter.GSFontMaster.customValue3 = 0;
+com.schriftgestaltung.customParameter.GSFontMaster.iconName = "";
+com.schriftgestaltung.customParameter.GSFontMaster.weightValue = 100;
+com.schriftgestaltung.customParameter.GSFontMaster.widthValue = 100;
+com.schriftgestaltung.fontMasterOrder = 0;
+com.schriftgestaltung.keyboardIncrement = 0;
+};
+UFOFormat = 3;
+};
+versionMajor = 2;
+versionMinor = 1;
+}
