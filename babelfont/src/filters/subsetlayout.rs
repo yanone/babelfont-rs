@@ -7,7 +7,8 @@ use smol_str::SmolStr;
 use std::{
     collections::{HashMap, HashSet},
     ops::Range,
-    sync::LazyLock,
+    path::PathBuf,
+    sync::{LazyLock, Mutex},
 };
 
 use crate::filters::FontFilter;
@@ -24,6 +25,82 @@ impl SubsetLayout {
     }
 }
 
+/// A feature file parsed recently, with what it was parsed from.
+struct ParsedFeatures {
+    source: String,
+    glyph_names: Vec<String>,
+    project_root: Option<PathBuf>,
+    feature_file: FeatureFile,
+}
+
+/// How many recent parses are kept: layout closure and subsetting parse the
+/// same features against slightly different glyph lists.
+const PARSED_FEATURES_KEPT: usize = 4;
+
+/// Recent parses, newest first. Subsetting or closing the same features for
+/// another glyph set (an editor reshaping text) then clones the syntax tree
+/// instead of parsing the source again.
+static RECENT_PARSED_FEATURES: Mutex<Vec<ParsedFeatures>> = Mutex::new(Vec::new());
+
+/// Whether feature code has an `include(...)` statement (not the
+/// `include_dflt` keyword).
+fn has_include_statement(features: &str) -> bool {
+    features.match_indices("include").any(|(index, _)| {
+        features[index + "include".len()..]
+            .trim_start()
+            .starts_with('(')
+    })
+}
+
+/// Parse feature code, reusing a recent parse of the same source, glyph list
+/// and project root.
+pub(crate) fn parse_features_cached(
+    features: &str,
+    glyph_names: &[&str],
+    project_root: &Option<PathBuf>,
+) -> Result<FeatureFile, crate::BabelfontError> {
+    // Included files are read from disk and may change while the source
+    // text stays the same, so feature code with includes is always parsed.
+    let cacheable = !has_include_statement(features);
+    if cacheable {
+        if let Ok(mut recent) = RECENT_PARSED_FEATURES.lock() {
+            let hit = recent.iter().position(|parsed| {
+                parsed.source == features
+                    && parsed.project_root == *project_root
+                    && parsed.glyph_names.len() == glyph_names.len()
+                    && parsed
+                        .glyph_names
+                        .iter()
+                        .zip(glyph_names)
+                        .all(|(cached, name)| cached == name)
+            });
+            if let Some(index) = hit {
+                let parsed = recent.remove(index);
+                let feature_file = parsed.feature_file.clone();
+                recent.insert(0, parsed);
+                return Ok(feature_file);
+            }
+        }
+    }
+    let feature_file =
+        FeatureFile::new_from_fea(features, Some(glyph_names), project_root.clone())?;
+    if cacheable {
+        if let Ok(mut recent) = RECENT_PARSED_FEATURES.lock() {
+            recent.insert(
+                0,
+                ParsedFeatures {
+                    source: features.to_string(),
+                    glyph_names: glyph_names.iter().map(|name| name.to_string()).collect(),
+                    project_root: project_root.clone(),
+                    feature_file: feature_file.clone(),
+                },
+            );
+            recent.truncate(PARSED_FEATURES_KEPT);
+        }
+    }
+    Ok(feature_file)
+}
+
 impl FontFilter for SubsetLayout {
     fn apply(&self, font: &mut crate::Font) -> Result<(), crate::BabelfontError> {
         let old_glyphs = font
@@ -38,8 +115,7 @@ impl FontFilter for SubsetLayout {
             .map(|s| s.as_str())
             .collect::<Vec<_>>();
         let features = font.features.to_fea();
-        let mut feature_file: FeatureFile =
-            FeatureFile::new_from_fea(&features, Some(&old_glyphs), font.source.clone())?;
+        let mut feature_file = parse_features_cached(&features, &old_glyphs, &font.source)?;
         let glyph_set: HashSet<&str> = new_glyphs.iter().copied().collect();
         let mut visitor = SubsetVisitor::new(font, glyph_set);
         visitor.visit(&mut feature_file).map_err(|e| {
@@ -951,6 +1027,29 @@ mod tests {
             font.glyphs.push(Glyph::new(name));
         }
         font
+    }
+
+    #[test]
+    fn subsetting_from_the_parse_cache_matches_a_fresh_parse() {
+        let fea = "languagesystem DFLT dflt;\n@lower = [a b c];\nfeature liga { sub a b by c; } liga;\nfeature smcp { sub @lower by A; } smcp;\n";
+        let glyphs = vec!["a", "b", "c", "A"];
+        let subset = |keep: Vec<&str>| {
+            let mut font = dummy_font_with_glyphs(glyphs.clone());
+            font.features = Features::from_fea(fea);
+            SubsetLayout::new(keep).apply(&mut font).unwrap();
+            font.features.to_fea()
+        };
+        assert!(has_include_statement("include(features/a.fea);"));
+        assert!(has_include_statement("include (a.fea);"));
+        assert!(!has_include_statement("language TRK include_dflt;"));
+        for keep in [vec!["a", "b", "c"], vec!["a", "A"], vec!["b", "c", "A"]] {
+            RECENT_PARSED_FEATURES.lock().unwrap().clear();
+            let fresh = subset(keep.clone());
+            // The second run reuses the tree the first one parsed.
+            subset(vec!["a"]);
+            let cached = subset(keep.clone());
+            assert_eq!(cached, fresh, "kept {keep:?}");
+        }
     }
 
     #[test]

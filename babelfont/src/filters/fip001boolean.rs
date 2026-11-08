@@ -6,7 +6,7 @@
 //! first (from an original-font snapshot) so accent cutters apply after
 //! base components in the flattened shape list.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use kurbo::{BezPath, Rect};
 use linesweeper::{binary_op, BinaryOp, FillRule};
@@ -189,35 +189,47 @@ fn glyph_has_subtraction_path(glyph: &Glyph) -> bool {
     })
 }
 
-fn tree_has_subtraction(font: &Font, glyph_name: &str, visiting: &mut HashSet<SmolStr>) -> bool {
-    if !visiting.insert(glyph_name.into()) {
-        return false;
+/// Glyphs with a subtraction path, or a component that leads to one, in font
+/// order. A glyph name stands for its first glyph, as `GlyphList::get` finds,
+/// and background layers do not count.
+fn glyphs_needing_boolean(font: &Font) -> Vec<SmolStr> {
+    let mut first: HashMap<&str, &Glyph> = HashMap::new();
+    for glyph in font.glyphs.iter() {
+        first.entry(glyph.name.as_str()).or_insert(glyph);
     }
-    let Some(glyph) = font.glyphs.get(glyph_name) else {
-        return false;
-    };
-    if glyph_has_subtraction_path(glyph) {
-        return true;
+    let mut needing: HashSet<&str> = first
+        .iter()
+        .filter(|(_, glyph)| glyph_has_subtraction_path(glyph))
+        .map(|(name, _)| *name)
+        .collect();
+    if needing.is_empty() {
+        return Vec::new();
     }
-    for layer in &glyph.layers {
-        if layer.is_background {
-            continue;
-        }
-        for shape in &layer.shapes {
-            if let Shape::Component(component) = shape {
-                if tree_has_subtraction(font, &component.reference, visiting) {
-                    return true;
+    // Who uses each glyph as a component.
+    let mut users: HashMap<&str, Vec<&str>> = HashMap::new();
+    for (name, glyph) in &first {
+        for layer in glyph.layers.iter().filter(|layer| !layer.is_background) {
+            for shape in &layer.shapes {
+                if let Shape::Component(component) = shape {
+                    users
+                        .entry(component.reference.as_str())
+                        .or_default()
+                        .push(name);
                 }
             }
         }
     }
-    false
-}
-
-fn glyphs_needing_boolean(font: &Font) -> Vec<SmolStr> {
+    let mut pending: Vec<&str> = needing.iter().copied().collect();
+    while let Some(name) = pending.pop() {
+        for user in users.get(name).into_iter().flatten() {
+            if needing.insert(user) {
+                pending.push(user);
+            }
+        }
+    }
     font.glyphs
         .iter()
-        .filter(|glyph| tree_has_subtraction(font, &glyph.name, &mut HashSet::new()))
+        .filter(|glyph| needing.contains(glyph.name.as_str()))
         .map(|glyph| glyph.name.clone())
         .collect()
 }
@@ -388,6 +400,84 @@ mod tests {
         assert!(
             (area - 9200.0).abs() < 50.0,
             "two 20x20 holes; area was {area}"
+        );
+    }
+
+    /// The recursive definition `glyphs_needing_boolean` replaced.
+    fn tree_has_subtraction(font: &Font, name: &str, visiting: &mut HashSet<SmolStr>) -> bool {
+        if !visiting.insert(name.into()) {
+            return false;
+        }
+        let Some(glyph) = font.glyphs.get(name) else {
+            return false;
+        };
+        glyph_has_subtraction_path(glyph)
+            || glyph
+                .layers
+                .iter()
+                .filter(|layer| !layer.is_background)
+                .flat_map(|layer| layer.shapes.iter())
+                .any(|shape| match shape {
+                    Shape::Component(component) => {
+                        tree_has_subtraction(font, &component.reference, visiting)
+                    }
+                    _ => false,
+                })
+    }
+
+    #[test]
+    fn glyphs_needing_boolean_follows_components_like_a_tree_walk() {
+        let component = |reference: &str| {
+            Shape::Component(Component {
+                id: None,
+                reference: reference.into(),
+                transform: Default::default(),
+                location: Default::default(),
+                format_specific: Default::default(),
+            })
+        };
+        let glyph = |name: &str, shapes: Vec<Shape>, background: Vec<Shape>| {
+            let mut glyph = Glyph::new(name);
+            glyph.layers.push(Layer {
+                shapes,
+                ..Layer::default()
+            });
+            glyph.layers.push(Layer {
+                shapes: background,
+                is_background: true,
+                ..Layer::default()
+            });
+            glyph
+        };
+        let cutter = || Shape::Path(mark_subtraction(rect_path(0.0, 0.0, 10.0, 10.0)));
+        let mut font = Font::new();
+        font.glyphs.0.extend([
+            glyph("cut", vec![cutter()], vec![]),
+            glyph("uses_cut", vec![component("cut")], vec![]),
+            glyph("uses_uses_cut", vec![component("uses_cut")], vec![]),
+            glyph("missing", vec![component("nowhere")], vec![]),
+            glyph("loop_a", vec![component("loop_b")], vec![]),
+            glyph("loop_b", vec![component("loop_a"), component("uses_cut")], vec![]),
+            glyph("loop_c", vec![component("loop_d")], vec![]),
+            glyph("loop_d", vec![component("loop_c")], vec![]),
+            glyph("background_only", vec![], vec![component("cut"), cutter()]),
+            glyph("plain", vec![Shape::Path(rect_path(0.0, 0.0, 5.0, 5.0))], vec![]),
+            // A second glyph of a used name does not count.
+            glyph("plain", vec![cutter()], vec![]),
+            glyph("uses_plain", vec![component("plain")], vec![]),
+        ]);
+        let expected: Vec<SmolStr> = font
+            .glyphs
+            .iter()
+            .filter(|g| tree_has_subtraction(&font, &g.name, &mut HashSet::new()))
+            .map(|g| g.name.clone())
+            .collect();
+        assert_eq!(glyphs_needing_boolean(&font), expected);
+        assert_eq!(
+            expected,
+            ["cut", "uses_cut", "uses_uses_cut", "loop_a", "loop_b"]
+                .map(SmolStr::from)
+                .to_vec()
         );
     }
 

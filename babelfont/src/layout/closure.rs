@@ -16,7 +16,7 @@ pub fn close_layout(
     let features = font.features.to_fea();
     let font_glyphs: Vec<&str> = font.glyphs.iter().map(|g| g.name.as_str()).collect();
     let mut feature_file: FeatureFile =
-        FeatureFile::new_from_fea(&features, Some(&font_glyphs), font.source.clone())
+        crate::filters::subsetlayout::parse_features_cached(&features, &font_glyphs, &font.source)
             .map_err(|e| crate::BabelfontError::FilterError(e.to_string()))?;
     // Rather annoyingly we may need to perform multiple rounds of this. Consider:
     // lookup A { sub b by c; } lookup A; feature foo { sub a by b; } foo; feature bar { sub b' lookup A; } bar;

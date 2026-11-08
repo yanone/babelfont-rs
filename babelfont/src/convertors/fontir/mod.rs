@@ -97,8 +97,7 @@ impl BabelfontIrSource {
     }
 
     /// Compile the Babelfont Font to a font binary
-    pub fn compile(font: Font, options: CompilationOptions) -> Result<Vec<u8>, BabelfontError> {
-        let mut font = font.clone();
+    pub fn compile(mut font: Font, options: CompilationOptions) -> Result<Vec<u8>, BabelfontError> {
         assert!(!font.masters.is_empty());
         Fip001Boolean.apply(&mut font)?;
         if options.drop_incompatible_paths {
