@@ -4182,9 +4182,8 @@ mod tests {
             let group = glyph.format_specific.get_string(key);
             (!group.is_empty()).then(|| group.into())
         };
-        let rtl: BTreeMap<String, BTreeMap<String, BTreeMap<String, f64>>> = font
-            .format_specific
-            .get_parse_or("com.schriftgestalt.Glyphs.kerningRTL", BTreeMap::new());
+        let rtl: BTreeMap<String, BTreeMap<String, BTreeMap<String, f32>>> =
+            font.glyphs_rtl_kerning(|_| false);
         // the glyphs in right-to-left kerning: named, or in a group named
         let mut rtl_glyphs: HashSet<SmolStr> = HashSet::new();
         let mut rtl_right: HashSet<SmolStr> = HashSet::new();

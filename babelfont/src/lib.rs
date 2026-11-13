@@ -219,7 +219,10 @@ pub fn load(filename: impl Into<PathBuf>) -> Result<Font, BabelfontError> {
     let mut font: Font = match pb.extension() {
         Some(ext) if ext == "babelfont" => {
             let buffered = std::io::BufReader::new(std::fs::File::open(&pb)?);
-            Ok(serde_json::from_reader(buffered)?)
+            let mut font: Font = serde_json::from_reader(buffered)?;
+            // Saved before masters had `kerning_rtl`
+            font.move_rtl_kerning_to_masters();
+            Ok(font)
         }
         #[cfg(feature = "ufo")]
         Some(ext) if ext == "designspace" => crate::convertors::designspace::load(pb),

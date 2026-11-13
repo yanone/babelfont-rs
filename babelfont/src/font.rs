@@ -21,8 +21,10 @@ use std::{
 };
 use typeshare::typeshare;
 
-/// Per-master RTL kerning map: master_id → kern1 → kern2 → value.
-type RtlKerningMap = BTreeMap<String, BTreeMap<String, BTreeMap<String, f32>>>;
+/// RTL kerning the way Glyphs files keep it, font-wide:
+/// master id → first → second → value, with groups named `@MMK_R_<group>`
+/// (first) and `@MMK_L_<group>` (second).
+pub(crate) type GlyphsRtlKerning = BTreeMap<String, BTreeMap<String, BTreeMap<String, f32>>>;
 
 #[cfg(feature = "cli")]
 extern crate serde_json_path_to_error as serde_json;
@@ -125,8 +127,11 @@ impl Default for Font {
 }
 
 impl Font {
-    /// Key in `format_specific` where Glyphs 3 RTL kerning is stored.
-    pub(crate) const KEY_KERNING_RTL: &str = "com.schriftgestalt.Glyphs.kerningRTL";
+    /// Key in `format_specific` where Glyphs files keep RTL kerning. A font
+    /// only holds it for masters it has no master of (see
+    /// [`Font::move_rtl_kerning_to_masters`]); every other pair is in
+    /// [`Master::kerning_rtl`].
+    pub const KEY_KERNING_RTL: &str = "com.schriftgestalt.Glyphs.kerningRTL";
 
     /// Create a new, empty Font
     pub fn new() -> Self {
@@ -263,10 +268,80 @@ impl Font {
     //     self.axes.iter().map(|ax| ax.tag.clone()).collect()
     // }
 
-    /// Read the Glyphs-style RTL kerning dict from `format_specific`.
-    pub(crate) fn read_rtl_kerning(&self) -> Option<RtlKerningMap> {
-        self.format_specific
-            .get_parse_opt::<RtlKerningMap>(Self::KEY_KERNING_RTL)
+    /// Move RTL kerning kept the Glyphs way in `format_specific` onto the
+    /// masters' flat [`Master::kerning_rtl`], and remove it there.
+    ///
+    /// Glyphs files are read this way, and fonts saved as `.babelfont`
+    /// before masters had `kerning_rtl` are moved on load. A pair a master
+    /// already has keeps its value. Kerning for a master id the font has no
+    /// master of stays in `format_specific`, so nothing is lost, and is
+    /// written back with the rest on export. Returns whether anything moved.
+    pub fn move_rtl_kerning_to_masters(&mut self) -> bool {
+        let Some(raw) = self.format_specific.remove(Self::KEY_KERNING_RTL) else {
+            return false;
+        };
+        let Ok(mut by_master) = serde_json::from_value::<GlyphsRtlKerning>(raw.clone()) else {
+            // Not in the shape Glyphs writes: keep it as it was.
+            self.format_specific
+                .insert(Self::KEY_KERNING_RTL.to_string(), raw);
+            return false;
+        };
+        let mut moved = false;
+        for master in self.masters.iter_mut() {
+            let Some(pairs) = by_master.remove(&master.id) else {
+                continue;
+            };
+            for (first, seconds) in pairs {
+                let first = Self::strip_mmk_prefix(&first, "R");
+                for (second, value) in seconds {
+                    let second = Self::strip_mmk_prefix(&second, "L");
+                    master
+                        .kerning_rtl
+                        .entry((first.clone(), second))
+                        .or_insert(value.round() as i16);
+                    moved = true;
+                }
+            }
+        }
+        by_master.retain(|_, pairs| !pairs.is_empty());
+        if !by_master.is_empty() {
+            self.format_specific
+                .insert_json(Self::KEY_KERNING_RTL, &by_master);
+        }
+        moved
+    }
+
+    /// RTL kerning `format_specific` still holds for master ids the font has
+    /// no master of. For a master the font has, [`Master::kerning_rtl`] is
+    /// the only truth: a copy left in `format_specific` by an older writer
+    /// may be stale and is ignored.
+    fn orphan_glyphs_rtl_kerning(&self) -> GlyphsRtlKerning {
+        let mut by_master: GlyphsRtlKerning = self
+            .format_specific
+            .get_parse_opt(Self::KEY_KERNING_RTL)
+            .unwrap_or_default();
+        by_master.retain(|id, _| !self.masters.iter().any(|master| &master.id == id));
+        by_master
+    }
+
+    /// RTL kerning the way Glyphs files keep it: every master's
+    /// [`Master::kerning_rtl`] (skipping `skip`ped masters), plus anything
+    /// `format_specific` still holds for masters the font does not have.
+    pub(crate) fn glyphs_rtl_kerning(&self, skip: impl Fn(&Master) -> bool) -> GlyphsRtlKerning {
+        let mut by_master = self.orphan_glyphs_rtl_kerning();
+        for master in self.masters.iter().filter(|master| !skip(master)) {
+            if master.kerning_rtl.is_empty() {
+                continue;
+            }
+            let pairs = by_master.entry(master.id.clone()).or_default();
+            for ((first, second), value) in &master.kerning_rtl {
+                pairs
+                    .entry(Self::add_mmk_prefix(first, "R"))
+                    .or_default()
+                    .insert(Self::add_mmk_prefix(second, "L"), *value as f32);
+            }
+        }
+        by_master
     }
 
     fn strip_mmk_prefix(raw: &str, expected_side: &str) -> SmolStr {
@@ -275,6 +350,13 @@ impl Font {
             SmolStr::from(format!("@{}", stripped))
         } else {
             SmolStr::from(raw)
+        }
+    }
+
+    fn add_mmk_prefix(key: &str, side: &str) -> String {
+        match key.strip_prefix('@') {
+            Some(group) => format!("@MMK_{}_{}", side, group),
+            None => key.to_string(),
         }
     }
 
@@ -288,17 +370,8 @@ impl Font {
         for ((left, right), value) in &master.kerning {
             result.insert((left.clone(), right.clone()), *value);
         }
-
-        if let Some(rtl_by_master) = self.read_rtl_kerning() {
-            if let Some(rtl_dict) = rtl_by_master.get(&master.id.to_string()) {
-                for (kern1, subtable) in rtl_dict {
-                    let left = Self::strip_mmk_prefix(kern1, "R");
-                    for (kern2, value) in subtable {
-                        let right = Self::strip_mmk_prefix(kern2, "L");
-                        result.insert((left.clone(), right), *value as i16);
-                    }
-                }
-            }
+        for ((left, right), value) in &master.kerning_rtl {
+            result.insert((left.clone(), right.clone()), *value);
         }
 
         result.into_iter().collect()
@@ -310,28 +383,40 @@ impl Font {
     pub(crate) fn rtl_kerning_glyphs(&self) -> HashSet<SmolStr> {
         let mut rtl_glyphs: HashSet<SmolStr> = HashSet::new();
 
-        let Some(rtl_kerning) = self.read_rtl_kerning() else {
-            return rtl_glyphs;
-        };
-
-        // groups by the side they kern on: @MMK_L_ names a right kerning
-        // group, @MMK_R_ a left one
+        // Groups by the side they kern on: a pair's first group is a left
+        // kerning group (Glyphs' @MMK_R_), its second a right one (@MMK_L_).
         let mut right_groups: HashSet<String> = HashSet::new();
         let mut left_groups: HashSet<String> = HashSet::new();
-        let mut participant = |key: &str| {
-            if let Some(group) = key.strip_prefix("@MMK_L_") {
-                right_groups.insert(group.to_string());
-            } else if let Some(group) = key.strip_prefix("@MMK_R_") {
-                left_groups.insert(group.to_string());
-            } else {
-                rtl_glyphs.insert(SmolStr::from(key));
+        for (first, second) in self.masters.iter().flat_map(|m| m.kerning_rtl.keys()) {
+            match first.strip_prefix('@') {
+                Some(group) => {
+                    left_groups.insert(group.to_string());
+                }
+                None => {
+                    rtl_glyphs.insert(first.clone());
+                }
             }
-        };
-        for rtl_dict in rtl_kerning.values() {
-            for (kern1, subtable) in rtl_dict {
-                participant(kern1);
-                for kern2 in subtable.keys() {
-                    participant(kern2);
+            match second.strip_prefix('@') {
+                Some(group) => {
+                    right_groups.insert(group.to_string());
+                }
+                None => {
+                    rtl_glyphs.insert(second.clone());
+                }
+            }
+        }
+        // Kerning only `format_specific` still holds (masters the font does
+        // not have) names participants too.
+        for pairs in self.orphan_glyphs_rtl_kerning().values() {
+            for (first, seconds) in pairs {
+                for key in std::iter::once(first).chain(seconds.keys()) {
+                    if let Some(group) = key.strip_prefix("@MMK_L_") {
+                        right_groups.insert(group.to_string());
+                    } else if let Some(group) = key.strip_prefix("@MMK_R_") {
+                        left_groups.insert(group.to_string());
+                    } else {
+                        rtl_glyphs.insert(SmolStr::from(key.as_str()));
+                    }
                 }
             }
         }

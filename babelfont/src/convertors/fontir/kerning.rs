@@ -169,8 +169,7 @@ type Kerns = BTreeMap<(SmolStr, SmolStr), OrderedFloat<f64>>;
 
 /// Get the merged LTR+RTL kerning pairs for a given master at a location.
 ///
-/// Uses `crate::kerning::merge_kerning` to produce a single flat set of pairs
-/// from both `master.kerning` and `format_specific["...kerningRTL"]`.
+/// One flat set of pairs from `master.kerning` and `master.kerning_rtl`.
 fn kerning_at_location(font: &Font, location: &NormalizedLocation) -> Option<Kerns> {
     let axes = font.fontdrasil_axes().ok()?;
     let master = font.masters.iter().find(|master| {

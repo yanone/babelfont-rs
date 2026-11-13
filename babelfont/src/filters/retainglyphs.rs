@@ -104,6 +104,13 @@ impl FontFilter for RetainGlyphs {
                                 && font.second_kern_groups.contains_key(&right[1..])))
                 })
                 .collect();
+            // RTL pairs pair groups the other way round (see
+            // `Font::kern_groups_with_rtl_swaps`), so only pairs naming a
+            // dropped glyph go.
+            let keeps = |key: &SmolStr| key.starts_with('@') || self.0.contains(key);
+            master
+                .kerning_rtl
+                .retain(|(left, right), _| keeps(left) && keeps(right));
         }
         // Filter masters - remove any masters which were just sparse
         font.masters.retain(|master| {

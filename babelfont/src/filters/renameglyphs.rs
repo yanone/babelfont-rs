@@ -1,6 +1,7 @@
 use crate::layout::renamer::GlyphRenamerVisitor;
 use crate::{filters::FontFilter, font::Font, Features};
 use fea_rs_ast::{AsFea, FeatureFile, LayoutVisitor};
+use indexmap::IndexMap;
 use regex::Regex;
 use smol_str::SmolStr;
 use std::{collections::{BTreeMap, HashMap}, sync::LazyLock};
@@ -58,50 +59,47 @@ impl FontFilter for RenameGlyphs {
             }
         }
         // Update kerning and kern groups
-        for master in font.masters.iter_mut() {
-            master.kerning = master
-                .kerning
+        let rename_pairs = |kerning: &IndexMap<(SmolStr, SmolStr), i16>| {
+            kerning
                 .iter()
                 .map(|((left, right), value)| {
                     let new_left = self.0.get(left).unwrap_or(left);
                     let new_right = self.0.get(right).unwrap_or(right);
                     ((new_left.clone(), new_right.clone()), *value)
                 })
-                .collect();
+                .collect()
+        };
+        for master in font.masters.iter_mut() {
+            master.kerning = rename_pairs(&master.kerning);
+            master.kerning_rtl = rename_pairs(&master.kerning_rtl);
         }
-        // Update RTL kerning in format_specific
+        // RTL kerning kept for masters the font does not have
         if let Some(rtl) = font
             .format_specific
             .get_parse_opt::<BTreeMap<String, BTreeMap<String, BTreeMap<String, f32>>>>(
                 Font::KEY_KERNING_RTL,
             )
         {
+            let rename = |key: String| {
+                self.0
+                    .get(&SmolStr::from(key.as_str()))
+                    .map(|s| s.to_string())
+                    .unwrap_or(key)
+            };
             let renamed: BTreeMap<String, BTreeMap<String, BTreeMap<String, f32>>> = rtl
                 .into_iter()
                 .map(|(master_id, inner)| {
-                    let renamed_inner: BTreeMap<String, BTreeMap<String, f32>> = inner
+                    let inner = inner
                         .into_iter()
                         .map(|(kern1, subtable)| {
-                            let new_kern1 = self
-                                .0
-                                .get(&SmolStr::from(kern1.as_str()))
-                                .map(|s| s.to_string())
-                                .unwrap_or(kern1);
-                            let renamed_subtable: BTreeMap<String, f32> = subtable
+                            let subtable = subtable
                                 .into_iter()
-                                .map(|(kern2, value)| {
-                                    let new_kern2 = self
-                                        .0
-                                        .get(&SmolStr::from(kern2.as_str()))
-                                        .map(|s| s.to_string())
-                                        .unwrap_or(kern2);
-                                    (new_kern2, value)
-                                })
+                                .map(|(kern2, value)| (rename(kern2), value))
                                 .collect();
-                            (new_kern1, renamed_subtable)
+                            (rename(kern1), subtable)
                         })
                         .collect();
-                    (master_id, renamed_inner)
+                    (master_id, inner)
                 })
                 .collect();
             font.format_specific

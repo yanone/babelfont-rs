@@ -611,11 +611,13 @@ fn _load(glyphs_font: &glyphslib::Font, path: PathBuf) -> Result<Font, Babelfont
         glyphs_font.version.minor as u16,
     );
 
-    // RTL and vertical kerning
+    // Vertical kerning stays format-specific. RTL kerning goes onto the
+    // masters below, once they exist.
     font.format_specific
         .insert_json_non_null(KEY_KERNING_VERTICAL, &glyphs_font.kerning_vertical);
     font.format_specific
         .insert_json_non_null(KEY_KERNING_RTL, &glyphs_font.kerning_rtl);
+    font.move_rtl_kerning_to_masters();
 
     // Copy masters
     // Copy instances
@@ -2252,9 +2254,7 @@ pub(crate) fn as_glyphs3(font: &Font) -> Result<glyphs3::Glyphs3, BabelfontError
         kerning_context: font
             .format_specific
             .get_parse_or(KEY_KERNING_CONTEXT, BTreeMap::new()),
-        kerning_rtl: font
-            .format_specific
-            .get_parse_or(KEY_KERNING_RTL, BTreeMap::new()),
+        kerning_rtl: font.glyphs_rtl_kerning(|_| false),
         kerning_vertical: font
             .format_specific
             .get_parse_or(KEY_KERNING_VERTICAL, BTreeMap::new()),
@@ -4153,5 +4153,148 @@ unitsPerEm = 1000;
                 "{got:?} is not {expected:?}"
             );
         }
+    }
+
+    const RTL_SAMPLE: &str = "resources/G3RTLKerning.glyphs";
+    const RTL_MASTER: &str = "3E7589AA-8194-470F-8E2F-13C1C581BE24";
+
+    fn rtl_pair(master: &crate::Master, first: &str, second: &str) -> Option<i16> {
+        master
+            .kerning_rtl
+            .get(&(first.into(), second.into()))
+            .copied()
+    }
+
+    #[test]
+    fn rtl_kerning_moves_onto_the_masters_on_import() {
+        let font = crate::load(RTL_SAMPLE).unwrap();
+        assert!(
+            !font
+                .format_specific
+                .contains_key(crate::Font::KEY_KERNING_RTL),
+            "kerningRTL is left in format_specific"
+        );
+        let master = font.masters.iter().find(|m| m.id == RTL_MASTER).unwrap();
+        assert_eq!(rtl_pair(master, "@reh", "@alef"), Some(-90));
+        assert_eq!(rtl_pair(master, "@reh", "@reh"), Some(-40));
+        let other = font.masters.iter().find(|m| m.id != RTL_MASTER).unwrap();
+        assert_eq!(rtl_pair(other, "@reh", "@alef"), Some(-60));
+        // Right-to-left pairs stay out of the left-to-right kerning.
+        assert!(master
+            .kerning
+            .keys()
+            .all(|(first, _)| first.as_str() != "@reh"));
+    }
+
+    #[test]
+    fn rtl_kerning_is_written_back_on_export() {
+        let source =
+            glyphslib::Font::load_str(&std::fs::read_to_string(RTL_SAMPLE).unwrap()).unwrap();
+        let source = source.as_glyphs3().unwrap();
+        let font = crate::load(RTL_SAMPLE).unwrap();
+        let saved = super::as_glyphs3(&font).unwrap();
+        // Every master's, also one the sample's odd `.notdef` makes look
+        // sparse (and whose left-to-right kerning is not saved for that).
+        assert_eq!(saved.kerning_rtl, source.kerning_rtl);
+    }
+
+    #[test]
+    fn babelfont_json_keeps_rtl_kerning_flat_per_master() {
+        let font = crate::load(RTL_SAMPLE).unwrap();
+        let json = serde_json::to_value(&font).unwrap();
+        let master = json["masters"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|m| m["id"] == RTL_MASTER)
+            .unwrap();
+        assert_eq!(master["kerning_rtl"]["@reh:@alef"], -90);
+        assert!(json["format_specific"]
+            .get(crate::Font::KEY_KERNING_RTL)
+            .is_none());
+        let back: crate::Font = serde_json::from_value(json).unwrap();
+        assert_eq!(back.masters, font.masters);
+    }
+
+    #[test]
+    fn rtl_kerning_saved_the_old_way_is_moved_and_unknown_masters_kept() {
+        let mut font = crate::Font::new();
+        font.masters
+            .push(crate::Master::new("Regular", "m1", Default::default()));
+        font.masters[0]
+            .kerning_rtl
+            .insert(("@reh".into(), "@alef".into()), -10);
+        font.format_specific.insert(
+            crate::Font::KEY_KERNING_RTL.to_string(),
+            serde_json::json!({
+                "m1": {
+                    "@MMK_R_reh": { "@MMK_L_alef": -90, "@MMK_L_reh": -40 },
+                    "beh": { "alef": -5 }
+                },
+                "gone": { "@MMK_R_reh": { "@MMK_L_alef": -70 } }
+            }),
+        );
+
+        assert!(font.move_rtl_kerning_to_masters());
+        let master = &font.masters[0];
+        // A pair the master already has keeps its value.
+        assert_eq!(rtl_pair(master, "@reh", "@alef"), Some(-10));
+        assert_eq!(rtl_pair(master, "@reh", "@reh"), Some(-40));
+        assert_eq!(rtl_pair(master, "beh", "alef"), Some(-5));
+        // Kerning for a master the font does not have is kept as it was.
+        assert_eq!(
+            font.format_specific.get(crate::Font::KEY_KERNING_RTL),
+            Some(&serde_json::json!({
+                "gone": { "@MMK_R_reh": { "@MMK_L_alef": -70.0 } }
+            }))
+        );
+        let written = font.glyphs_rtl_kerning(|_| false);
+        assert_eq!(written["gone"]["@MMK_R_reh"]["@MMK_L_alef"], -70.0);
+        assert_eq!(written["m1"]["@MMK_R_reh"]["@MMK_L_reh"], -40.0);
+        assert_eq!(written["m1"]["beh"]["alef"], -5.0);
+        // Moving again changes nothing.
+        assert!(!font.move_rtl_kerning_to_masters());
+    }
+
+    #[test]
+    fn a_stale_kerning_rtl_copy_for_a_known_master_is_not_exported() {
+        // Fonts the editor saved before masters had `kerning_rtl` keep both
+        // copies; a pair deleted from the master since must stay deleted.
+        let mut font = crate::Font::new();
+        font.masters
+            .push(crate::Master::new("Regular", "m1", Default::default()));
+        font.masters[0]
+            .kerning_rtl
+            .insert(("@reh".into(), "@alef".into()), -90);
+        font.format_specific.insert(
+            crate::Font::KEY_KERNING_RTL.to_string(),
+            serde_json::json!({
+                "m1": { "@MMK_R_reh": { "@MMK_L_alef": -90, "@MMK_L_reh": -40 } }
+            }),
+        );
+        let written = font.glyphs_rtl_kerning(|_| false);
+        assert_eq!(written["m1"]["@MMK_R_reh"].len(), 1);
+        assert_eq!(written["m1"]["@MMK_R_reh"]["@MMK_L_alef"], -90.0);
+        assert_eq!(
+            font.merged_kerning_for_master(&font.masters[0]),
+            vec![(("@reh".into(), "@alef".into()), -90)]
+        );
+    }
+
+    #[test]
+    fn renaming_a_glyph_renames_its_rtl_pairs() {
+        use crate::filters::FontFilter;
+        let mut font = crate::Font::new();
+        font.masters
+            .push(crate::Master::new("Regular", "m1", Default::default()));
+        font.masters[0]
+            .kerning_rtl
+            .insert(("beh-ar".into(), "alef-ar".into()), -20);
+        let renames = std::collections::HashMap::from([("beh-ar".to_string(), "beh".to_string())]);
+        crate::filters::RenameGlyphs::new(renames)
+            .apply(&mut font)
+            .unwrap();
+        assert_eq!(rtl_pair(&font.masters[0], "beh", "alef-ar"), Some(-20));
+        assert_eq!(rtl_pair(&font.masters[0], "beh-ar", "alef-ar"), None);
     }
 }

@@ -529,6 +529,7 @@ fn load_master(id: &str, source: &Source) -> Result<Master, BabelfontError> {
             .collect::<Vec<_>>(),
         metrics: IndexMap::new(),
         kerning: IndexMap::new(),
+        kerning_rtl: IndexMap::new(),
         custom_ot_values: CustomOTValues::default(),
         format_specific: FormatSpecific::default(),
     })

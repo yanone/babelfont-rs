@@ -53,6 +53,21 @@ pub struct Master {
     #[typeshare(typescript(type = "Map<[string, string], number>"))]
     #[typeshare(python(type = "Dict[Tuple[str, str], int]"))]
     pub kerning: IndexMap<(SmolStr, SmolStr), i16>,
+    /// Right-to-left kerning for this master, in the same form as `kerning`.
+    ///
+    /// The first glyph or group of a pair is the one on the right, as the
+    /// text is read. Groups are `@<groupname>`, as in `kerning`. Glyphs
+    /// files keep this font-wide, in `kerningRTL`; it is moved here on
+    /// import and back on export.
+    #[serde(
+        default,
+        skip_serializing_if = "IndexMap::is_empty",
+        serialize_with = "crate::serde_helpers::kerning_map",
+        deserialize_with = "crate::serde_helpers::kerning_unmap"
+    )]
+    #[typeshare(typescript(type = "Map<[string, string], number>"))]
+    #[typeshare(python(type = "Dict[Tuple[str, str], int]"))]
+    pub kerning_rtl: IndexMap<(SmolStr, SmolStr), i16>,
     /// Custom OpenType values for this master
     #[serde(default, skip_serializing_if = "CustomOTValues::is_empty")]
     pub custom_ot_values: CustomOTValues,
@@ -77,6 +92,7 @@ impl Master {
             guides: Default::default(),
             metrics: Default::default(),
             kerning: Default::default(),
+            kerning_rtl: Default::default(),
             custom_ot_values: Default::default(),
             format_specific: FormatSpecific::default(),
             active: true,

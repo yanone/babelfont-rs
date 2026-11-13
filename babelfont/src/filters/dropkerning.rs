@@ -16,7 +16,9 @@ impl FontFilter for DropKerning {
         log::info!("Dropping all kerning from font");
         for master in font.masters.iter_mut() {
             master.kerning.clear();
+            master.kerning_rtl.clear();
         }
+        font.format_specific.remove(crate::Font::KEY_KERNING_RTL);
         Ok(())
     }
 
