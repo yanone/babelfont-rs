@@ -4187,6 +4187,92 @@ unitsPerEm = 1000;
     }
 
     #[test]
+    fn rtl_group_swap_follows_the_group_lists_not_the_reader_copies() {
+        let mut font = crate::load(RTL_SAMPLE).unwrap();
+        let swapped = font.kern_groups_with_rtl_swaps();
+        let rtl = font.rtl_kerning_glyphs();
+        assert!(!rtl.is_empty());
+        // The reader's per-glyph copies are not needed: the lists hold it.
+        for glyph in font.glyphs.iter_mut() {
+            glyph.format_specific.remove("kern_left");
+            glyph.format_specific.remove("kern_right");
+        }
+        assert_eq!(font.kern_groups_with_rtl_swaps(), swapped);
+        assert_eq!(font.rtl_kerning_glyphs(), rtl);
+
+        // A glyph added to a left group in the lists takes part in RTL
+        // kerning that names the group first, and kerns first with it.
+        let (group, _) = font
+            .masters
+            .iter()
+            .flat_map(|m| m.kerning_rtl.keys())
+            .find(|(first, _)| first.starts_with('@'))
+            .cloned()
+            .unwrap();
+        let group = smol_str::SmolStr::from(&group[1..]);
+        let mut glyph = crate::Glyph::new("added");
+        glyph.exported = true;
+        font.glyphs.push(glyph);
+        font.second_kern_groups
+            .entry(group.clone())
+            .or_default()
+            .push("added".into());
+        assert!(font.rtl_kerning_glyphs().contains("added"));
+        let (first, second) = font.kern_groups_with_rtl_swaps();
+        assert!(first[&group].iter().any(|member| member == "added"));
+        assert!(!second
+            .get(&group)
+            .is_some_and(|members| members.iter().any(|member| member == "added")));
+    }
+
+    #[test]
+    fn a_linked_master_kerns_like_the_master_it_links_to() {
+        let mut font = crate::load(RTL_SAMPLE).unwrap();
+        let source = font.masters[0].clone();
+        let expected = font.merged_kerning_for_master(&source);
+        assert!(!expected.is_empty());
+        let linked = &mut font.masters[1];
+        linked.kerning.clear();
+        linked.kerning_rtl.clear();
+        linked.format_specific.insert(
+            "com.schriftgestalt.Glyphs.customParameters.Link Metrics With Master".to_string(),
+            serde_json::Value::String(source.id.clone()),
+        );
+        assert_eq!(font.merged_kerning_for_master(&font.masters[1]), expected);
+
+        // By name, and to the first master.
+        let name = source.name.get_default().unwrap().clone();
+        font.masters[1].format_specific.insert(
+            "com.schriftgestalt.Glyphs.customParameters.Link Metrics With Master".to_string(),
+            serde_json::Value::String(name),
+        );
+        assert_eq!(font.merged_kerning_for_master(&font.masters[1]), expected);
+        font.masters[1]
+            .format_specific
+            .remove("com.schriftgestalt.Glyphs.customParameters.Link Metrics With Master");
+        font.masters[1].format_specific.insert(
+            "com.schriftgestalt.Glyphs.customParameters.Link Metrics With First Master".to_string(),
+            serde_json::Value::Bool(true),
+        );
+        assert_eq!(font.merged_kerning_for_master(&font.masters[1]), expected);
+    }
+
+    #[test]
+    fn an_rtl_key_with_the_other_sides_prefix_is_read_as_its_group() {
+        let mut font = crate::load(RTL_SAMPLE).unwrap();
+        let id = font.masters[0].id.clone();
+        font.masters[0].kerning_rtl.clear();
+        font.format_specific.insert(
+            crate::Font::KEY_KERNING_RTL.to_string(),
+            serde_json::json!({ id.clone(): { "@MMK_L_reh": { "@MMK_R_alef": -12 } } }),
+        );
+        assert!(font.move_rtl_kerning_to_masters());
+        assert_eq!(rtl_pair(&font.masters[0], "@reh", "@alef"), Some(-12));
+        let written = font.glyphs_rtl_kerning(|_| false);
+        assert_eq!(written[&id]["@MMK_R_reh"]["@MMK_L_alef"], -12.0);
+    }
+
+    #[test]
     fn rtl_kerning_is_written_back_on_export() {
         let source =
             glyphslib::Font::load_str(&std::fs::read_to_string(RTL_SAMPLE).unwrap()).unwrap();

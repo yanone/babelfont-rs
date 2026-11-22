@@ -345,13 +345,21 @@ impl Font {
         by_master
     }
 
+    /// `@MMK_<side>_<group>` to `@<group>`. A group with the other side's
+    /// prefix (which Glyphs does not write there, and glyphsLib refuses) is
+    /// read as the group it names rather than kept as a glyph name that
+    /// would come back double-prefixed.
     fn strip_mmk_prefix(raw: &str, expected_side: &str) -> SmolStr {
         let prefix = format!("@MMK_{}_", expected_side);
         if let Some(stripped) = raw.strip_prefix(&prefix) {
-            SmolStr::from(format!("@{}", stripped))
-        } else {
-            SmolStr::from(raw)
+            return SmolStr::from(format!("@{}", stripped));
         }
+        let other = format!("@MMK_{}_", if expected_side == "R" { "L" } else { "R" });
+        if let Some(stripped) = raw.strip_prefix(&other) {
+            log::warn!("RTL kerning key {raw} has the other side's group prefix; reading it as @{stripped}");
+            return SmolStr::from(format!("@{}", stripped));
+        }
+        SmolStr::from(raw)
     }
 
     fn add_mmk_prefix(key: &str, side: &str) -> String {
@@ -361,37 +369,110 @@ impl Font {
         }
     }
 
-    /// Merge LTR and RTL kerning into one flat set of pairs for a master.
+    /// The master whose kerning a master uses: the one its Glyphs "Link
+    /// Metrics With First Master" or "Link Metrics With Master" custom
+    /// parameter names (by id, else by name), or the master itself
+    /// (glyphsLib's `GSFontMaster.metricsSource`).
+    pub(crate) fn kerning_source<'a>(&'a self, master: &'a Master) -> &'a Master {
+        let parameter = |name: &str| {
+            master.format_specific.get(&format!(
+                "com.schriftgestalt.Glyphs.customParameters.{name}"
+            ))
+        };
+        let truthy = |value: &serde_json::Value| match value {
+            serde_json::Value::Bool(flag) => *flag,
+            serde_json::Value::Number(number) => number.as_f64().is_some_and(|n| n != 0.0),
+            serde_json::Value::String(text) => !text.is_empty() && text != "0",
+            _ => false,
+        };
+        if parameter("Link Metrics With First Master").is_some_and(truthy) {
+            if let Some(first) = self.masters.first() {
+                return first;
+            }
+        }
+        if let Some(linked) = parameter("Link Metrics With Master").and_then(|v| v.as_str()) {
+            if let Some(source) = self
+                .masters
+                .iter()
+                .find(|other| other.id == linked)
+                .or_else(|| {
+                    self.masters
+                        .iter()
+                        .find(|other| other.name.get_default().is_some_and(|name| name == linked))
+                })
+            {
+                return source;
+            }
+            log::warn!(
+                "Master {} links its metrics to {linked}, which is not a master of the font",
+                master.id
+            );
+        }
+        master
+    }
+
+    /// Merge LTR and RTL kerning into one flat set of pairs for a master,
+    /// RTL winning on the same pair, from the master it takes its kerning
+    /// from (see [`Font::kerning_source`]).
     pub(crate) fn merged_kerning_for_master(
         &self,
         master: &Master,
     ) -> Vec<((SmolStr, SmolStr), i16)> {
+        let source = self.kerning_source(master);
         let mut result: IndexMap<(SmolStr, SmolStr), i16> = IndexMap::new();
 
-        for ((left, right), value) in &master.kerning {
+        for ((left, right), value) in &source.kerning {
             result.insert((left.clone(), right.clone()), *value);
         }
-        for ((left, right), value) in &master.kerning_rtl {
+        for ((left, right), value) in &source.kerning_rtl {
             result.insert((left.clone(), right.clone()), *value);
         }
 
         result.into_iter().collect()
     }
 
-    /// Identify glyphs that participate in RTL kerning: the glyphs and the
-    /// members of the groups its pairs name, either side (glyphsLib's
-    /// `_get_glyphs_with_rtl_kerning`, fontc's `get_glyphs_with_rtl_kerning`)
+    /// A glyph's kerning groups by side, from the font's group lists:
+    /// its left group (the one it kerns with when it is second in a
+    /// left-to-right pair, in `second_kern_groups`) and its right group (in
+    /// `first_kern_groups`). These lists are what the font holds and what
+    /// the Glyphs writer saves as `leftKerningGroup` / `rightKerningGroup`.
+    fn kerning_groups_by_side(
+        &self,
+    ) -> (
+        IndexMap<SmolStr, Vec<SmolStr>>,
+        IndexMap<SmolStr, Vec<SmolStr>>,
+    ) {
+        let mut left: IndexMap<SmolStr, Vec<SmolStr>> = IndexMap::new();
+        let mut right: IndexMap<SmolStr, Vec<SmolStr>> = IndexMap::new();
+        for (group, members) in &self.second_kern_groups {
+            for member in members {
+                left.entry(member.clone()).or_default().push(group.clone());
+            }
+        }
+        for (group, members) in &self.first_kern_groups {
+            for member in members {
+                right.entry(member.clone()).or_default().push(group.clone());
+            }
+        }
+        (left, right)
+    }
+
+    /// Identify glyphs that participate in RTL kerning: the glyphs its pairs
+    /// name, and the glyphs whose left group a pair names first or whose
+    /// right group a pair names second (glyphsLib's
+    /// `_get_glyphs_with_rtl_kerning`, fontc's `get_glyphs_with_rtl_kerning`).
     pub(crate) fn rtl_kerning_glyphs(&self) -> HashSet<SmolStr> {
         let mut rtl_glyphs: HashSet<SmolStr> = HashSet::new();
 
-        // Groups by the side they kern on: a pair's first group is a left
-        // kerning group (Glyphs' @MMK_R_), its second a right one (@MMK_L_).
-        let mut right_groups: HashSet<String> = HashSet::new();
-        let mut left_groups: HashSet<String> = HashSet::new();
+        // An RTL pair's first glyph is the one on the right: its first group
+        // is a left kerning group (Glyphs' `@MMK_R_`), its second group a
+        // right one (`@MMK_L_`).
+        let mut left_groups: HashSet<SmolStr> = HashSet::new();
+        let mut right_groups: HashSet<SmolStr> = HashSet::new();
         for (first, second) in self.masters.iter().flat_map(|m| m.kerning_rtl.keys()) {
             match first.strip_prefix('@') {
                 Some(group) => {
-                    left_groups.insert(group.to_string());
+                    left_groups.insert(group.into());
                 }
                 None => {
                     rtl_glyphs.insert(first.clone());
@@ -399,7 +480,7 @@ impl Font {
             }
             match second.strip_prefix('@') {
                 Some(group) => {
-                    right_groups.insert(group.to_string());
+                    right_groups.insert(group.into());
                 }
                 None => {
                     rtl_glyphs.insert(second.clone());
@@ -412,9 +493,9 @@ impl Font {
             for (first, seconds) in pairs {
                 for key in std::iter::once(first).chain(seconds.keys()) {
                     if let Some(group) = key.strip_prefix("@MMK_L_") {
-                        right_groups.insert(group.to_string());
+                        right_groups.insert(group.into());
                     } else if let Some(group) = key.strip_prefix("@MMK_R_") {
-                        left_groups.insert(group.to_string());
+                        left_groups.insert(group.into());
                     } else {
                         rtl_glyphs.insert(SmolStr::from(key.as_str()));
                     }
@@ -422,23 +503,25 @@ impl Font {
             }
         }
 
-        for glyph in self.glyphs.iter() {
-            let left_group = glyph.format_specific.get_string("kern_left");
-            let right_group = glyph.format_specific.get_string("kern_right");
-            if (!left_group.is_empty() && left_groups.contains(left_group.as_str()))
-                || (!right_group.is_empty() && right_groups.contains(right_group.as_str()))
-            {
-                rtl_glyphs.insert(glyph.name.clone());
+        for group in &left_groups {
+            if let Some(members) = self.second_kern_groups.get(group) {
+                rtl_glyphs.extend(members.iter().cloned());
+            }
+        }
+        for group in &right_groups {
+            if let Some(members) = self.first_kern_groups.get(group) {
+                rtl_glyphs.extend(members.iter().cloned());
             }
         }
 
         rtl_glyphs
     }
 
-    /// Apply the glyphsLib RTL group-side swap to the kern groups: a glyph
-    /// in RTL kerning kerns first with its left kerning group (`@MMK_R_` in
-    /// kerningRTL) and second with its right one (glyphsLib's
-    /// `_glyph_kerning_attr`, fontc's `derive_kern_groups`)
+    /// The kern groups as the compiled font pairs them: a glyph in RTL
+    /// kerning kerns first with its left group and second with its right
+    /// group, the other way round from left-to-right glyphs (glyphsLib's
+    /// `_glyph_kerning_attr`, fontc's `derive_kern_groups`). Both sides come
+    /// from the font's group lists (see [`Font::kerning_groups_by_side`]).
     pub(crate) fn kern_groups_with_rtl_swaps(
         &self,
     ) -> (
@@ -453,6 +536,7 @@ impl Font {
             );
         }
 
+        let (left_of, right_of) = self.kerning_groups_by_side();
         let mut first = self.first_kern_groups.clone();
         let mut second = self.second_kern_groups.clone();
         for members in first.values_mut().chain(second.values_mut()) {
@@ -462,17 +546,15 @@ impl Font {
             if !rtl_glyphs.contains(&glyph.name) {
                 continue;
             }
-            let left_group = glyph.format_specific.get_string("kern_left");
-            let right_group = glyph.format_specific.get_string("kern_right");
-            if !left_group.is_empty() {
+            for group in left_of.get(&glyph.name).into_iter().flatten() {
                 first
-                    .entry(SmolStr::from(left_group.as_str()))
+                    .entry(group.clone())
                     .or_default()
                     .push(glyph.name.clone());
             }
-            if !right_group.is_empty() {
+            for group in right_of.get(&glyph.name).into_iter().flatten() {
                 second
-                    .entry(SmolStr::from(right_group.as_str()))
+                    .entry(group.clone())
                     .or_default()
                     .push(glyph.name.clone());
             }
@@ -481,6 +563,21 @@ impl Font {
         second.retain(|_, members| !members.is_empty());
 
         (first, second)
+    }
+
+    /// A glyph's left and right kerning groups, from the font's group lists
+    /// (the first group a list names, as Glyphs keeps one per side).
+    pub(crate) fn glyph_kerning_groups(&self, glyph: &str) -> (Option<SmolStr>, Option<SmolStr>) {
+        let find = |groups: &IndexMap<SmolStr, Vec<SmolStr>>| {
+            groups
+                .iter()
+                .find(|(_, members)| members.iter().any(|member| member == glyph))
+                .map(|(group, _)| group.clone())
+        };
+        (
+            find(&self.second_kern_groups),
+            find(&self.first_kern_groups),
+        )
     }
 
     /// Save the font to a file

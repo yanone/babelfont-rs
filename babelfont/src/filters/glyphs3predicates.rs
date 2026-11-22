@@ -489,7 +489,7 @@ impl<'a> PredicateParser<'a> {
 
         let mut glyphs: IndexSet<SmolStr> = IndexSet::new();
         for g in self.font.glyphs.iter().filter(|g| g.exported) {
-            let got = glyph_value(g, object).ok_or_else(|| {
+            let got = glyph_value(self.font, g, object).ok_or_else(|| {
                 BabelfontError::FilterError(format!(
                     "Glyphs attribute {object} used in predicate '{}' but it is not supported",
                     self.original
@@ -649,7 +649,7 @@ fn tags(g: &Glyph) -> Vec<String> {
 
 /// The value of a predicate object for a glyph, or `None` if we can't
 /// determine it (because babelfont doesn't carry the information).
-fn glyph_value(g: &Glyph, object: &str) -> Option<Value> {
+fn glyph_value(font: &Font, g: &Glyph, object: &str) -> Option<Value> {
     let layers = || g.layers.iter().filter(|l| !l.is_background);
     let fs = &g.format_specific;
     Some(match object {
@@ -676,8 +676,16 @@ fn glyph_value(g: &Glyph, object: &str) -> Option<Value> {
         "lastChange" => glyph_str(g, "last_change"),
         "sortName" => glyph_str(g, "sort_name"),
         "sortNameKeep" => glyph_str(g, "sort_name_keep"),
-        "leftKerningGroup" => glyph_str(g, "kern_left"),
-        "rightKerningGroup" => glyph_str(g, "kern_right"),
+        // From the font's group lists, which the editor changes; the copy
+        // the Glyphs reader left in `format_specific` may be stale.
+        "leftKerningGroup" => font
+            .glyph_kerning_groups(&g.name)
+            .0
+            .map_or(Value::None, |group| Value::Str(group.to_string())),
+        "rightKerningGroup" => font
+            .glyph_kerning_groups(&g.name)
+            .1
+            .map_or(Value::None, |group| Value::Str(group.to_string())),
         "topKerningGroup" => glyph_str(g, "kern_top"),
         "bottomKerningGroup" => glyph_str(g, "kern_bottom"),
         "leftMetricsKey" => glyph_str(g, "metric_left"),
@@ -782,6 +790,21 @@ mod tests {
             .map(|g| g.as_str())
             .collect::<Vec<_>>()
             .join(" "))
+    }
+
+    #[test]
+    fn kerning_group_predicates_read_the_group_lists() {
+        // Group lists changed after import win over the reader's copies.
+        let mut font = font();
+        for members in font.second_kern_groups.values_mut() {
+            members.retain(|member| member != "A");
+        }
+        font.second_kern_groups
+            .entry("O".into())
+            .or_default()
+            .push("C".into());
+        assert_eq!(expand(&font, r#"$[leftKerningGroup like "H"]"#).unwrap(), "");
+        assert_eq!(expand(&font, r#"$[leftKerningGroup like "O"]"#).unwrap(), "C");
     }
 
     #[test]
