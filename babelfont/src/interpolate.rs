@@ -472,6 +472,23 @@ mod tests {
     }
 
     #[test]
+    fn test_background_drawings_do_not_interpolate() {
+        let mut font = font_with_component(kurbo::Affine::IDENTITY, kurbo::Affine::IDENTITY);
+        // A background at the light master, as the editor makes one: same master
+        // type as its foreground, and an outline the masters don't share.
+        let mut background = Layer::new(900.0);
+        background.master = LayerType::DefaultForMaster("light".to_string());
+        background.is_background = true;
+        background.shapes.push(Shape::Path(crate::Path::default()));
+        font.glyphs.get_mut("A").unwrap().layers.push(background);
+
+        let location = DesignLocation::from(vec![(Tag::new(b"wght"), DesignCoord::new(50.0))]);
+        let layer = font.interpolate_glyph("A", &location).unwrap();
+        assert_eq!(layer.width, 500.0);
+        assert_eq!(layer.components().count(), 1);
+    }
+
+    #[test]
     fn test_degenerate_affine_survives_decomposition() {
         // x' = y, y' = 0: no first column to find a rotation in
         let affine = kurbo::Affine::new([0.0, 0.0, 1.0, 0.0, 0.0, 0.0]);

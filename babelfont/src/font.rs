@@ -575,6 +575,11 @@ impl Font {
 
         let mut layers: Vec<(DesignLocation, &Layer)> = vec![];
         for layer in &glyph.layers {
+            // A background is a reference drawing behind its foreground. It
+            // keeps the foreground's master type but never interpolates.
+            if layer.is_background {
+                continue;
+            }
             // Resolve master via layer.master (DefaultForMaster),
             // which is the primary way layers reference their master.
             // Only DefaultForMaster layers map directly to their master's
