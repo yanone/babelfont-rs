@@ -10,7 +10,7 @@ use fea_rs_ast::{
 use fontdrasil::coords::{DesignCoord, UserCoord};
 use smol_str::SmolStr;
 
-use crate::{convertors::glyphs3::KEY_ATTR, filters::FontFilter, LayerType};
+use crate::{filters::FontFilter, layer::FEATURE_VARIATION_ATTRIBUTES_KEY, LayerType};
 
 #[derive(Default)]
 /// A filter that converts Glyphs "bracket layers" to Feature Variation glyphs
@@ -171,32 +171,25 @@ impl FontFilter for GlyphsBracketLayers {
                 HashMap::new();
             let mut layer_ids_to_drop = HashSet::new();
             for layer in glyph.layers.iter() {
-                if matches!(layer.master, LayerType::AssociatedWithMaster(_)) {
-                    if let Some(axis_rules) = layer
-                        .format_specific
-                        .get(KEY_ATTR)
-                        .and_then(|v| v.as_object())
-                        .and_then(|v| v.get("axisRules"))
-                        .and_then(|v| v.as_array())
-                        .and_then(|v| DesignspaceRegion::from_rules_and_axes(v, &axes))
-                    {
-                        bracket_layers_by_ruleset
-                            .entry(axis_rules)
-                            .or_default()
-                            .push(layer.clone());
-                    }
-                }
-                if bracket_layers_by_ruleset.is_empty() {
-                    continue;
+                if let Some(axis_rules) = layer
+                    .feature_variation_rules()
+                    .and_then(|v| DesignspaceRegion::from_rules_and_axes(v, &axes))
+                {
+                    bracket_layers_by_ruleset
+                        .entry(axis_rules)
+                        .or_default()
+                        .push(layer.clone());
                 }
             }
             let mut counter = 1;
             for (ruleset, layers) in bracket_layers_by_ruleset {
-                // Check we have one for each master
+                // Check we have one for each master (free layers of the
+                // variation, with a location of their own, do not count)
                 if !master_ids.iter().all(|id| {
-                    layers
-                        .iter()
-                        .any(|l| l.master == LayerType::AssociatedWithMaster(id.clone()))
+                    layers.iter().any(|l| {
+                        l.location.is_none()
+                            && l.master == LayerType::AssociatedWithMaster(id.clone())
+                    })
                 }) {
                     log::warn!("Skipping bracket layer for glyph {} ruleset {:?} because it doesn't have a layer for each master", glyph.name, ruleset);
                     continue;
@@ -207,9 +200,25 @@ impl FontFilter for GlyphsBracketLayers {
                 counter += 1;
                 // Remove these layers from the original glyph
                 layer_ids_to_drop.extend(layers.iter().filter_map(|l| l.id.clone()));
-                // Set each layer as the master
+                // Each master's layer becomes that master's layer of the new
+                // glyph; free layers keep their own location.
                 new_glyph.layers = layers;
                 for layer in new_glyph.layers.iter_mut() {
+                    // Now the new glyph's own layers, not variation layers.
+                    if let Some(serde_json::Value::Object(mut attributes)) =
+                        layer.format_specific.remove(FEATURE_VARIATION_ATTRIBUTES_KEY)
+                    {
+                        attributes.remove("axisRules");
+                        if !attributes.is_empty() {
+                            layer.format_specific.insert(
+                                FEATURE_VARIATION_ATTRIBUTES_KEY.to_string(),
+                                serde_json::Value::Object(attributes),
+                            );
+                        }
+                    }
+                    if layer.location.is_some() {
+                        continue;
+                    }
                     let LayerType::AssociatedWithMaster(current_assocation) = &layer.master else {
                         continue;
                     };
@@ -488,6 +497,67 @@ fn overlay_box(top: &Box, bot: &Box) -> (Option<Box>, Option<Box>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[allow(clippy::unwrap_used)]
+    fn variation_layers_become_a_glyph_with_their_free_layer() {
+        use crate::{Font, Glyph, Master};
+        use fontdrasil::coords::DesignLocation;
+        let mut font = Font::new();
+        let mut axis = Axis::new("Weight", Tag::new(b"wght"));
+        axis.min = Some(UserCoord::new(100.0));
+        axis.default = Some(UserCoord::new(100.0));
+        axis.max = Some(UserCoord::new(900.0));
+        font.axes.push(axis);
+        let at = |wght: f64| DesignLocation::from(vec![(Tag::new(b"wght"), DesignCoord::new(wght))]);
+        font.masters.push(Master::new("m1", "m1", at(100.0)));
+        font.masters.push(Master::new("m2", "m2", at(900.0)));
+        let rules = || {
+            let mut attributes = serde_json::Map::new();
+            attributes.insert("axisRules".into(), serde_json::json!([{ "min": 500 }]));
+            serde_json::Value::Object(attributes)
+        };
+        let layer = |id: &str, master: LayerType, variation: bool| {
+            let mut layer = Layer::new(500.0);
+            layer.id = Some(id.into());
+            layer.master = master;
+            if variation {
+                layer.format_specific.insert(FEATURE_VARIATION_ATTRIBUTES_KEY.into(), rules());
+            }
+            layer
+        };
+        let mut glyph = Glyph::new("A");
+        glyph.layers.push(layer("m1", LayerType::DefaultForMaster("m1".into()), false));
+        glyph.layers.push(layer("m2", LayerType::DefaultForMaster("m2".into()), false));
+        glyph.layers.push(layer("v1", LayerType::AssociatedWithMaster("m1".into()), true));
+        glyph.layers.push(layer("v2", LayerType::AssociatedWithMaster("m2".into()), true));
+        let mut free = layer("vfree", LayerType::AssociatedWithMaster("m1".into()), true);
+        free.location = Some(at(700.0));
+        glyph.layers.push(free);
+        let mut background = layer("vbg", LayerType::AssociatedWithMaster("m1".into()), true);
+        background.is_background = true;
+        assert!(!background.is_feature_variation());
+        glyph.layers.push(background);
+        assert!(glyph.layers[2].is_feature_variation());
+        assert!(glyph.layers[4].is_feature_variation());
+        assert!(!glyph.layers[0].is_feature_variation());
+        font.glyphs.push(glyph);
+
+        GlyphsBracketLayers::new(vec![]).apply(&mut font).unwrap();
+
+        let base = font.glyphs.get("A").unwrap();
+        let ids = |glyph: &Glyph| -> Vec<String> {
+            glyph.layers.iter().filter_map(|l| l.id.clone()).collect()
+        };
+        assert_eq!(ids(base), vec!["m1", "m2", "vbg"]);
+        let variation = font.glyphs.get("A.VAR.1").unwrap();
+        assert_eq!(ids(variation), vec!["v1", "v2", "vfree"]);
+        assert_eq!(variation.layers[0].master, LayerType::DefaultForMaster("m1".into()));
+        // The free layer stays free, at its own location.
+        assert_eq!(variation.layers[2].master, LayerType::AssociatedWithMaster("m1".into()));
+        assert!(variation.layers[2].location.is_some());
+        assert!(variation.layers.iter().all(|l| !l.is_feature_variation()));
+    }
 
     fn coord(val: f32) -> UserCoord {
         UserCoord::new(val as f64)

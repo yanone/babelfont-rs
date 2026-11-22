@@ -181,7 +181,7 @@ pub use crate::{
         computed_anchors, fill_font_missing_inherited_anchors, fill_missing_inherited_anchors,
         linked_compile_filter_ids, ComputedAnchorMap,
     },
-    layer::{Layer, LayerType},
+    layer::{Layer, LayerType, FEATURE_VARIATION_ATTRIBUTES_KEY},
     layout::closure::close_layout,
     master::Master,
     metrics::MetricType,

@@ -115,7 +115,31 @@ pub struct Layer {
     pub format_specific: FormatSpecific,
 }
 
+/// Format-specific key whose `axisRules` make a layer a feature-variation
+/// layer (a Glyphs bracket layer).
+pub const FEATURE_VARIATION_ATTRIBUTES_KEY: &str = "com.schriftgestalt.Glyphs.attr";
+
 impl Layer {
+    /// The axis rules of a feature-variation layer: one of the drawings that
+    /// replace its glyph inside an axis range. A feature-variation layer is
+    /// associated with a master, is not a background, and carries
+    /// `axisRules`; with a location it is a free layer of the variation.
+    pub fn feature_variation_rules(&self) -> Option<&Vec<serde_json::Value>> {
+        if self.is_background || !matches!(self.master, LayerType::AssociatedWithMaster(_)) {
+            return None;
+        }
+        self.format_specific
+            .get(FEATURE_VARIATION_ATTRIBUTES_KEY)?
+            .as_object()?
+            .get("axisRules")?
+            .as_array()
+    }
+
+    /// True for a feature-variation layer (see `feature_variation_rules`).
+    pub fn is_feature_variation(&self) -> bool {
+        self.feature_variation_rules().is_some()
+    }
+
     /// Create a new layer with the given advance width
     pub fn new(width: f32) -> Layer {
         Layer {
@@ -306,6 +330,7 @@ impl Layer {
 
     pub(crate) fn should_interpolate(&self) -> bool {
         !self.is_background
+            && !self.is_feature_variation()
             && (!self.smart_component_location.is_empty()
                 || self.location.is_some()
                 || matches!(self.master, crate::LayerType::DefaultForMaster(_)))

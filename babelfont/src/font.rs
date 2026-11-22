@@ -575,9 +575,10 @@ impl Font {
 
         let mut layers: Vec<(DesignLocation, &Layer)> = vec![];
         for layer in &glyph.layers {
-            // A background is a reference drawing behind its foreground. It
-            // keeps the foreground's master type but never interpolates.
-            if layer.is_background {
+            // A background is a reference drawing behind its foreground; a
+            // feature-variation layer belongs to the glyph that replaces this
+            // one inside an axis range. Neither interpolates with it.
+            if layer.is_background || layer.is_feature_variation() {
                 continue;
             }
             // Resolve master via layer.master (DefaultForMaster),
