@@ -242,7 +242,8 @@ impl Font {
             .copied()
     }
 
-    pub(crate) fn fontdrasil_axes(&self) -> Result<fontdrasil::types::Axes, BabelfontError> {
+    /// The font's axes as fontdrasil axes, for compiling and interpolating.
+    pub fn fontdrasil_axes(&self) -> Result<fontdrasil::types::Axes, BabelfontError> {
         let axes: Result<Vec<fontdrasil::types::Axis>, _> =
             self.axes.iter().map(|ax| ax.clone().try_into()).collect();
         Ok(fontdrasil::types::Axes::new(axes?))
