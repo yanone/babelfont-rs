@@ -192,6 +192,12 @@ pub(crate) fn data_category(name: &str) -> Option<crate::GlyphCategory> {
     }
 }
 
+/// The subcategory Glyphs.app's data gives a glyph of this name, made up
+/// as for its category where the data does not name it
+pub(crate) fn data_subcategory(name: &str) -> Option<&'static str> {
+    category_of(name).and_then(|(_, subcategory)| subcategory)
+}
+
 /// A filter that adds Glyphs.app glyph metadata to the font
 pub struct GlyphsData;
 

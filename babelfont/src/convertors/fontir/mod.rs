@@ -356,6 +356,96 @@ mod tests {
     }
 
     #[test]
+    fn test_a_nonspacing_mark_compiles_without_advance_so_kerning_skips_it() {
+        // Glyphs, glyphsLib and fontc zero a Nonspacing mark's advance. The
+        // kern lookups skip marks only when no mark advances, so a mark with
+        // a width would stop every pair it sits between.
+        use write_fonts::read::{tables::layout::LookupFlag, TableProvider};
+        let mut font = crate::load("resources/RadioCanadaDisplay.glyphs").unwrap();
+        let mut widen = |name: &str, subcategory: Option<&str>| {
+            let glyph = font.glyphs.get_mut(name).unwrap();
+            glyph.category = crate::GlyphCategory::Mark;
+            match subcategory {
+                Some(subcategory) => {
+                    glyph
+                        .format_specific
+                        .insert("subcategory".into(), subcategory.into());
+                }
+                None => {
+                    glyph.format_specific.remove("subcategory");
+                }
+            }
+            for layer in glyph.layers.iter_mut() {
+                layer.width = 300.0;
+            }
+        };
+        for master in font.masters.iter_mut() {
+            master.kerning.insert(("A".into(), "V".into()), -50);
+        }
+        widen("acutecomb", Some("Nonspacing"));
+        // a name Glyphs' data has as Nonspacing
+        widen("gravecomb", None);
+        let bytes =
+            BabelfontIrSource::compile(font.clone(), CompilationOptions::default()).unwrap();
+        let fontref = write_fonts::read::FontRef::new(&bytes).unwrap();
+        let advance = |name: &str| {
+            let post = fontref.post().unwrap();
+            let gid = (0..fontref.maxp().unwrap().num_glyphs())
+                .find(|gid| post.glyph_name(write_fonts::types::GlyphId16::new(*gid)) == Some(name))
+                .unwrap();
+            fontref
+                .hmtx()
+                .unwrap()
+                .advance(write_fonts::types::GlyphId::new(gid.into()))
+                .unwrap()
+        };
+        assert_eq!(advance("acutecomb"), 0);
+        assert_eq!(advance("gravecomb"), 0);
+        let gpos = fontref.gpos().unwrap();
+        let lookups = gpos.lookup_list().unwrap();
+        let features = gpos.feature_list().unwrap();
+        let kern = features
+            .feature_records()
+            .iter()
+            .find(|record| record.feature_tag() == write_fonts::types::Tag::new(b"kern"))
+            .unwrap()
+            .feature(features.offset_data())
+            .unwrap();
+        for index in kern.lookup_list_indices() {
+            let lookup = lookups.lookups().get(index.get() as usize).unwrap();
+            assert!(
+                lookup.lookup_flag().contains(LookupFlag::IGNORE_MARKS),
+                "kern lookup {} flag {:?}",
+                index.get(),
+                lookup.lookup_flag()
+            );
+        }
+
+        // A Spacing Combining mark keeps its advance.
+        let mut font = font;
+        font.glyphs
+            .get_mut("acutecomb")
+            .unwrap()
+            .format_specific
+            .insert("subcategory".into(), "Spacing Combining".into());
+        let bytes = BabelfontIrSource::compile(font, CompilationOptions::default()).unwrap();
+        let fontref = write_fonts::read::FontRef::new(&bytes).unwrap();
+        let post = fontref.post().unwrap();
+        let gid = (0..fontref.maxp().unwrap().num_glyphs())
+            .find(|gid| {
+                post.glyph_name(write_fonts::types::GlyphId16::new(*gid)) == Some("acutecomb")
+            })
+            .unwrap();
+        assert_eq!(
+            fontref
+                .hmtx()
+                .unwrap()
+                .advance(write_fonts::types::GlyphId::new(gid.into())),
+            Some(300)
+        );
+    }
+
+    #[test]
     fn test_a_segment_cubic_in_one_master_only_is_an_error() {
         use crate::{NodeType, Shape};
         let mut font = crate::load("resources/RadioCanadaDisplay.glyphs").unwrap();

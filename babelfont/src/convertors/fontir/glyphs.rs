@@ -278,8 +278,12 @@ fn process_layer(
         components
     };
     let glyph_instance = GlyphInstance {
-        // XXX https://github.com/googlefonts/fontmake-rs/issues/285 glyphs non-spacing marks are 0-width
-        width: layer.width.into(),
+        // https://github.com/googlefonts/fontmake-rs/issues/285 glyphs non-spacing marks are 0-width
+        width: if is_nonspacing_mark(glyph) {
+            0.0
+        } else {
+            layer.width.into()
+        },
         // where a layer has none, the compiler falls back to the typo ascender
         // and descender
         height: layer.vertical_advance.map(f64::from),
@@ -288,6 +292,23 @@ fn process_layer(
         components,
     };
     Ok((location.clone(), glyph_instance))
+}
+
+/// A mark of subcategory Nonspacing, stated or from Glyphs' data, whose
+/// advance Glyphs, glyphsLib and fontc zero on export. A compiler's kerning
+/// skips only marks that do not advance, so one with a width would stop a
+/// kerning pair across it.
+fn is_nonspacing_mark(glyph: &crate::Glyph) -> bool {
+    if glyph.category != crate::GlyphCategory::Mark {
+        return false;
+    }
+    match glyph.format_specific.get_optionstring("subcategory") {
+        Some(subcategory) => subcategory == "Nonspacing",
+        #[cfg(feature = "glyphs")]
+        None => crate::filters::glyphsdata::data_subcategory(&glyph.name) == Some("Nonspacing"),
+        #[cfg(not(feature = "glyphs"))]
+        None => false,
+    }
 }
 
 pub(crate) fn to_ir_contours_and_components(
